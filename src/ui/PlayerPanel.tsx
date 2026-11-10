@@ -8,7 +8,7 @@ import { TOPIC_LABEL } from '../engine/conflict';
 import { standing } from '../engine/factions';
 import { playerCases, sideOf } from '../engine/cases';
 import { GOALS, GOAL_REWARD, goalKey, reconsiderGoal } from '../engine/goals';
-import { ApPips, Bar, CharLink, FactionBadge, Opinion, Portrait } from './common';
+import { Bar, CharLink, FactionBadge, Opinion, Portrait } from './common';
 import { Tip } from './guide';
 
 const PICK_FOCUS: FocusKind[] = ['duty', 'study', 'social', 'teach', 'estate', 'rest', 'seowon', 'munjip'];
@@ -167,8 +167,8 @@ export function PlayerPanel() {
               <button
                 key={k}
                 className={`fbtn ${f?.kind === k ? 'on' : ''}`}
-                disabled={!!err}
-                title={err ?? FOCUS_INFO[k].desc}
+                disabled={!!err || f?.kind === k}
+                title={err ?? (f?.kind === k ? '지금 하고 있는 일이다' : FOCUS_INFO[k].desc)}
                 onClick={() => act((g) => setFocus(g, k))}
               >
                 {FOCUS_INFO[k].name}
@@ -251,7 +251,7 @@ export function PlayerPanel() {
 
       <section className="pp-sec">
         <h4>
-          거취 <ApPips />
+          거취 <span className="muted small">행동력을 쓰지 않는다 (근신 제외)</span>
         </h4>
         <div className="focus-grid">
           {SELF_ACTIONS.map((a) => {

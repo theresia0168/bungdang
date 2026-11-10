@@ -90,11 +90,11 @@ function recruit(s: GameState, cs: Case) {
     if (l > 0 && cs.pros.length < 6) cs.pros.push(c.id);
     else if (l < 0 && cs.cons.length < 6) cs.cons.push(c.id);
   }
-  // 신세를 진 이들이 은혜를 갚는다
+  // 신세를 진 이들이 은혜를 갚는다. 내가 몰릴 때만 저절로 나서고, 내가 공격할 때는 「연명 요청」으로 직접 청한다.
   const mySide = isP(s, tgt) ? 'cons' : isP(s, atk) ? 'pros' : null;
   if (!mySide) return;
   const paid: string[] = [];
-  for (const id of Object.keys(s.player.debts)) {
+  for (const id of mySide === 'cons' ? Object.keys(s.player.debts) : []) {
     const c = s.chars[id];
     if (!alive(c) || !inCourt(c) || sideOf(cs, id)) continue;
     collect(s, id);
@@ -247,6 +247,9 @@ export function withdraw(s: GameState, cs: Case) {
   closeCase(s, cs);
   vacate(s, p, 'retired');
   p.prestige = clamp(p.prestige + 1, 0, 100);
+  p.favor = clamp(p.favor - 3, -100, 100);
+  // 스스로 물러나도 탄핵을 시인한 셈이다: 반년 동안 서용되지 않는다
+  p.banUntil = Math.max(p.banUntil ?? 0, s.t + 6);
   s.player.deeds.push(`${shortDate(s.t)} 탄핵을 받고 사직`);
   log(s, `${josa(p.name, '이/가')} ${s.chars[cs.attacker].name}의 논핵을 받고 스스로 물러났다.`, 'player');
 }

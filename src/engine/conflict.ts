@@ -5,7 +5,7 @@ import { addFlaw, alive, clamp, isP, josa, knownFlaws, log, owe } from './state'
 import { holderOf, vacate, exileSpot } from './court';
 import { opinion, sway, swayFaction, topOf } from './opinion';
 import { powerShare } from './factions';
-import { shortDate } from './calendar';
+import { END_T, shortDate } from './calendar';
 import { fulfillAgainst, fulfillAll } from './relations';
 
 export interface RollPart {
@@ -44,13 +44,20 @@ export const SUCCESS: Outcome[] = ['dismiss', 'strip', 'exile', 'wiri', 'sasa'];
 
 const sum = (ps: RollPart[]) => ps.reduce((a, p) => a + p.value, 0);
 
+/** 최근 2년 동안 플레이어가 연 논핵 수. 잦을수록 왕과 조정이 싫증을 낸다. */
+export const recentImpeachments = (s: GameState) => (s.player.impeachAt ?? []).filter((t) => s.t - t <= 24).length;
+
 export function kill(s: GameState, c: Character, cause: string) {
   if (c.status === 'dead') return;
   if (c.office) vacate(s, c);
   c.status = 'dead';
   c.death = { t: s.t, cause };
-  log(s, `${josa(c.name, '이/가')} ${cause}.`, 'death');
-  if (isP(s, c)) s.over = { reason: cause, t: s.t };
+  log(s, `${josa(c.name, '이/가')} ${cause}.`, isP(s, c) ? 'player' : 'death');
+  if (isP(s, c)) {
+    // 1600년까지 반년 넘게 남았으면 자식이 가문을 이을지 묻는다 (succession.ts)
+    if (s.t < END_T - 6) s.flags.succession = cause;
+    else s.over = { reason: cause, t: s.t };
+  }
   if (s.heir === c.id) s.heir = undefined;
 }
 
@@ -108,6 +115,10 @@ export function impeach(
   if (atk.traits.includes('mild')) aParts.push({ label: '온건한 기질', value: -1 });
   if (atk.grudges.includes(tgt.id)) aParts.push({ label: '설욕', value: 2 });
   if ((powerShare(s)[atk.faction] ?? 0) > 0.55 && atk.faction !== 'none') aParts.push({ label: '당세 우위', value: 1 });
+  if (isP(s, atk)) {
+    const n = recentImpeachments(s) - 1;
+    if (n > 0) aParts.push({ label: `잦은 탄핵 (2년 새 ${n + 1}번째)`, value: -Math.min(3, n) });
+  }
   for (const b of opt.bonus ?? []) if (b.value) aParts.push(b);
 
   const dParts: RollPart[] = [{ label: '정치력', value: tgt.politics }];
@@ -206,10 +217,18 @@ export interface PurgeLine {
   result: '사사' | '유배' | '파직' | '무사';
 }
 
+/** 옥사 판정: 1d6 + 정치력/2 (내림). 2 이하면 사사, 5 이하면 유배, 6 이상이면 무사. */
+export const PURGE_RULE = { death: 2, exile: 5 } as const;
+export const purgeJudge = (roll: number, politics: number): PurgeLine['result'] => {
+  const v = roll + Math.floor(politics / 2);
+  return v <= PURGE_RULE.death ? '사사' : v <= PURGE_RULE.exile ? '유배' : '무사';
+};
+
 /**
- * 기획안 4.3 환국의 데스 넘버: 당상관은 1d6을 굴려
- * 눈 = 정치력이면 사사, 눈 < 정치력이면 유배, 눈 > 정치력이면 무사. 당하관은 파직만 당한다.
- * harsh 대상(역모 연루)은 품계와 상관없이 당상관 규칙을 따른다.
+ * 옥사·환국의 판정. 당상관과 연루자는 1d6 + 정치력/2로 판정한다:
+ * 2 이하 사사, 5 이하 유배, 6 이상 무사. 수완이 좋을수록 빠져나가기 쉽다.
+ * (예전 규칙은 눈 = 정치력이면 사사, 작으면 유배라, 정치력 7 이상은 반드시 유배되었다.)
+ * 당하관은 파직만 당한다. harsh 대상(역모 연루)은 품계와 상관없이 당상관 규칙을 따른다.
  */
 export function purge(s: GameState, targets: Character[], harshIds: string[], reroll: string[] = []): PurgeLine[] {
   const out: PurgeLine[] = [];
@@ -223,7 +242,7 @@ export function purge(s: GameState, targets: Character[], harshIds: string[], re
       } else out.push({ id: c.id, result: '무사' });
       continue;
     }
-    const judge = (r: number) => (r === c.politics ? '사사' : r < c.politics ? '유배' : '무사');
+    const judge = (r: number) => purgeJudge(r, c.politics);
     let roll = d6(s);
     let res: PurgeLine['result'] = judge(roll);
     if (res !== '무사' && reroll.includes(c.id)) {

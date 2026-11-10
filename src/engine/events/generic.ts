@@ -6,7 +6,7 @@ import { openCase } from '../cases';
 import { OFFICE_MAP } from '../data/offices';
 import { FACTION_META, REGION_META } from '../data/meta';
 import { harvestOf, REGION_ECON, tributeAmounts } from '../regions';
-import { addFlaw, alive, clamp, inCourt, isP, josa, log, officeTitle, P, pushEvent } from '../state';
+import { addFlaw, alive, clamp, monthsSince, inCourt, isP, josa, log, officeTitle, P, pushEvent } from '../state';
 import { sway, swayFaction } from '../opinion';
 import { appoint } from '../court';
 import { members } from '../factions';
@@ -29,7 +29,7 @@ export const GENERIC_EVENTS: Record<string, EventDef> = {
         text:
           `당신은 ${p.clan}의 ${p.name}${p.ho ? `(호 ${p.ho})` : ''}입니다.\n\n` +
           '훈척 정치가 막을 내리고 사림이 조정을 차지한 지 여러 해. 이제 사림은 둘로 갈라서려 하고 있습니다. ' +
-          '앞으로 25년, 당신은 상소와 탄핵, 혼맥과 천거로 살아남아야 합니다.\n\n' +
+          `1600년까지 25년, 당신은 상소와 탄핵, 혼맥과 천거로 살아남아야 합니다.${p.destiny < 1600 ? ` 다만 당신의 천명은 ${p.destiny}년 무렵부터 위태롭습니다. 그 뒤에는 자식이 가문을 이을 수 있습니다.` : ''}\n\n` +
           '· 당신이 한 사람에게 한 일은 그의 가문과 붕당 전체에 번집니다.\n' +
           '· 흠결은 탄핵의 칼이 됩니다. 탐문과 뒷조사로 남의 흠결을 캐고, 내 흠결은 숨기십시오.\n' +
           '· 탄핵은 두 달 동안 이어지는 공방입니다. 남을 구원해 주면 그가 신세를 지고, 신세는 당신이 위태로울 때 돌아옵니다.\n' +
@@ -69,7 +69,7 @@ export const GENERIC_EVENTS: Record<string, EventDef> = {
         text: `왕명으로 당신을 ${o.name}(${o.rank}품)에 제수한다는 교지가 내려왔다.\n\n${o.desc}`,
         choices: [
           { key: 'accept', label: '교지를 받든다' },
-          { key: 'decline', label: '사직소를 올려 사양한다', hint: '명망 +2, 성심 -2. 반년 동안 이 자리에 다시 거론되지 않는다.' },
+          { key: 'decline', label: '사직소를 올려 사양한다', hint: '명망 +2, 성심 -2 (1년 안에 거듭 사양하면 명망 없이 성심 -4). 반년 동안 이 자리에 다시 거론되지 않는다.' },
         ],
       };
     },
@@ -82,10 +82,16 @@ export const GENERIC_EVENTS: Record<string, EventDef> = {
         appoint(s, p, c.office);
         return `${o.name}에 부임했다.`;
       }
-      p.prestige = clamp(p.prestige + 2, 0, 100);
       p.favor = clamp(p.favor - 2, -100, 100);
       s.flags[`declined_${c.office}`] = s.t + 6;
-      return `${o.name} 자리를 사양했다. 사림이 그 겸양을 칭송한다.`;
+      // 겸양의 명망은 한 해에 한 번만. 거듭 사양하면 왕의 눈 밖에 난다.
+      if (monthsSince(s, 'declinedAt') >= 12) {
+        s.flags.declinedAt = s.t;
+        p.prestige = clamp(p.prestige + 2, 0, 100);
+        return `${o.name} 자리를 사양했다. 사림이 그 겸양을 칭송한다.`;
+      }
+      p.favor = clamp(p.favor - 2, -100, 100);
+      return `${o.name} 자리를 또 사양했다. 거듭된 사양에 왕이 언짢아한다. (성심 -4)`;
     },
   },
 
@@ -95,7 +101,7 @@ export const GENERIC_EVENTS: Record<string, EventDef> = {
       const tgt = c.target ? s.chars[c.target] : undefined;
       const what =
         c.topic === 'impeach'
-          ? `${tgt ? officeTitle(tgt) : ''} ${tgt ? josa(tgt.name, '을/를') : ''}(${tgt ? fname(tgt.faction) : ''}) 탄핵하는 상소`
+          ? `${tgt ? `${fname(tgt.faction)} ${officeTitle(tgt)} ${josa(tgt.name, '을/를')}` : ''} 탄핵하는 상소`
           : c.topic === 'recall'
             ? `유배 중인 ${tgt?.name}의 신원을 청하는 상소`
             : '시폐를 논하는 상소';
@@ -109,7 +115,7 @@ export const GENERIC_EVENTS: Record<string, EventDef> = {
             label: '연명한다',
             hint:
               c.topic === 'impeach'
-                ? `${init.name} 호감 +10. 논핵이 2개월 이어지며 당신은 동조자가 된다. ${tgt?.name}과 그 가문의 원한을 산다.`
+                ? `${init.name} 호감 +10. 논핵이 2개월 이어지며 당신은 동조자가 된다. ${josa(tgt?.name ?? "", "과/와")} 그 가문의 원한을 산다.`
                 : `${init.name} 호감 +10. 성공하면 명망 +2.`,
           },
           { key: 'decline', label: '거절한다', hint: `${init.name} 호감 -8, 당내 평판 소폭 하락` },

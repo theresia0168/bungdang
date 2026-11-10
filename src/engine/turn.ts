@@ -23,6 +23,7 @@ import { rollAgenda } from './agenda';
 import { checkGoal } from './goals';
 import { EVENTS, rollPersonal, runHistory } from './events';
 import { genChar, pickHome, regionFaction } from './generate';
+import { checkSuccession } from './succession';
 
 function income(s: GameState) {
   const p = P(s);
@@ -112,7 +113,7 @@ function exam(s: GameState) {
       c.promotedAt = s.t;
       s.player.proteges = s.player.proteges.filter((x) => x !== id);
       pr.push(`· ${c.name} 급제! 낭관으로 조정에 나간다 (${roll})`);
-      log(s, `${p.name}이 거둔 제자 ${josa(c.name, '이/가')} 급제했다.`, 'player');
+      log(s, `${josa(p.name, "이/가")} 거둔 제자 ${josa(c.name, '이/가')} 급제했다.`, 'player');
     } else pr.push(`· ${c.name} 낙방 (${roll}, 10 이상 필요). 다음 식년시를 기약한다.`);
   }
   if (pr.length) notice(s, '제자의 과거', `${pr.join('\n')}\n\n급제한 제자는 지기·맹약처럼 당신이 걸린 공방에 저절로 나선다.`, 'personal');
@@ -177,6 +178,8 @@ export function advanceMonth(s: GameState) {
   tickIncidents(s);
   if (alive(p) && m === 9 && p.status === 'active' && p.office?.startsWith('gamsa_')) pushEvent(s, 'gamsa_tribute', {});
   if (s.player.abroadUntil === s.t && alive(p)) notice(s, '귀국', '사행을 마치고 한성으로 돌아왔다.');
+  if (s.flags.mournUntil === s.t && alive(p) && p.status === 'retired')
+    notice(s, '탈상(脫喪)', '상을 마쳤다. 이제 거취의 「상경」으로 한성에 올라가 다시 벼슬을 구할 수 있다.', 'personal');
   rollPersonal(s);
   rollAudience(s);
   rollDuty(s);
@@ -198,6 +201,7 @@ export function advanceMonth(s: GameState) {
     }
   }
   refreshAp(s);
+  checkSuccession(s);
   if (s.over) s.pending = [];
 }
 
@@ -207,6 +211,7 @@ export function resolveEvent(s: GameState, eventId: string, key: string): string
   const [e] = s.pending.splice(i, 1);
   const def = EVENTS[e.def];
   const msg = def?.resolve(s, e.ctx, key) ?? '';
+  checkSuccession(s);
   if (s.over) s.pending = [];
   return msg;
 }

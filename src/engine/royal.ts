@@ -4,7 +4,7 @@ import { FACTION_META } from './data/meta';
 import { OFFICE_MAP } from './data/offices';
 import { tOf } from './calendar';
 import { chance, randInt, weighted } from './rng';
-import { addFlaw, age, alive, clamp, inCourt, isP, josa, log, notice, P, pushEvent, uid } from './state';
+import { monthsSince, addFlaw, age, alive, clamp, inCourt, isP, josa, log, notice, P, pushEvent, uid } from './state';
 import { swayFaction } from './opinion';
 import { activeFactions, powerShare } from './factions';
 import { vacate } from './court';
@@ -119,8 +119,7 @@ export function tickRoyal(s: GameState) {
   if (s.heir) return;
   const sit = heirSit(s);
   if (sit) return tickDebate(s, sit);
-  const last = typeof s.flags.heirAt === 'number' ? s.flags.heirAt : -99;
-  if (s.war.active || s.t < tOf(1588, 1) || s.t - last < 30 || candidates(s).length < 2) return;
+  if (s.war.active || s.t < tOf(1588, 1) || monthsSince(s, 'heirAt') < 30 || candidates(s).length < 2) return;
   const ill = s.situations.some((x) => x.kind === 'illness');
   if (chance(s, ill ? 0.12 : 0.025)) startDebate(s, ill ? '왕의 환후가 길어지자' : '왕자들이 장성하자');
 }
@@ -386,7 +385,7 @@ export const ROYAL_EVENTS: Record<string, EventDef> = {
         kind: 'danger',
         text: `${FACTION_META[p.faction].name}의 원로들이 ${josa(c.name, '을/를')} 세자로 세우자는 연명 상소를 꾸민다. 당신의 이름도 올리자고 한다.\n\n${fav && fav.id !== c.id ? `그러나 왕의 마음은 ${fav.name} 쪽에 있다. 잘못하면 상소에 이름을 올린 이들이 한꺼번에 화를 입는다.` : '왕도 내심 그 왕자를 아끼니, 해볼 만한 싸움이다.'}`,
         choices: [
-          { key: 'sign', label: '이름을 올린다', hint: `${c.name}을 드러내 놓고 민다. 당 호감 +4, 명망 +2. 왕의 짜증이 쌓인다.` },
+          { key: 'sign', label: '이름을 올린다', hint: `${josa(c.name, "을/를")} 드러내 놓고 민다. 당 호감 +4, 명망 +2. 왕의 짜증이 쌓인다.` },
           { key: 'sick', label: '병을 핑계로 빠진다', hint: '당 호감 -4. 화는 피한다.' },
           { key: 'leak', label: '상소 계획을 궁중에 흘린다', hint: `성심 +8. 숨은 흠결 「연명 밀고」. 들키면 당이 등을 돌린다.` },
         ],

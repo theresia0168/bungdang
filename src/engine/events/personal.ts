@@ -8,9 +8,12 @@ import { addFlaw, age, alive, clamp, inCourt, isP, josa, P, people, pushEvent } 
 import { addMod, opinion, sway, swayFaction } from '../opinion';
 import { vacate } from '../court';
 import { monthOf, shortDate, yearOf } from '../calendar';
+import { SALLIM_ROLLS } from './sallim';
 
 interface PersonalRoll {
   id: string;
+  /** 같은 사건이 다시 일어나기까지 최소 개월 (기본 12) */
+  cooldown?: number;
   weight(s: GameState): number;
   prepare?(s: GameState): Record<string, any> | null;
 }
@@ -102,15 +105,23 @@ ROLLS.push(
       return pool.length ? { other: pick(s, pool).id } : null;
     },
   },
+  ...SALLIM_ROLLS,
 );
 
 export function rollPersonal(s: GameState) {
-  if (!alive(P(s)) || !chance(s, 0.12)) return;
-  const pool = ROLLS.map((r) => [r, r.weight(s)] as [PersonalRoll, number]).filter(([, w]) => w > 0);
+  // 조정 사건이 드문 낙향·유배 중에는 개인 사건이 더 자주 온다
+  const away = P(s).status === 'retired' || P(s).status === 'exiled';
+  if (!alive(P(s)) || !chance(s, away ? 0.2 : 0.12)) return;
+  const last = (s.player.eventAt ??= {});
+  const pool = ROLLS.filter((r) => s.t - (last[r.id] ?? -999) >= (r.cooldown ?? 12))
+    .map((r) => [r, r.weight(s)] as [PersonalRoll, number])
+    .filter(([, w]) => w > 0);
   const r = weighted(s, pool);
   if (!r) return;
   const ctx = r.prepare ? r.prepare(s) : {};
-  if (ctx) pushEvent(s, r.id, ctx);
+  if (!ctx) return;
+  last[r.id] = s.t;
+  pushEvent(s, r.id, ctx);
 }
 
 export const PERSONAL_EVENTS: Record<string, EventDef> = {
@@ -289,7 +300,7 @@ export const PERSONAL_EVENTS: Record<string, EventDef> = {
         kind: 'personal',
         text: '고향에서 부친이 돌아가셨다는 기별이 왔다. 예법대로라면 벼슬을 내려놓고 3년(27개월) 동안 무덤 곁에서 시묘해야 한다.',
         choices: [
-          { key: 'full', label: '벼슬을 내려놓고 시묘한다', hint: '낙향하고 27개월 동안 임용되지 않는다. 명망 +6. 고향에서 강학할 수 있다.' },
+          { key: 'full', label: '벼슬을 내려놓고 시묘한다', hint: '낙향하고 27개월 동안 한성에 올라갈 수 없다. 명망 +6. 고향에서 강학할 수 있다.' },
           {
             key: 'gibok',
             label: '왕명을 받들어 기복출사(起復出仕)한다',
@@ -311,6 +322,7 @@ export const PERSONAL_EVENTS: Record<string, EventDef> = {
       p.status = p.status === 'exiled' ? p.status : 'retired';
       p.location = p.status === 'exiled' ? p.location : p.home;
       p.banUntil = Math.max(p.banUntil ?? 0, s.t + 27);
+      s.flags.mournUntil = s.t + 27;
       p.prestige = clamp(p.prestige + 6, 0, 100);
       s.player.deeds.push(`${shortDate(s.t)} 부친상, 시묘`);
       return '고향으로 내려가 여막을 짓고 시묘를 시작했다.';

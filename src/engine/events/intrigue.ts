@@ -2,7 +2,7 @@ import type { GameState } from '../types';
 import type { EventDef } from './types';
 import { FACTION_META, REGION_META } from '../data/meta';
 import { chance, d6, randInt } from '../rng';
-import { addFlaw, alive, clamp, isP, josa, owe, P, pushEvent } from '../state';
+import { monthsSince, addFlaw, alive, clamp, isP, josa, owe, P, pushEvent } from '../state';
 import { sway, swayFaction, topOf } from '../opinion';
 import { genChar } from '../generate';
 
@@ -108,7 +108,7 @@ export const INTRIGUE_EVENTS: Record<string, EventDef> = {
         kind: 'court',
         text: `${josa(a.name, '이/가')} 재물을 싸 들고 와서, 자기 집안 노비와 소작인의 군역을 빼 달라고 청한다. 흔한 일이라지만 그만큼 가난한 백성이 대신 짐을 진다.`,
         choices: [
-          { key: 'yes', label: '들어준다', hint: `재산 +15, ${a.name}이 신세를 진다. 35% 확률로 「군역 면제 청탁」 흠결(그가 앎). 명망 -1.` },
+          { key: 'yes', label: '들어준다', hint: `재산 +15, ${josa(a.name, "이/가")} 신세를 진다. 35% 확률로 「군역 면제 청탁」 흠결(그가 앎). 명망 -1.` },
           { key: 'no', label: '공도(公道)를 지킨다', hint: `명망 +2, ${a.name} 호감 -8` },
         ],
       };
@@ -138,7 +138,7 @@ export const INTRIGUE_EVENTS: Record<string, EventDef> = {
         kind: 'court',
         text: `${josa(a.name, '이/가')} 다급하게 찾아왔다. 그의 친척이 살인 사건에 얽혀 옥에 갇혔는데, 당신이 손을 써서 가볍게 처결되도록 해 달라는 것이다. 죄가 분명한지는 알 수 없다.`,
         choices: [
-          { key: 'yes', label: '손을 써 준다', hint: `${a.name}이 두 번 신세를 지고 재산 +10. 40% 확률로 「옥사 청탁」 흠결(그가 앎), 그중 일부는 곧바로 소문이 난다.` },
+          { key: 'yes', label: '손을 써 준다', hint: `${josa(a.name, "이/가")} 두 번 신세를 지고 재산 +10. 40% 확률로 「옥사 청탁」 흠결(그가 앎), 그중 일부는 곧바로 소문이 난다.` },
           { key: 'no', label: '법대로 하라고 돌려보낸다', hint: `명망 +3, ${a.name} 호감 -12, 원한을 살 수 있다.` },
         ],
       };
@@ -209,8 +209,7 @@ export const INTRIGUE_EVENTS: Record<string, EventDef> = {
 export function rollTalent(s: GameState) {
   const p = P(s);
   if (s.pending.length >= 2 || p.status === 'exiled' || p.wealth < 20 || s.player.proteges.length >= 2) return;
-  const at = typeof s.flags.talentAt === 'number' ? s.flags.talentAt : -99;
-  if (s.t - at < 12) return;
+  if (monthsSince(s, 'talentAt') < 12) return;
   const ch = (p.learning >= 6 ? 0.04 : 0.02) + (s.player.focus?.kind === 'teach' ? 0.06 : 0) + (p.status === 'retired' ? 0.02 : 0);
   if (!chance(s, ch)) return;
   s.flags.talentAt = s.t;

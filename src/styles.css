@@ -1813,6 +1813,34 @@ button.trait.on {
   }
 }
 
+/* 노트북·작은 창: 가로 스크롤 없이 세 단을 유지한다 */
+@media (max-width: 1100px) {
+  .topbar {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .tb-res {
+    order: 10;
+    flex: 1 1 100%;
+  }
+  .tb-res > * {
+    flex: 1;
+  }
+  .res-cap {
+    display: none;
+  }
+  .game-body {
+    grid-template-columns: 240px minmax(0, 1fr) 280px;
+  }
+  .tabs {
+    flex-wrap: wrap;
+  }
+  .tabs button {
+    padding: 6px 10px;
+    white-space: nowrap;
+  }
+}
+
 /* 뜻 · 공방 · 공작 */
 button.mini {
   background: #1a140d;

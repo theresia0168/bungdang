@@ -6,7 +6,7 @@ import { addFlaw, alive, clamp, collect, inCourt, josa, log, notice, owe, P, pus
 import { inLaws, opinion, sway, swayFaction, topOf } from './opinion';
 import { memorial, TOPIC_LABEL } from './conflict';
 import { vacate } from './court';
-import { caseOn, openCase, sideOf } from './cases';
+import { caseOn, openCase, sideOf, withdraw } from './cases';
 import { shortDate } from './calendar';
 import { addBond, betray, bondCount, bondWith, contactMult, fulfill, learnWant, MAX_BONDS, noteContact } from './relations';
 import { humbleEffects } from './plots';
@@ -46,8 +46,11 @@ export interface TargetAction {
 
 export const HIRE_COST = 15;
 export const INVESTIGATE_COST = 10;
+export const IMPEACH_COOLDOWN = 8;
 
 export const isAbroad = (s: GameState) => s.player.abroadUntil > s.t;
+/** 시묘가 끝나기까지 남은 달 */
+export const mourningLeft = (s: GameState) => Math.max(0, Number(s.flags.mournUntil ?? 0) - s.t);
 
 export function apParts(s: GameState): { label: string; value: number }[] {
   const p = P(s);
@@ -77,6 +80,7 @@ export function refreshAp(s: GameState) {
   s.player.authorityUsed = false;
   s.player.hired = false;
   s.player.lowProfile = false;
+  s.player.socialBonus = s.player.focus?.kind === 'social';
 }
 
 /** 멀리 있어도 할 수 있는 행동 */
@@ -138,10 +142,10 @@ export function marry(s: GameState, t: Character, cost: number): string {
   } else if (p.faction !== 'none') {
     fx.push(swayFaction(s, p.faction, p.id, 3, '당내 결속', 0.05));
   }
-  s.player.deeds.push(`${shortDate(s.t)} ${t.clan}과 혼인`);
-  log(s, `${josa(p.clan, '과/와')} ${t.clan}이 혼인으로 맺어졌다.`, 'player');
+  s.player.deeds.push(`${shortDate(s.t)} ${josa(t.clan, "과/와")} 혼인`);
+  log(s, `${josa(p.clan, '과/와')} ${josa(t.clan, "이/가")} 혼인으로 맺어졌다.`, 'player');
   const wish = fulfill(s, t, 'match');
-  return `${t.clan}과 혼맥을 맺었다.${joined(fx.filter(Boolean))}${extra}${wish ? ` ${wish}` : ''}`;
+  return `${josa(t.clan, "과/와")} 혼맥을 맺었다.${joined(fx.filter(Boolean))}${extra}${wish ? ` ${wish}` : ''}`;
 }
 
 export const TARGET_ACTIONS: TargetAction[] = [
@@ -332,7 +336,7 @@ export const TARGET_ACTIONS: TargetAction[] = [
     id: 'impeach',
     name: '탄핵',
     cost: (s) => (isSamsa(P(s)) ? 'authority' : 1),
-    desc: '논핵을 시작한다. 2개월 동안 양쪽이 동조자와 구원자를 모은 뒤 판정한다. 삼사 언관이면 직권으로, 아니면 상소로(-1) 한다. 알고 있는 흠결 1개당 +1.',
+    desc: `논핵을 시작한다. 2개월 동안 양쪽이 동조자와 구원자를 모은 뒤 판정한다. 삼사 언관이면 직권으로, 아니면 상소로(-1) 한다. 알고 있는 흠결 1개당 +1. 한 번 하면 ${IMPEACH_COOLDOWN}개월 쉬어야 하고, 2년 안에 거듭할수록 공격이 1씩 약해진다(최대 -3).`,
     check(s, t) {
       const p = P(s);
       if (basic(s, t)) return basic(s, t);
@@ -347,7 +351,8 @@ export const TARGET_ACTIONS: TargetAction[] = [
       const p = P(s);
       const broke = betray(s, t);
       openCase(s, p, t, { byMemorial: !isSamsa(p) });
-      setCd(s, 'impeach', 6);
+      setCd(s, 'impeach', IMPEACH_COOLDOWN);
+      s.player.impeachAt = [...(s.player.impeachAt ?? []).filter((x) => s.t - x <= 24), s.t];
       return `${josa(t.name, '을/를')} 논핵하기 시작했다. 2개월 동안 '연명 요청'으로 동조자를 모으라.${broke}`;
     },
   },
@@ -498,11 +503,15 @@ export const TARGET_ACTIONS: TargetAction[] = [
       if (basic(s, t)) return basic(s, t);
       if (t.status !== 'exiled') return '유배 중인 사람이 아니다';
       if (p.status === 'exiled') return '당신도 유배 중이다';
-      return null;
+      const f = s.player.focus;
+      if (f?.kind === 'memorial') return f.topic === 'recall' && f.targetId === t.id ? '이미 그의 신원 상소를 짓고 있다' : '이미 다른 상소를 짓고 있다';
+      return focusCheck(s, 'memorial');
     },
     run(s, t) {
+      const was = s.player.focus;
       s.player.focus = { kind: 'memorial', topic: 'recall', targetId: t.id, progress: 0, required: 2, cosigners: [] };
-      return `${t.name}의 신원을 청하는 상소를 짓기 시작했다.`;
+      const stop = was ? ` (하던 「${FOCUS_INFO[was.kind].name}」은 멈췄다${was.kind === 'seowon' || was.kind === 'munjip' ? '. 진척은 남는다' : ''})` : '';
+      return `${t.name}의 신원을 청하는 상소를 짓기 시작했다.${stop}`;
     },
   },
   {
@@ -757,13 +766,17 @@ export function setFocus(s: GameState, kind: FocusKind, topic?: MemorialTopic): 
   const err = focusCheck(s, kind);
   if (err) return err;
   const was = s.player.focus?.kind;
+  if (was === kind && kind !== 'memorial') return `이미 ${FOCUS_INFO[kind].name}에 힘쓰고 있다.`;
   if (kind === 'memorial') {
     s.player.focus = { kind, topic, progress: 0, required: 2, cosigners: [] };
     return `${josa(TOPIC_LABEL[topic ?? 'sipye'], '을/를')} 짓기 시작했다. 그동안 연명을 모으자.`;
   }
   s.player.focus = { kind, progress: 0, required: 0, cosigners: [] };
-  if (kind === 'social' && was !== 'social') s.player.ap += 1;
-  if (was === 'social' && kind !== 'social') s.player.ap = Math.max(0, s.player.ap - 1);
+  // 교유의 행동력 +1은 한 달에 한 번만 받는다. 껐다 켜서 다시 받을 수 없다.
+  if (kind === 'social' && !s.player.socialBonus) {
+    s.player.ap += 1;
+    s.player.socialBonus = true;
+  }
   return `${FOCUS_INFO[kind].name}에 힘쓰기로 했다.`;
 }
 
@@ -979,7 +992,10 @@ export const SELF_ACTIONS: { id: SelfActionId; name: string; desc: string; check
     run(s) {
       const p = P(s);
       const cs = caseOn(s, p.id);
-      if (cs) s.cases = s.cases.filter((c) => c.id !== cs.id);
+      if (cs) {
+        withdraw(s, cs);
+        return '논핵을 받는 몸으로 사직소를 올렸다. 공방은 거두어졌지만 탄핵을 시인한 셈이라 반년 동안 서용되지 않는다. (성심 -3)';
+      }
       vacate(s, p, 'retired');
       p.prestige = clamp(p.prestige + 2, 0, 100);
       p.favor = clamp(p.favor - 3, -100, 100);
@@ -991,8 +1007,12 @@ export const SELF_ACTIONS: { id: SelfActionId; name: string; desc: string; check
   {
     id: 'capital',
     name: '상경',
-    desc: '한성으로 올라가 보직을 기다린다. (재산 5) 삭탈관작을 당했다면 1년이 지나야 다시 임용될 수 있다.',
-    check: (s) => (P(s).status === 'retired' ? null : '낙향 중일 때만 할 수 있다'),
+    desc: '한성으로 올라가 보직을 기다린다. (재산 5) 삭탈관작이나 사직 처분이 남아 있으면 그 기간이 지나야 임용된다. 시묘 중에는 올라갈 수 없다.',
+    check(s) {
+      if (P(s).status !== 'retired') return '낙향 중일 때만 할 수 있다';
+      const m = mourningLeft(s);
+      return m > 0 ? `시묘 중이다 (${m}개월 남음)` : null;
+    },
     run(s) {
       const p = P(s);
       p.status = 'idle';
@@ -1000,7 +1020,7 @@ export const SELF_ACTIONS: { id: SelfActionId; name: string; desc: string; check
       p.wealth = Math.max(0, p.wealth - 5);
       if (s.player.focus?.kind === 'teach') s.player.focus = null;
       const ban = (p.banUntil ?? 0) - s.t;
-      return ban > 0 ? `한성으로 올라왔다. 다만 삭탈관작의 처분이 ${ban}개월 더 남아 있다.` : '한성으로 올라왔다. 이제 관직에 임용될 수 있다.';
+      return ban > 0 ? `한성으로 올라왔다. 다만 서용되지 못하는 처분이 ${ban}개월 더 남아 있다.` : '한성으로 올라왔다. 이제 관직에 임용될 수 있다.';
     },
   },
   {

@@ -3,7 +3,7 @@ import type { Choice, EventDef } from './events/types';
 import { REGION_META } from './data/meta';
 import { monthOf, tOf } from './calendar';
 import { chance, d6, pick, weighted } from './rng';
-import { addFlaw, alive, clamp, inCourt, isP, josa, log, notice, officeTitle, owe, P, people, pushEvent } from './state';
+import { fav, monthsSince, pres, addFlaw, alive, clamp, inCourt, isP, josa, log, notice, officeTitle, owe, P, people, pushEvent } from './state';
 import { sway, swayFaction } from './opinion';
 
 /* ───────── 도별 살림 ───────── */
@@ -120,8 +120,6 @@ const localOffice = (s: GameState) => {
 };
 const here = (s: GameState) => P(s).location as RegionId;
 const short = (s: GameState) => REGION_META[here(s)].short;
-const pres = (c: Character, v: number) => (c.prestige = clamp(c.prestige + v, 0, 100));
-const fav = (c: Character, v: number) => (c.favor = clamp(c.favor + v, -100, 100));
 const mins = (s: GameState, v: number, r = here(s)) => {
   s.regions[r].minsim = clamp(s.regions[r].minsim + v, 0, 100);
 };
@@ -370,8 +368,8 @@ const LOCALS: Local[] = [
     choices: (s, c) => {
       const w = s.chars[c.who];
       return [
-        { key: 'fix', label: '땅을 돌려주게 한다', hint: `민심 +6, 명망 +2. ${w.name}과 그 가문의 호감 -15.` },
-        { key: 'blind', label: '못 본 척한다', hint: `${w.name}이 신세를 진다. 민심 -5.` },
+        { key: 'fix', label: '땅을 돌려주게 한다', hint: `민심 +6, 명망 +2. ${josa(w.name, "과/와")} 그 가문의 호감 -15.` },
+        { key: 'blind', label: '못 본 척한다', hint: `${josa(w.name, "이/가")} 신세를 진다. 민심 -5.` },
       ];
     },
     resolve(s, key, c) {
@@ -692,8 +690,7 @@ const localOf = (id: string) => LOCALS.find((x) => x.id === id);
 
 export function rollLocal(s: GameState) {
   if (!localOffice(s) || s.pending.length >= 2) return;
-  const at = typeof s.flags.localAt === 'number' ? s.flags.localAt : -99;
-  if (s.t - at < 2 || !chance(s, 0.3)) return;
+  if (monthsSince(s, 'localAt') < 2 || !chance(s, 0.3)) return;
   const r = here(s);
   const pool = LOCALS.filter((x) => (!x.regions || x.regions.includes(r)) && (!x.when || x.when(s)));
   const ev = weighted(s, pool.map((x) => [x, (x.weight?.(s) ?? 1) * (x.regions ? 1.5 : 1)] as [Local, number]));

@@ -4,7 +4,7 @@ import { FACTION_META } from './data/meta';
 import { OFFICE_MAP } from './data/offices';
 import { monthOf, tOf, yearOf } from './calendar';
 import { chance, d6, pick, randInt } from './rng';
-import { addFlaw, age, alive, clamp, hiddenFlaws, inCourt, isP, josa, log, notice, officeTitle, owe, P, people, pushEvent, uid } from './state';
+import { fav, monthsSince, pres, addFlaw, age, alive, clamp, hiddenFlaws, inCourt, isP, josa, log, notice, officeTitle, owe, P, people, pushEvent, uid } from './state';
 import { sway, swayFaction, topOf } from './opinion';
 import { activeFactions } from './factions';
 import { vacate } from './court';
@@ -46,7 +46,6 @@ const begin = (s: GameState, kind: SituationKind, months: number, data: Record<s
   s.flags[`sitAt_${kind}`] = s.t;
   return x;
 };
-const since = (s: GameState, kind: SituationKind) => s.t - (typeof s.flags[`sitAt_${kind}`] === 'number' ? (s.flags[`sitAt_${kind}`] as number) : -99);
 
 const SCANDALS = ['첩실의 투기 소동', '과거 시권(試券) 바꿔치기 연루', '노비 송사 비리', '뇌물 장부', '상중(喪中) 연회', '처가의 고리대'];
 const SIGNS = ['해가 이지러지는 일식', '서쪽 하늘에 꼬리별(혜성)', '도성을 흔든 지진', '봄부터 이어진 큰 가뭄', '한여름의 우박'];
@@ -154,11 +153,11 @@ export function tickSituations(s: GameState) {
   if (busy >= 2) return;
   const king = s.chars.seonjo;
   const has = (k: SituationKind) => !!activeSit(s, k);
-  if (!has('scandal') && since(s, 'scandal') >= 12 && chance(s, 0.025)) return startScandal(s);
-  if (!has('omen') && since(s, 'omen') >= 24 && chance(s, 0.012 + (s.tension > 60 ? 0.008 : 0))) return startOmen(s);
-  if (!has('illness') && since(s, 'illness') >= 24 && king && chance(s, 0.006 + Math.max(0, age(s, king) - 30) * 0.0008)) return startIllness(s);
+  if (!has('scandal') && monthsSince(s, 'sitAt_scandal') >= 12 && chance(s, 0.025)) return startScandal(s);
+  if (!has('omen') && monthsSince(s, 'sitAt_omen') >= 24 && chance(s, 0.012 + (s.tension > 60 ? 0.008 : 0))) return startOmen(s);
+  if (!has('illness') && monthsSince(s, 'sitAt_illness') >= 24 && king && chance(s, 0.006 + Math.max(0, age(s, king) - 30) * 0.0008)) return startIllness(s);
   const inbin = consortOf(s, 'inbin');
-  if (!has('inlaw') && since(s, 'inlaw') >= 36 && s.t >= tOf(1580, 1) && inbin?.alive && inbin.love >= 60 && chance(s, 0.01)) return startInlaw(s);
+  if (!has('inlaw') && monthsSince(s, 'sitAt_inlaw') >= 36 && s.t >= tOf(1580, 1) && inbin?.alive && inbin.love >= 60 && chance(s, 0.01)) return startInlaw(s);
 }
 
 /** 디버그·시뮬레이션용 */
@@ -172,8 +171,6 @@ export function forceSituation(s: GameState, k: SituationKind) {
 
 /* ───────── 이벤트 ───────── */
 
-const pres = (c: Character, v: number) => (c.prestige = clamp(c.prestige + v, 0, 100));
-const fav = (c: Character, v: number) => (c.favor = clamp(c.favor + v, -100, 100));
 const freeJoin = (s: GameState, who: string, side: 'pro' | 'con') => {
   const cs = caseOn(s, who);
   if (!cs) return null;
@@ -233,7 +230,7 @@ export const SITUATION_EVENTS: Record<string, EventDef> = {
         choices: [
           { key: 'explain', label: '상소를 올려 해명한다', hint: `정치력 판정 (주사위 + ${p.politics} ≥ 8). 성공하면 명망 -1, 실패하면 명망 -5, 성심 -5.` },
           { key: 'humble', label: '대문을 닫고 근신한다', hint: '명망 -3. 말이 빨리 잦아든다.' },
-          { key: 'resign', label: '사직하고 물러난다', hint: '관직을 내놓는다. 명망 +1, 성심 +2.' },
+          { key: 'resign', label: '사직하고 물러난다', hint: '관직을 내놓고 낙향한다. 명망 +1, 성심 +2.' },
         ],
       };
     },
@@ -256,7 +253,7 @@ export const SITUATION_EVENTS: Record<string, EventDef> = {
         if (x) x.until = Math.min(x.until, s.t + 2);
         return '근신했다. 사람들의 입이 조금씩 닫힌다. (명망 -3)';
       }
-      if (p.office) vacate(s, p);
+      if (p.office) vacate(s, p, 'retired');
       pres(p, 1);
       fav(p, 2);
       if (x) x.until = s.t + 1;

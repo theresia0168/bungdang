@@ -32,7 +32,7 @@ export const FAVOR_EVENTS: Record<string, EventDef> = {
         choices: [
           { key: 'explain', label: '해명 상소를 올린다', hint: '방어 +1' },
           { key: 'endure', label: '대죄(待罪)하며 버틴다', hint: '보정 없음. 막아내면 명망 +3' },
-          { key: 'resign', label: '사직하고 물러난다', hint: '논핵이 끝난다. 관직을 잃고 낙향하지만 명망 +1' },
+          { key: 'resign', label: '사직하고 물러난다', hint: '논핵이 끝난다. 관직을 잃고 낙향한다. 명망 +1, 성심 -3, 반년 동안 서용되지 않는다.' },
         ],
       };
     },
@@ -78,7 +78,7 @@ export const FAVOR_EVENTS: Record<string, EventDef> = {
         kind: 'court',
         text: `${officeTitle(t)} ${josa(t.name, '이/가')} ${a.name}의 논핵을 받고 있다. 그가 밤늦게 사람을 보내 구원 상소에 이름을 올려 달라고 간곡히 청한다.`,
         choices: [
-          { key: 'yes', label: '구원에 나선다 (행동력 1)', hint: `${t.name}이 신세를 진다. ${a.name}과 그 가문의 미움을 산다.`, disabled: s.player.ap < 1 ? '이번 달 행동력이 없다' : undefined },
+          { key: 'yes', label: '구원에 나선다 (행동력 1)', hint: `${josa(t.name, "이/가")} 신세를 진다. ${josa(a.name, "과/와")} 그 가문의 미움을 산다.`, disabled: s.player.ap < 1 ? '이번 달 행동력이 없다' : undefined },
           { key: 'no', label: '몸을 사린다', hint: `${t.name} 호감 -10` },
         ],
       };
@@ -100,7 +100,7 @@ export const FAVOR_EVENTS: Record<string, EventDef> = {
         kind: 'court',
         text: `${josa(a.name, '이/가')} 은근히 찾아와, 이조에 있는 당신이 자신을 좋은 자리에 천거해 주기를 바란다는 뜻을 비쳤다.`,
         choices: [
-          { key: 'yes', label: '들어준다', hint: `${a.name}이 신세를 지고 6개월간 임용 점수 +8. 30% 확률로 「인사 청탁」 흠결(그가 앎).` },
+          { key: 'yes', label: '들어준다', hint: `${josa(a.name, "이/가")} 신세를 지고 6개월간 임용 점수 +8. 30% 확률로 「인사 청탁」 흠결(그가 앎).` },
           { key: 'no', label: '공도(公道)를 지킨다', hint: `${a.name} 호감 -6, 명망 +1` },
         ],
       };
@@ -129,7 +129,7 @@ export const FAVOR_EVENTS: Record<string, EventDef> = {
         kind: 'personal',
         text: `${josa(a.name, '이/가')} 집안에 우환이 겹쳐 살림이 어렵다며, 체면을 무릅쓰고 재물을 융통해 달라고 청한다.`,
         choices: [
-          { key: 'yes', label: '재물 20을 보낸다', hint: `${a.name}이 신세를 진다. 호감 +8`, disabled: P(s).wealth < 20 ? '재산이 모자란다' : undefined },
+          { key: 'yes', label: '재물 20을 보낸다', hint: `${josa(a.name, "이/가")} 신세를 진다. 호감 +8`, disabled: P(s).wealth < 20 ? '재산이 모자란다' : undefined },
           { key: 'no', label: '형편이 어렵다고 사양한다', hint: `${a.name} 호감 -4` },
         ],
       };

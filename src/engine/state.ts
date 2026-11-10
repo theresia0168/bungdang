@@ -24,8 +24,23 @@ export function uid(s: GameState, prefix: string) {
 
 export function log(s: GameState, text: string, kind: LogKind = 'court') {
   s.log.push({ t: s.t, text, kind });
-  if (s.log.length > 800) s.log.splice(0, s.log.length - 800);
+  // 역사·나·붕당 기록은 남기고, 조정 소식·부고 같은 잦은 기록부터 지운다
+  while (s.log.length > LOG_CAP) {
+    const i = s.log.findIndex((e) => !KEEP_LOG.includes(e.kind));
+    s.log.splice(i < 0 ? 0 : i, 1);
+  }
 }
+
+const LOG_CAP = 1000;
+const KEEP_LOG: LogKind[] = ['history', 'player', 'faction'];
+
+/** 명망을 더한다 (0~100) */
+export const pres = (c: Character, v: number) => (c.prestige = clamp(c.prestige + v, 0, 100));
+/** 성심을 더한다 (-100~100) */
+export const fav = (c: Character, v: number) => (c.favor = clamp(c.favor + v, -100, 100));
+
+/** flags[key]에 적어 둔 달로부터 몇 달이 지났는가. 적힌 적이 없으면 아주 오래전으로 본다. */
+export const monthsSince = (s: GameState, key: string) => s.t - (typeof s.flags[key] === 'number' ? (s.flags[key] as number) : -999);
 
 export function pushEvent(s: GameState, def: string, ctx: Record<string, any> = {}) {
   s.pending.push({ id: uid(s, 'ev'), def, ctx });

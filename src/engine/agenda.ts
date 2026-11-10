@@ -1,10 +1,10 @@
-﻿import type { Character, FactionId, GameState, RegionId } from './types';
+import type { Character, FactionId, GameState, RegionId } from './types';
 import type { EventDef } from './events/types';
 import { FACTION_META, REGION_META } from './data/meta';
 import { OFFICE_MAP } from './data/offices';
 import { tOf } from './calendar';
 import { chance, pick, rand } from './rng';
-import { alive, clamp, inCourt, isP, josa, log, officeTitle, owe, P, people, pushEvent } from './state';
+import { monthsSince, alive, clamp, inCourt, isP, josa, log, officeTitle, owe, P, people, pushEvent } from './state';
 import { sway, swayFaction } from './opinion';
 import { activeFactions, influence, powerShare } from './factions';
 import { appoint, appointParts, eligible, holderOf, vacate } from './court';
@@ -539,8 +539,7 @@ function decide(s: GameState, def: AgendaDef, c: Record<string, any>, vote: Vote
 }
 
 export function rollAgenda(s: GameState) {
-  const last = typeof s.flags.lastAgenda === 'number' ? s.flags.lastAgenda : -99;
-  if (s.t - last < 3 || !chance(s, 0.6)) return;
+  if (monthsSince(s, 'lastAgenda') < 3 || !chance(s, 0.6)) return;
   const pool: [AgendaDef, number][] = [];
   for (const a of AGENDAS) {
     if (s.t < tOf(a.from[0], a.from[1]) || s.t > tOf(a.to[0], a.to[1])) continue;

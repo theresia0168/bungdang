@@ -3,7 +3,7 @@ import type { EventDef } from './events/types';
 import { FACTION_META } from './data/meta';
 import { tOf } from './calendar';
 import { chance, d6 } from './rng';
-import { alive, clamp, inCourt, isP, josa, log, P, people, pushEvent } from './state';
+import { monthsSince, alive, clamp, inCourt, isP, josa, log, P, people, pushEvent } from './state';
 import { sway, swayFaction } from './opinion';
 import { influence, updateLeaders } from './factions';
 
@@ -22,7 +22,6 @@ function moveLine(s: GameState, f: FactionId, v: number) {
   s.line[f] = clamp((s.line[f] ?? 0) + v, -60, 60);
 }
 
-const ago = (s: GameState, key: string) => s.t - (typeof s.flags[key] === 'number' ? (s.flags[key] as number) : -99);
 
 export function tickParty(s: GameState) {
   for (const f of Object.keys(s.line) as FactionId[]) {
@@ -42,13 +41,13 @@ export function tickParty(s: GameState) {
   }
 
   const lead = st.leader ? s.chars[st.leader] : undefined;
-  if (alive(lead) && !isP(s, lead) && ago(s, 'challengeAt') >= 24 && influence(s, p) >= influence(s, lead) * 0.8 && chance(s, 0.1)) {
+  if (alive(lead) && !isP(s, lead) && monthsSince(s, 'challengeAt') >= 24 && influence(s, p) >= influence(s, lead) * 0.8 && chance(s, 0.1)) {
     s.flags.challengeAt = s.t;
     pushEvent(s, 'leader_challenge', { leader: lead.id });
     return;
   }
 
-  if (ago(s, 'councilAt') >= 10 && chance(s, 0.1)) {
+  if (monthsSince(s, 'councilAt') >= 10 && chance(s, 0.1)) {
     s.flags.councilAt = s.t;
     pushEvent(s, 'party_council');
   }
@@ -82,7 +81,7 @@ export const PARTY_EVENTS: Record<string, EventDef> = {
         moveLine(s, f, 15 * dir);
         s.tension = clamp(s.tension + (dir > 0 ? 3 : -2), 0, 100);
         for (const c of fans) sway(s, c, p.id, 6, dir > 0 ? '강경론에 공감' : '온건론에 공감', { decay: 0.1 });
-        log(s, `${FACTION_META[f].name}이 ${josa(p.name, '의')} 말을 따라 ${dir > 0 ? '강경' : '온건'}한 쪽으로 당론을 잡았다.`, 'faction');
+        log(s, `${FACTION_META[f].name}이 ${p.name}의 말을 따라 ${dir > 0 ? '강경' : '온건'}한 쪽으로 당론을 잡았다.`, 'faction');
         return `당신의 말이 당론이 되었다. (판정 ${r}, 당론 ${dir > 0 ? '+15' : '-15'} → ${lineLabel(lineOf(s, f))})`;
       }
       moveLine(s, f, -5 * dir);

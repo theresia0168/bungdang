@@ -251,6 +251,23 @@ export interface PlayerState {
   retainers: number;
   /** 이번 달 몸을 낮추었다 */
   lowProfile: boolean;
+  /** 이번 달 교유의 행동력 +1을 이미 받았다 */
+  socialBonus?: boolean;
+  /** 내가 이끈 논핵을 연 달들. 잦으면 왕과 조정이 싫증을 낸다. */
+  impeachAt?: number[];
+  /** 개인 사건별로 마지막에 일어난 달 */
+  eventAt?: Record<string, number>;
+  /** 앞서 간 선대들. 가문을 이어 하면 쌓인다. */
+  lineage?: Ancestor[];
+}
+
+export interface Ancestor {
+  id: string;
+  name: string;
+  died: number;
+  cause: string;
+  score: number;
+  peakOffice?: string;
 }
 
 export interface FactionState {

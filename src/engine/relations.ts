@@ -1,6 +1,6 @@
 import type { Bond, BondKind, Character, GameState, Want, WantKind } from './types';
 import { chance, weighted } from './rng';
-import { alive, clamp, inCourt, isP, josa, notice, owe, P, people, pushEvent } from './state';
+import { monthsSince, alive, clamp, inCourt, isP, josa, notice, owe, P, people, pushEvent } from './state';
 import { addMod, opinion, sway, topOf } from './opinion';
 
 /* ───────── 바람(願) ───────── */
@@ -134,8 +134,7 @@ export function tickSuspicion(s: GameState) {
     addMod(s, 'faction', p.faction, p.id, '내통 의심', v, 0, 100);
   }
   if (p.faction === 'none') return;
-  const last = typeof s.flags.confrontAt === 'number' ? s.flags.confrontAt : -99;
-  if (pl.suspicion >= 45 && s.t - last >= 12 && chance(s, 0.2) && !s.pending.some((e) => e.def === 'suspicion_confront')) {
+  if (pl.suspicion >= 45 && monthsSince(s, 'confrontAt') >= 12 && chance(s, 0.2) && !s.pending.some((e) => e.def === 'suspicion_confront')) {
     s.flags.confrontAt = s.t;
     pushEvent(s, 'suspicion_confront');
   }

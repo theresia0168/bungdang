@@ -3,7 +3,7 @@ import type { EventDef } from './events/types';
 import { OFFICE_MAP } from './data/offices';
 import { FACTION_META } from './data/meta';
 import { chance, d6, randInt } from './rng';
-import { alive, clamp, inCourt, isP, josa, log, notice, officeTitle, owe, P, people, uid } from './state';
+import { monthsSince, alive, clamp, inCourt, isP, josa, log, notice, officeTitle, owe, P, people, uid } from './state';
 import { sway, swayFaction, topOf } from './opinion';
 import { activeFactions, powerShare } from './factions';
 import { vacate } from './court';
@@ -73,8 +73,7 @@ export function tickKing(s: GameState) {
     } else if (w < WARY_WARN * 0.6 && warned) delete s.flags[`waryWarn_${f}`];
   }
   for (const f of Object.keys(k.wary) as FactionId[]) if (!s.factions[f]?.active) delete k.wary[f];
-  const last = typeof s.flags.lastHwanguk === 'number' ? s.flags.lastHwanguk : -99;
-  if (s.war.active || s.t - last < 48) return;
+  if (s.war.active || monthsSince(s, 'lastHwanguk') < 48) return;
   const f = activeFactions(s).find((x) => (k.wary[x] ?? 0) >= WARY_TRIGGER);
   if (f && chance(s, 0.1)) hwanguk(s, f);
 }
@@ -154,8 +153,7 @@ export function audienceEligible(s: GameState): boolean {
 
 export function rollAudience(s: GameState) {
   if (!audienceEligible(s) || s.pending.length >= 2) return;
-  const at = typeof s.flags.audienceAt === 'number' ? s.flags.audienceAt : -99;
-  if (s.t - at < 3) return;
+  if (monthsSince(s, 'audienceAt') < 3) return;
   const p = P(s);
   if (!chance(s, HONGMUN.includes(p.office!) ? 0.25 : 0.12)) return;
   const pool = TOPICS.filter((x) => (!x.from || s.t >= tOf(...x.from)) && (!x.to || s.t <= tOf(...x.to)));

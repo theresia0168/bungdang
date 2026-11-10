@@ -1,4 +1,5 @@
-﻿import { newGame, PLAYABLE } from '../src/engine/setup';
+/** 이벤트·탄핵·결말 집계. 사용: npx tsx scripts/audit.ts [판 수] [aggr]  (aggr: 가능할 때마다 탄핵하는 공격적 플레이) */
+import { newGame, PLAYABLE } from '../src/engine/setup';
 import { advanceMonth, resolveEvent } from '../src/engine/turn';
 import { viewEvent } from '../src/engine/events';
 import { P } from '../src/engine/state';
@@ -78,8 +79,8 @@ for (const pl of PLAYABLE) {
     const reason = s.over ? `${s.over.reason} (${1575 + Math.floor(s.over.t / 12)})` : '생존';
     const key = reason.replace(/\(\d+\)/, '').trim();
     deaths[key] = (deaths[key] ?? 0) + 1;
-    bump('player탄핵당함', s.player.stats.impeachFails >= 0 ? 0 : 0);
     bump('끝:지기·맹약', s.player.bonds.length);
+    bump('끝:계승 세대', (s.player.lineage ?? []).length);
     bump('끝:알아낸 바람', s.player.knownWants.length);
     bump('끝:세자=' + (s.heir ? s.chars[s.heir].name : '없음'));
     console.log(`${pl.id.padEnd(14)} r${r} ${reason} politics=${P(s).politics} rank=${P(s).rank} 의심=${Math.round(s.player.suspicion)} 경계=${JSON.stringify(Object.fromEntries(Object.entries(s.king.wary).map(([k, v]) => [k, Math.round(v ?? 0)])))} 당론=${JSON.stringify(Object.fromEntries(Object.entries(s.line).map(([k, v]) => [k, Math.round(v ?? 0)])))}`);

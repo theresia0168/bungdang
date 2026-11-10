@@ -277,7 +277,8 @@ function startRace(s: GameState, o: OfficeDef, holder: Character): boolean {
     if (alive(lead) && !isP(s, lead) && lead.id !== c.id && inCourtNow(lead)) backers[c.id].push(lead.id);
   }
   s.races.push({ office: o.id, due: s.t + 2, candidates: pool.map((c) => c.id), backers });
-  if (o.rank <= 2 || isP(s, holder) || pool.some((c) => isP(s, c)))
+  // 연대기를 덮지 않도록 정승 자리와 내가 얽힌 경쟁만 기록한다
+  if (o.rank === 1 || isP(s, holder) || pool.some((c) => isP(s, c)))
     log(s, `[인사] ${o.name} ${josa(holder.name, '이/가')} 곧 물러난다는 말이 돈다. 후임으로 ${pool.map((c) => c.name).join(', ')} 등이 거론된다.`, 'court');
   if (isP(s, holder)) notice(s, '물러날 때', `${o.name}의 임기가 끝나 간다. 두 달 뒤면 물러나게 된다. 후임으로 ${pool.map((c) => c.name).join(', ')} 등이 거론된다.`);
   if (pool.some((c) => isP(s, c)))

@@ -92,7 +92,7 @@ function gichukPurge(s: GameState, harsh: boolean, reroll: string[] = []) {
         .map((l) => {
           const c = s.chars[l.id];
           const me = isP(s, c) ? ' ← 당신' : '';
-          return `· ${c.name}: ${l.result}${l.roll ? ` (주사위 ${l.roll} / 정치력 ${c.politics})` : ''}${me}`;
+          return `· ${c.name}: ${l.result}${l.roll ? ` (주사위 ${l.roll} + 정치력/2 ${Math.floor(c.politics / 2)} = ${l.roll + Math.floor(c.politics / 2)})` : ''}${me}`;
         })
         .join('\n')
     : '연루된 이가 많지 않았다.';
@@ -100,7 +100,7 @@ function gichukPurge(s: GameState, harsh: boolean, reroll: string[] = []) {
     notice(
       s,
       '옥사의 결과',
-      `${harsh ? '옥사는 크게 번졌다.' : '옥사는 연루자 위주로 다스려졌다.'}\n\n당상관과 연루자는 주사위를 굴린다. 눈이 정치력과 같으면 사사, 작으면 유배, 크면 무사.\n\n${body}`,
+      `${harsh ? '옥사는 크게 번졌다.' : '옥사는 연루자 위주로 다스려졌다.'}\n\n당상관과 연루자는 주사위 + 정치력/2로 판정한다. 2 이하면 사사, 5 이하면 유배, 6 이상이면 무사.\n\n${body}`,
       'danger',
     );
 }
@@ -316,7 +316,7 @@ export const SCHEDULE: Scheduled[] = [
       if (gh && !s.heir) {
         settleHeir(s, gh.id, 'war');
         log(s, '피란을 앞두고 광해군이 서둘러 세자로 책봉되었다.', 'history');
-      } else if (s.heir) log(s, `세자 ${s.chars[s.heir].name}이 피란길에 오른다.`, 'history');
+      } else if (s.heir) log(s, `세자 ${josa(s.chars[s.heir].name, "이/가")} 피란길에 오른다.`, 'history');
       const cheol = live(s, 'jeong_cheol');
       if (cheol?.status === 'exiled') recall(s, cheol);
       for (const c of people(s)) if (c.status === 'exiled' && !isP(s, c) && chance(s, 0.3)) recall(s, c);

@@ -40,7 +40,7 @@ export function revealPlot(s: GameState, plot: Plot, how: string) {
 /** 원한을 품은 이가 스스로 일을 꾸민다 */
 function grudgePlots(s: GameState) {
   const p = P(s);
-  if (p.status !== 'active' || !p.office || s.plots.length >= 2 || !chance(s, 0.06)) return;
+  if (p.status !== 'active' || !p.office || s.plots.length >= 2 || !chance(s, 0.09)) return;
   const foe = people(s)
     .filter((c) => !isP(s, c) && inCourt(c) && c.location === 'hanseong' && c.politics >= 2 && !bondWith(s, c.id) && !s.plots.some((x) => x.by === c.id) && !caseOn(s, c.id))
     .filter((c) => {

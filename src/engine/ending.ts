@@ -13,6 +13,9 @@ export interface Ending {
   breakdown: { label: string; value: number }[];
 }
 
+/** 가문을 이어 했을 때 선대의 점수가 결말 점수에 들어가는 비율 */
+export const ANCESTOR_WEIGHT = 0.5;
+
 export function computeEnding(s: GameState): Ending {
   const p = P(s);
   const pl = s.player;
@@ -34,6 +37,7 @@ export function computeEnding(s: GameState): Ending {
     { label: '서원·문집', value: pl.built.length * 8 },
     { label: '드러난 흠결', value: -pubFlaws * 6 },
     { label: '유배', value: -pl.stats.exiled * 5 },
+    ...(pl.lineage ?? []).map((a) => ({ label: `선대 ${a.name}의 업적 (${a.score}점의 ${Math.round(ANCESTOR_WEIGHT * 100)}%)`, value: Math.round(a.score * ANCESTOR_WEIGHT) })),
   ].filter((b) => b.value !== 0);
   const score = breakdown.reduce((a, b) => a + b.value, 0);
 
@@ -55,7 +59,7 @@ export function computeEnding(s: GameState): Ending {
     lines.push(`${formatDate(p.death!.t)}, ${josa(p.name, '이/가')} ${p.death!.cause}. 향년 ${yearOf(p.death!.t) - p.born}세.`);
   }
   lines.push(
-    `${p.ho ? `${p.name}의 호는 ${p.ho}이며` : josa(p.name, '은/는')} ${REGION_META[p.home].short} 사람이다. ${SCHOOL_META[p.school].name}의 학통을 이었고 ${FACTION_META[f].name}${f === 'none' ? '으로 어느 당에도 기울지 않았다' : '에 속했다'}.`,
+    `${p.ho ? `${p.name}의 호는 ${p.ho}이며` : josa(p.name, '은/는')} ${REGION_META[p.home].short} 사람이다. ${SCHOOL_META[p.school].name}의 학통을 이었고 ${f === 'none' ? '어느 당에도 기울지 않았다' : `${FACTION_META[f].name}에 속했다`}.`,
   );
   lines.push(pl.peakOffice ? `벼슬은 ${pl.peakOffice}에 이르렀다.` : '끝내 높은 벼슬에 오르지 못했다.');
   const remarks: string[] = [];
@@ -72,6 +76,11 @@ export function computeEnding(s: GameState): Ending {
   const disciples = Object.values(s.chars).filter((c) => c.teacher === p.id);
   if (disciples.length) remarks.push(`문하에서 ${disciples.map((c) => c.name).join(', ')} 등이 나왔다`);
   if (remarks.length) lines.push(`사신(史臣)은 말한다. "${remarks.join('. ')}."`);
+  const anc = pl.lineage ?? [];
+  if (anc.length)
+    lines.push(
+      `${p.clan}의 가계: ${anc.map((a) => `${a.name}(${a.peakOffice ?? '벼슬 없음'}, ${yearOf(a.died)}년 졸)`).join(' → ')} → ${p.name}.`,
+    );
 
   const factionsNow = (['seo', 'dong', 'nam', 'buk'] as const).filter((x) => s.factions[x].active);
   lines.push(

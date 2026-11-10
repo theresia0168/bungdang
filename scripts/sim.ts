@@ -1,3 +1,4 @@
+/** 무작위 행동으로 끝까지 돌려 결말 점수를 본다. 사용: npx tsx scripts/sim.ts [판 수] */
 import { newGame, PLAYABLE } from '../src/engine/setup';
 import { advanceMonth, resolveEvent } from '../src/engine/turn';
 import { viewEvent } from '../src/engine/events';

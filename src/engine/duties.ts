@@ -3,7 +3,7 @@ import type { Choice, EventDef } from './events/types';
 import { OFFICE_MAP } from './data/offices';
 import { FACTION_META, REGION_META } from './data/meta';
 import { chance, d6, pick } from './rng';
-import { addFlaw, alive, clamp, hiddenFlaws, inCourt, isP, josa, officeTitle, owe, P, people, pushEvent } from './state';
+import { fav, monthsSince, pres, addFlaw, alive, clamp, hiddenFlaws, inCourt, isP, josa, officeTitle, owe, P, people, pushEvent } from './state';
 import { opinion, sway, swayFaction, topOf } from './opinion';
 import { activeFactions } from './factions';
 import { vacate } from './court';
@@ -25,12 +25,6 @@ const region = (s: GameState) => P(s).location as RegionId;
 const rname = (s: GameState) => REGION_META[region(s)].short;
 const minsim = (s: GameState, r: RegionId, v: number) => {
   s.regions[r].minsim = clamp(s.regions[r].minsim + v, 0, 100);
-};
-const pres = (c: Character, v: number) => {
-  c.prestige = clamp(c.prestige + v, 0, 100);
-};
-const fav = (c: Character, v: number) => {
-  c.favor = clamp(c.favor + v, -100, 100);
 };
 const party = (s: GameState, v: number, label: string) => {
   const p = P(s);
@@ -131,7 +125,7 @@ const DUTIES: Duty[] = [
       const w = s.chars[c.who];
       return [
         { key: 'punish', label: '파직을 청하는 장계를 올린다', hint: `${w.name} 파직, 명망 +3, 민심 +4.${w.faction === P(s).faction ? ' 같은 당 호감 -3.' : ''}` },
-        { key: 'cover', label: '눈감아 준다', hint: `${w.name}이 신세를 지고 재산 +5. 30% 확률로 「비리 묵인」 흠결(그가 앎).` },
+        { key: 'cover', label: '눈감아 준다', hint: `${josa(w.name, "이/가")} 신세를 지고 재산 +5. 30% 확률로 「비리 묵인」 흠결(그가 앎).` },
       ];
     },
     resolve(s, key, c) {
@@ -290,7 +284,7 @@ const DUTIES: Duty[] = [
       const w = s.chars[c.who];
       return [
         { key: 'keep', label: '탄핵 재료로 간직한다', hint: `${w.name}의 숨은 흠결 하나를 쥔다.` },
-        { key: 'warn', label: '조용히 불러 경고한다', hint: `흠결을 쥐되 ${w.name}이 신세를 진다. 그도 당신이 안다는 것을 안다.` },
+        { key: 'warn', label: '조용히 불러 경고한다', hint: `흠결을 쥐되 ${josa(w.name, "이/가")} 신세를 진다. 그도 당신이 안다는 것을 안다.` },
         { key: 'burn', label: '문서를 태운다', hint: `명망 +1, ${w.name}의 호감 +6` },
       ];
     },
@@ -472,8 +466,7 @@ const dutyOf = (id: string) => DUTIES.find((d) => d.id === id);
 export function rollDuty(s: GameState) {
   const p = P(s);
   if (p.status !== 'active' || !p.office || s.pending.length >= 2) return;
-  const at = typeof s.flags.dutyAt === 'number' ? s.flags.dutyAt : -99;
-  if (s.t - at < 3) return;
+  if (monthsSince(s, 'dutyAt') < 3) return;
   const keen = s.player.focus?.kind === 'duty';
   if (!chance(s, keen ? 0.3 : 0.15)) return;
   const pool = DUTIES.filter((d) => d.when(s, p.office!));

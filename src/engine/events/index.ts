@@ -12,8 +12,12 @@ import { PARTY_EVENTS } from '../party';
 import { REGION_EVENTS } from '../regions';
 import { ROYAL_EVENTS } from '../royal';
 import { SITUATION_EVENTS } from '../situations';
+import { SUCCESSION_EVENTS } from '../succession';
+import { SALLIM_EVENTS } from './sallim';
 
 export const EVENTS: Record<string, EventDef> = {
+  ...SUCCESSION_EVENTS,
+  ...SALLIM_EVENTS,
   ...GENERIC_EVENTS,
   ...HISTORY_EVENTS,
   ...PERSONAL_EVENTS,
