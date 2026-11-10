@@ -1,3 +1,4 @@
+import { WAR_SCHEDULE } from './war';
 import type { Character, GameState, RegionId } from '../types';
 import type { Choice, EventDef } from './types';
 import { OK } from './types';
@@ -431,6 +432,7 @@ export const SCHEDULE: Scheduled[] = [
     run: warLogless('북인 안에서 이산해를 따르는 대북과 남이공을 따르는 소북이 갈라설 조짐을 보인다.'),
   },
   { id: 'queen', at: [1600, 6], run: warLogless('의인왕후 박씨가 승하했다. 왕은 새 왕비를 맞으려 한다.') },
+  ...WAR_SCHEDULE,
 ];
 
 function warLogless(text: string) {

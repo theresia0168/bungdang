@@ -336,7 +336,7 @@ export const TARGET_ACTIONS: TargetAction[] = [
     id: 'impeach',
     name: '탄핵',
     cost: (s) => (isSamsa(P(s)) ? 'authority' : 1),
-    desc: `논핵을 시작한다. 2개월 동안 양쪽이 동조자와 구원자를 모은 뒤 판정한다. 삼사 언관이면 직권으로, 아니면 상소로(-1) 한다. 알고 있는 흠결 1개당 +1. 한 번 하면 ${IMPEACH_COOLDOWN}개월 쉬어야 하고, 2년 안에 거듭할수록 공격이 1씩 약해진다(최대 -3).`,
+    desc: `논핵을 시작한다. 2개월 동안 양쪽이 동조자와 구원자를 모은 뒤 판정한다. 삼사 언관이면 직권으로, 아니면 상소로(-1) 한다. 알고 있는 흠결 1개당 +1. 한 번 하면 ${IMPEACH_COOLDOWN}개월 쉬어야 하고, 2년 안에 세 번째부터는 공격이 1씩 약해진다(최대 -2).`,
     check(s, t) {
       const p = P(s);
       if (basic(s, t)) return basic(s, t);
@@ -352,7 +352,7 @@ export const TARGET_ACTIONS: TargetAction[] = [
       const broke = betray(s, t);
       openCase(s, p, t, { byMemorial: !isSamsa(p) });
       setCd(s, 'impeach', IMPEACH_COOLDOWN);
-      s.player.impeachAt = [...(s.player.impeachAt ?? []).filter((x) => s.t - x <= 24), s.t];
+      s.player.impeachAt = [...s.player.impeachAt.filter((x) => s.t - x <= 24), s.t];
       return `${josa(t.name, '을/를')} 논핵하기 시작했다. 2개월 동안 '연명 요청'으로 동조자를 모으라.${broke}`;
     },
   },
@@ -518,12 +518,12 @@ export const TARGET_ACTIONS: TargetAction[] = [
     id: 'pact',
     name: '맹약 제안',
     cost: () => 1,
-    desc: `같은 당 사람과 뜻을 함께하기로 약속한다. 맹약을 맺은 이는 당신의 논핵에 동조하고, 당신이 논핵당하면 구원하며, 당신을 노리는 음모를 귀띔해 준다. 최대 ${MAX_BONDS.maengyak}명. 그를 공격하면 배신이 된다.`,
+    desc: `같은 당 사람과 뜻을 함께하기로 약속한다. 맹약을 맺은 이는 당신의 논핵에 동조하고, 당신이 논핵당하면 구원하며, 당신을 노리는 음모를 귀띔해 준다. 최대 ${MAX_BONDS}명. 그를 공격하면 배신이 된다.`,
     check(s, t) {
       const p = P(s);
       if (basic(s, t)) return basic(s, t);
-      if (bondWith(s, t.id, 'maengyak')) return '이미 맹약을 맺었다';
-      if (bondCount(s, 'maengyak') >= MAX_BONDS.maengyak) return `맹약은 ${MAX_BONDS.maengyak}명까지다`;
+      if (bondWith(s, t.id)) return '이미 맹약을 맺었다';
+      if (bondCount(s) >= MAX_BONDS) return `맹약은 ${MAX_BONDS}명까지다`;
       if (!inCourt(t)) return '조정에 있는 사람이어야 한다';
       if (p.faction === 'none' || topOf(p.faction) !== topOf(t.faction)) return '같은 당 사람이어야 한다 (다른 당과는 밀서로)';
       if (opinion(s, t, p) < 50 && !(s.player.debts[t.id] > 0)) return '호감 50 이상이거나 신세를 진 사람이어야 한다';
@@ -534,7 +534,7 @@ export const TARGET_ACTIONS: TargetAction[] = [
       setCd(s, `pact:${t.id}`, 6);
       const op = opinion(s, t, p);
       if (collect(s, t.id) || chance(s, clamp(0.55 + (op - 50) / 50, 0.2, 0.95))) {
-        addBond(s, 'maengyak', t);
+        addBond(s, t);
         log(s, `${josa(p.name, '과/와')} ${josa(t.name, '이/가')} 맹약을 맺었다.`, 'player');
         return `${josa(t.name, '과/와')} 맹약을 맺었다. 이제 공방이 열리면 그가 당신 편에 선다.`;
       }
@@ -550,8 +550,8 @@ export const TARGET_ACTIONS: TargetAction[] = [
     check(s, t) {
       const p = P(s);
       if (basic(s, t)) return basic(s, t);
-      if (bondWith(s, t.id, 'maengyak')) return '이미 맹약을 맺었다';
-      if (bondCount(s, 'maengyak') >= MAX_BONDS.maengyak) return `맹약은 ${MAX_BONDS.maengyak}명까지다`;
+      if (bondWith(s, t.id)) return '이미 맹약을 맺었다';
+      if (bondCount(s) >= MAX_BONDS) return `맹약은 ${MAX_BONDS}명까지다`;
       if (t.status === 'exiled') return '유배 중인 사람과는 맺을 수 없다';
       if (p.wealth < 5) return '재산이 5 이상 있어야 한다';
       if (opinion(s, t, p) < 40 && !(s.player.debts[t.id] > 0)) return '호감 40 이상이거나 신세를 진 사람이어야 한다';
@@ -569,7 +569,7 @@ export const TARGET_ACTIONS: TargetAction[] = [
       }
       const op = opinion(s, t, p);
       if (collect(s, t.id) || chance(s, clamp(0.5 + (op - 40) / 40, 0.15, 0.9))) {
-        addBond(s, 'maengyak', t, cross);
+        addBond(s, t, cross);
         return cross
           ? `${josa(t.name, '과/와')} 몰래 맹약을 맺었다. 당색이 달라 세상에는 비밀이다. 그가 저쪽 당의 음모를 귀띔해 줄 것이다.`
           : `${josa(t.name, '과/와')} 은밀히 맹약을 맺었다.`;

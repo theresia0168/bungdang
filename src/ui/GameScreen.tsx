@@ -11,11 +11,13 @@ import { FactionTab } from './tabs/FactionTab';
 import { RegionTab } from './tabs/RegionTab';
 import { ChronicleTab } from './tabs/ChronicleTab';
 import { RoyalTab } from './tabs/RoyalTab';
+import { NetworkTab } from './tabs/NetworkTab';
 
 const TABS = [
   { id: 'court', name: '조정', el: CourtTab },
   { id: 'royal', name: '왕실', el: RoyalTab },
   { id: 'people', name: '인물', el: PeopleTab },
+  { id: 'network', name: '인맥', el: NetworkTab },
   { id: 'faction', name: '붕당', el: FactionTab },
   { id: 'region', name: '팔도', el: RegionTab },
   { id: 'chronicle', name: '연대기', el: ChronicleTab },

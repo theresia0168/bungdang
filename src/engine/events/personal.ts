@@ -112,7 +112,7 @@ export function rollPersonal(s: GameState) {
   // 조정 사건이 드문 낙향·유배 중에는 개인 사건이 더 자주 온다
   const away = P(s).status === 'retired' || P(s).status === 'exiled';
   if (!alive(P(s)) || !chance(s, away ? 0.2 : 0.12)) return;
-  const last = (s.player.eventAt ??= {});
+  const last = s.player.eventAt;
   const pool = ROLLS.filter((r) => s.t - (last[r.id] ?? -999) >= (r.cooldown ?? 12))
     .map((r) => [r, r.weight(s)] as [PersonalRoll, number])
     .filter(([, w]) => w > 0);

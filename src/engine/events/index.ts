@@ -14,10 +14,12 @@ import { ROYAL_EVENTS } from '../royal';
 import { SITUATION_EVENTS } from '../situations';
 import { SUCCESSION_EVENTS } from '../succession';
 import { SALLIM_EVENTS } from './sallim';
+import { WAR_EVENTS } from './war';
 
 export const EVENTS: Record<string, EventDef> = {
   ...SUCCESSION_EVENTS,
   ...SALLIM_EVENTS,
+  ...WAR_EVENTS,
   ...GENERIC_EVENTS,
   ...HISTORY_EVENTS,
   ...PERSONAL_EVENTS,

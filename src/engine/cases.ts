@@ -109,7 +109,7 @@ function recruit(s: GameState, cs: Case) {
       'court',
     );
   }
-  // 지기·맹약·문인은 부르지 않아도 온다
+  // 맹약을 맺은 이와 문인은 부르지 않아도 온다
   const friends = sworn(s, mySide === 'cons' ? 'con' : 'pro').filter((c) => !sideOf(cs, c.id));
   for (const c of friends) cs[mySide].push(c.id);
   if (friends.length) {
@@ -223,6 +223,7 @@ export function joinCase(s: GameState, caseId: string, side: 'pro' | 'con'): str
   const atk = s.chars[cs.attacker];
   const tgt = s.chars[cs.target];
   s.player.ap -= 1;
+  s.flags.joinedCase = true;
   const fx: string[] = [];
   if (side === 'pro') {
     cs.pros.push(p.id);

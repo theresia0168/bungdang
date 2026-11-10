@@ -3,11 +3,12 @@ import type { FocusKind, MemorialTopic } from '../engine/types';
 import { P, officeTitle, statusLabel } from '../engine/state';
 import { FACTION_META, REGION_META, SCHOOL_META, TRAIT_META } from '../engine/data/meta';
 import { FOCUS_INFO, PROJECTS, RETAINER_UPKEEP, SELF_ACTIONS, focusCheck, runSelfAction, setFocus } from '../engine/actions';
-import { BOND_META } from '../engine/relations';
+import { BOND } from '../engine/relations';
 import { TOPIC_LABEL } from '../engine/conflict';
 import { standing } from '../engine/factions';
 import { playerCases, sideOf } from '../engine/cases';
 import { GOALS, GOAL_REWARD, goalKey, reconsiderGoal } from '../engine/goals';
+import { GUIDE, guideOn } from '../engine/tutorial';
 import { Bar, CharLink, FactionBadge, Opinion, Portrait } from './common';
 import { Tip } from './guide';
 
@@ -87,6 +88,31 @@ export function PlayerPanel() {
           </span>
         ))}
       </div>
+
+      {guideOn(s) && (
+        <section className="pp-sec guide">
+          <h4>
+            첫 해의 길잡이 <span className="muted small">하나마다 명망 +1</span>
+            <button className="mini" onClick={() => act((g) => void (g.flags.guideOff = true))} title="길잡이를 닫는다">
+              닫기
+            </button>
+          </h4>
+          <ul className="guide-list">
+            {GUIDE.map((g) => {
+              const done = pl.guide.includes(g.id);
+              return (
+                <li key={g.id} className={done ? 'done' : ''} title={g.how}>
+                  <span className="guide-box">{done ? '✓' : ''}</span>
+                  <span>
+                    {g.name}
+                    {!done && <em className="muted small"> — {g.how}</em>}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
 
       <section className="pp-sec goal">
         <h4>
@@ -203,11 +229,11 @@ export function PlayerPanel() {
           <h4>공작과 신세</h4>
           {bonds.length > 0 && (
             <div className="debtors small">
-              <span className="muted">지기·맹약 </span>
+              <span className="muted">맹약 </span>
               {bonds.map((b) => (
-                <span key={b.kind + b.with} title={BOND_META[b.kind].desc}>
+                <span key={b.with} title={BOND.desc}>
                   <CharLink id={b.with} />
-                  <em>{b.kind === 'jigi' ? '지기' : b.secret ? '밀약' : '맹약'}</em>
+                  <em>{b.secret ? '밀약' : '맹약'}</em>
                 </span>
               ))}
             </div>

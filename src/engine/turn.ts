@@ -24,6 +24,7 @@ import { checkGoal } from './goals';
 import { EVENTS, rollPersonal, runHistory } from './events';
 import { genChar, pickHome, regionFaction } from './generate';
 import { checkSuccession } from './succession';
+import { updateGuide } from './tutorial';
 
 function income(s: GameState) {
   const p = P(s);
@@ -116,7 +117,7 @@ function exam(s: GameState) {
       log(s, `${josa(p.name, "이/가")} 거둔 제자 ${josa(c.name, '이/가')} 급제했다.`, 'player');
     } else pr.push(`· ${c.name} 낙방 (${roll}, 10 이상 필요). 다음 식년시를 기약한다.`);
   }
-  if (pr.length) notice(s, '제자의 과거', `${pr.join('\n')}\n\n급제한 제자는 지기·맹약처럼 당신이 걸린 공방에 저절로 나선다.`, 'personal');
+  if (pr.length) notice(s, '제자의 과거', `${pr.join('\n')}\n\n급제한 제자는 맹약을 맺은 이처럼 당신이 걸린 공방에 저절로 나선다.`, 'personal');
   const k = Math.min(2, s.player.disciples);
   if (!k) return;
   const lines: string[] = [];
@@ -201,6 +202,7 @@ export function advanceMonth(s: GameState) {
     }
   }
   refreshAp(s);
+  updateGuide(s);
   checkSuccession(s);
   if (s.over) s.pending = [];
 }

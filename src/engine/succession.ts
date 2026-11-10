@@ -64,7 +64,7 @@ function takeOver(s: GameState, heirId: string, cause: string) {
   const h = s.chars[heirId];
   const pl = s.player;
   const score = computeEnding(s).score;
-  (pl.lineage ??= []).push({ id: f.id, name: f.name, died: s.t, cause, score, peakOffice: pl.peakOffice });
+  pl.lineage.push({ id: f.id, name: f.name, died: s.t, cause, score, peakOffice: pl.peakOffice });
 
   // 가문의 은원을 절반 물려받는다
   const inherited = s.mods.filter((m) => m.about === f.id && Math.abs(m.value) >= 4);

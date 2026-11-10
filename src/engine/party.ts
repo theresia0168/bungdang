@@ -6,6 +6,7 @@ import { chance, d6 } from './rng';
 import { monthsSince, alive, clamp, inCourt, isP, josa, log, P, people, pushEvent } from './state';
 import { sway, swayFaction } from './opinion';
 import { influence, updateLeaders } from './factions';
+import { kingLean } from './king';
 
 /** 당론의 강경함. 높으면 당이 논핵을 자주 벌이고 왕이 경계한다. */
 export const lineOf = (s: GameState, f: FactionId) => Math.round(s.line[f] ?? 0);
@@ -27,7 +28,7 @@ export function tickParty(s: GameState) {
   for (const f of Object.keys(s.line) as FactionId[]) {
     const v = s.line[f] ?? 0;
     s.line[f] = v * 0.98;
-    if (v > 30 && s.factions[f]?.active) s.king.wary[f] = Math.min(100, (s.king.wary[f] ?? 0) + (v - 30) / 30);
+    if (v > 30 && s.factions[f]?.active) kingLean(s, f, -(v - 30) / 60);
   }
   const p = P(s);
   if (p.faction === 'none' || !inCourt(p) || s.pending.length >= 2) return;

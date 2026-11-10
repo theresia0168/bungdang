@@ -3,7 +3,7 @@ import type { Character, GameState } from '../engine/types';
 import { P, age, inCourt, isP, knownFlaws, officeTitle, statusLabel } from '../engine/state';
 import { FACTION_META, REGION_META, SCHOOL_META, TRAIT_META } from '../engine/data/meta';
 import { opinion, opinionLines, inLaws, topOf } from '../engine/opinion';
-import { BOND_META, bondWith, contactMult, knowsWant, wantName, WANT_META } from '../engine/relations';
+import { BOND, bondWith, contactMult, knowsWant, wantName, WANT_META } from '../engine/relations';
 import { TARGET_ACTIONS, actionError, runTargetAction, type TargetActionId } from '../engine/actions';
 import { sideOf } from '../engine/cases';
 import { influence } from '../engine/factions';
@@ -29,7 +29,7 @@ function usesOf(s: GameState, c: Character, op: number): [string, string][] {
   if (c.want && knowsWant(s, c)) out.push(['good', `바람 「${wantName(s, c)}」 — ${WANT_META[c.want.kind].how}`]);
   else if (c.want) out.push(['muted', '무언가 바라는 것이 있는 듯하다. 탐문하거나 찾아가 담소하면 알 수 있다.']);
   const same = p.faction !== 'none' && topOf(p.faction) === topOf(c.faction);
-  if (!bondWith(s, c.id, 'maengyak') && inCourt(c)) {
+  if (!bondWith(s, c.id) && inCourt(c)) {
     if (same) out.push([op >= 50 ? 'good' : 'muted', `맹약 — 호감 50이면 청할 수 있다 (지금 ${op})`]);
     else if (c.faction !== 'none' && p.faction !== 'none') out.push([op >= 40 ? 'good' : 'muted', `밀서 — 다른 당이라 몰래 맺어야 한다. 호감 40 필요 (지금 ${op})`]);
   }
@@ -64,7 +64,7 @@ export function CharPanel({ id }: { id: string }) {
     const intel = s.player.intel[c.id];
     if (intel) tags.push([intel.dirty ? 'warn' : '', `탐문 ${s.t - intel.t}달 전: ${intel.dirty ? '무언가 숨기는 낌새' : '깨끗해 보인다'}`]);
     if (s.player.scheme?.targetId === c.id) tags.push(['', `뒷조사 중 ${s.player.scheme.progress}/${s.player.scheme.required}`]);
-    for (const b of s.player.bonds.filter((x) => x.with === c.id)) tags.push(['good', `${BOND_META[b.kind].name}${b.secret ? ' (비밀)' : ''}`]);
+    for (const b of s.player.bonds.filter((x) => x.with === c.id)) tags.push(['good', `${BOND.name}${b.secret ? ' (비밀)' : ''}`]);
     if (s.player.proteges.includes(c.id)) tags.push(['good', '내 제자 — 식년시를 준비한다']);
     const plot = s.plots.find((x) => x.by === c.id && x.known);
     if (plot) tags.push(['bad', `나를 노리는 중 · 약 ${Math.max(1, plot.due - s.t)}달 뒤`]);

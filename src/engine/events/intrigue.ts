@@ -20,7 +20,7 @@ export const INTRIGUE_EVENTS: Record<string, EventDef> = {
         text: `${who} 당신을 불렀다. 요즘 다른 당 사람들과 너무 가까이 지낸다는 말이 돈다며, 어느 편에 설 것인지 분명히 하라고 다그친다.\n\n당내 내통 의심: ${Math.round(s.player.suspicion)}`,
         choices: [
           { key: 'explain', label: '사사로운 교분일 뿐이라고 해명한다', hint: `정치력 판정 (주사위 + ${p.politics} ≥ 8). 성공하면 의심 -25, 실패하면 의심 -10에 당 호감 -3.` },
-          { key: 'cut', label: '그들과 발길을 끊겠다고 맹세한다', hint: '의심이 사라지고 당 호감 +3. 다른 당 사람들과 맺은 지기는 끊어지고 그들의 호감 -10.' },
+          { key: 'cut', label: '그들과 발길을 끊겠다고 맹세한다', hint: '의심이 사라지고 당 호감 +3. 다른 당 사람들과 맺은 맹약은 끊어지고 그들의 호감 -10.' },
           { key: 'defy', label: '당색보다 사람이 먼저라고 맞선다', hint: `명망 +2${p.traits.includes('mediator') ? ' (조제: +2 더)' : ''}, 당 호감 -8. 의심 -5.` },
         ],
       };
@@ -43,7 +43,7 @@ export const INTRIGUE_EVENTS: Record<string, EventDef> = {
         const cut: string[] = [];
         for (const b of [...pl.bonds]) {
           const c = s.chars[b.with];
-          if (!alive(c) || b.kind !== 'jigi' || topOf(c.faction) === topOf(p.faction)) continue;
+          if (!alive(c) || topOf(c.faction) === topOf(p.faction)) continue;
           pl.bonds = pl.bonds.filter((x) => x !== b);
           sway(s, c, p.id, -10, '발길을 끊음', { decay: 0.1 });
           cut.push(c.name);
@@ -53,7 +53,7 @@ export const INTRIGUE_EVENTS: Record<string, EventDef> = {
           if (c && c.faction !== 'none' && topOf(c.faction) !== topOf(p.faction)) delete pl.contacts[id];
         }
         const fx = swayFaction(s, p.faction, p.id, 3, '당론을 따름', 0.1);
-        return `다른 당 사람들과의 왕래를 끊었다.${cut.length ? ` ${cut.join(', ')}과의 지기가 끊어졌다.` : ''}${fx ? ` (${fx})` : ''}`;
+        return `다른 당 사람들과의 왕래를 끊었다.${cut.length ? ` ${cut.join(', ')}과의 맹약이 끊어졌다.` : ''}${fx ? ` (${fx})` : ''}`;
       }
       p.prestige = clamp(p.prestige + 2 + (p.traits.includes('mediator') ? 2 : 0), 0, 100);
       pl.suspicion = Math.max(0, pl.suspicion - 5);

@@ -5,7 +5,7 @@ import { viewEvent } from '../src/engine/events';
 import { computeEnding } from '../src/engine/ending';
 import { P } from '../src/engine/state';
 import { FACTION_META } from '../src/engine/data/meta';
-import { TARGET_ACTIONS, FOCUS_INFO, setFocus } from '../src/engine/actions';
+import { TARGET_ACTIONS, FOCUS_INFO, runSelfAction, setFocus } from '../src/engine/actions';
 import type { FocusKind } from '../src/engine/types';
 
 const runs = Number(process.argv[2] ?? 3);
@@ -36,6 +36,8 @@ for (const id of ids) {
           actions++;
         }
       }
+      // 낙향해 있으면 다시 벼슬을 구하러 올라간다 (시묘·처분 중이면 저절로 막힌다)
+      if (P(s).status === 'retired' && s.t % 6 === 0) runSelfAction(s, 'capital');
       if (!s.player.focus) {
         const kinds = Object.keys(FOCUS_INFO) as FocusKind[];
         setFocus(s, kinds[s.t % 5], 'sipye');

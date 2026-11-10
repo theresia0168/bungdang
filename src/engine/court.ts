@@ -84,6 +84,8 @@ export function appointGeneric(s: GameState, c: Character, kind: 'nanggwan' | 's
 }
 
 export const PROMOTION_GAP = 30;
+/** 지금 자리에서 이만큼은 있어야 다른 자리로 옮길 수 있다 */
+export const MIN_TENURE = 6;
 
 /** 이 관직에 오르려면 갖춰야 할 최소 품계 */
 export const minRankFor = (officeRank: number) => (officeRank <= 1 ? 2 : officeRank === 2 ? 3 : officeRank === 3 ? 5 : officeRank === 4 ? 6 : 9);
@@ -109,6 +111,8 @@ export function eligible(s: GameState, c: Character, o: OfficeDef): boolean {
   if (c.office === o.id) return false;
   const cur = c.office ? OFFICE_MAP[c.office] : undefined;
   if (cur && cur.rank <= o.rank) return false;
+  // 자리에 앉자마자 다른 자리로 옮기지 않는다
+  if (c.office && c.status === 'active' && c.tenure < MIN_TENURE) return false;
   if (o.rank > lowestOfficeFor(c.rank)) return false;
   if (cooldownLeft(s, c, o) > 0) return false;
   if (c.rank > minRankFor(o.rank)) return false;
@@ -146,8 +150,7 @@ export function appointParts(s: GameState, c: Character, o: OfficeDef, hm = hold
   }
   if (c.faction !== 'none') {
     const share = powerShare(s)[c.faction] ?? 0;
-    if (share > 0.6) parts.push({ label: '왕의 견제', value: -3 });
-    else if (share < 0.3) parts.push({ label: '왕의 안배', value: 2 });
+    if (share < 0.3) parts.push({ label: '왕의 안배', value: 2 });
   }
   if (c.faction !== 'none' && s.flags.ijoBias === c.faction && Number(s.flags.ijoBiasUntil ?? 0) > s.t) parts.push({ label: '이조의 안배', value: 3 });
   if (c.faction !== 'none') {

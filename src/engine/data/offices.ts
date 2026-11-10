@@ -40,6 +40,9 @@ const GAMSA: [RegionId, string, number][] = [
   ['hamgyeong', '함경 관찰사', 3],
 ];
 
+/** 같은 이름의 자리가 여럿이면 id 뒤에 1, 2…를 붙여 만든다 (jangnyeong1, jangnyeong2) */
+const slots = (n: number, base: OfficeDef): OfficeDef[] => Array.from({ length: n }, (_, i) => ({ ...base, id: `${base.id}${i + 1}` }));
+
 export const OFFICES: OfficeDef[] = [
   { id: 'yeonguijeong', name: '영의정', group: 'uijeongbu', rank: 1, weight: 10, term: 36, desc: '백관의 으뜸.' },
   { id: 'jwauijeong', name: '좌의정', group: 'uijeongbu', rank: 1, weight: 8, term: 30, desc: '의정부의 버금 정승.' },
@@ -60,15 +63,11 @@ export const OFFICES: OfficeDef[] = [
   { id: 'seungji2', name: '우승지', group: 'court', rank: 3, weight: 2, term: 10, desc: '승정원 승지. 왕의 곁에서 왕명을 출납한다.' },
   { id: 'daesaseong', name: '성균관 대사성', group: 'court', rank: 3, weight: 3, term: 14, literary: true, desc: '성균관의 장. 유생을 이끈다. 학식이 높아야 오른다.' },
   { id: 'jeonrang', name: '이조전랑', group: 'cheongyo', rank: 5, weight: 6, term: 12, cheongyo: true, desc: '통청권(通淸權)으로 청요직 인사를 좌우한다. 천거할 수 있다.' },
-  { id: 'jangnyeong1', name: '사헌부 장령', group: 'cheongyo', rank: 4, weight: 2, term: 12, cheongyo: true, samsa: true, desc: '삼사 언관. 탄핵 공격 +1.' },
-  { id: 'jangnyeong2', name: '사헌부 장령', group: 'cheongyo', rank: 4, weight: 2, term: 12, cheongyo: true, samsa: true, desc: '삼사 언관. 탄핵 공격 +1.' },
+  ...slots(2, { id: 'jangnyeong', name: '사헌부 장령', group: 'cheongyo', rank: 4, weight: 2, term: 12, cheongyo: true, samsa: true, desc: '삼사 언관. 탄핵 공격 +1.' }),
   { id: 'eunggyo', name: '홍문관 응교', group: 'cheongyo', rank: 4, weight: 2, term: 12, cheongyo: true, samsa: true, literary: true, desc: '삼사 언관. 탄핵 공격 +1.' },
-  { id: 'gyori1', name: '홍문관 교리', group: 'cheongyo', rank: 5, weight: 2, term: 12, cheongyo: true, samsa: true, desc: '삼사 언관. 탄핵 공격 +1.' },
-  { id: 'gyori2', name: '홍문관 교리', group: 'cheongyo', rank: 5, weight: 2, term: 12, cheongyo: true, samsa: true, desc: '삼사 언관. 탄핵 공격 +1.' },
-  { id: 'jipyeong1', name: '사헌부 지평', group: 'cheongyo', rank: 5, weight: 2, term: 12, cheongyo: true, samsa: true, desc: '삼사 언관. 탄핵 공격 +1.' },
-  { id: 'jipyeong2', name: '사헌부 지평', group: 'cheongyo', rank: 5, weight: 2, term: 12, cheongyo: true, samsa: true, desc: '삼사 언관. 탄핵 공격 +1.' },
-  { id: 'jeongeon1', name: '사간원 정언', group: 'cheongyo', rank: 6, weight: 2, term: 12, cheongyo: true, samsa: true, desc: '삼사 언관. 탄핵 공격 +1.' },
-  { id: 'jeongeon2', name: '사간원 정언', group: 'cheongyo', rank: 6, weight: 2, term: 12, cheongyo: true, samsa: true, desc: '삼사 언관. 탄핵 공격 +1.' },
+  ...slots(2, { id: 'gyori', name: '홍문관 교리', group: 'cheongyo', rank: 5, weight: 2, term: 12, cheongyo: true, samsa: true, desc: '삼사 언관. 탄핵 공격 +1.' }),
+  ...slots(2, { id: 'jipyeong', name: '사헌부 지평', group: 'cheongyo', rank: 5, weight: 2, term: 12, cheongyo: true, samsa: true, desc: '삼사 언관. 탄핵 공격 +1.' }),
+  ...slots(2, { id: 'jeongeon', name: '사간원 정언', group: 'cheongyo', rank: 6, weight: 2, term: 12, cheongyo: true, samsa: true, desc: '삼사 언관. 탄핵 공격 +1.' }),
   ...GAMSA.map(
     ([region, name, weight]): OfficeDef => ({
       id: `gamsa_${region}`,

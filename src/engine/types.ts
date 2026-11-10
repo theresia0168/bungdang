@@ -73,6 +73,8 @@ export interface Character {
   /** 설욕 토큰: 이 인물이 원한을 품은 상대 */
   grudges: string[];
   exiledBy?: string;
+  /** 유배를 떠난 달 */
+  exiledAt?: number;
   exilePlace?: string;
   /** 유배의 무게. 1 중도부처, 2 위리안치 */
   exileLevel?: number;
@@ -99,11 +101,8 @@ export interface Want {
   since: number;
 }
 
-/** 수치가 아닌 관계. 지기는 저절로 맺어지고, 맹약은 청해서 맺는다. */
-export type BondKind = 'jigi' | 'maengyak';
-
+/** 수치가 아닌 관계. 청해서 맺거나, 오래 가까이 지내면 저절로 맺어진다. */
 export interface Bond {
-  kind: BondKind;
   with: string;
   since: number;
   /** 당색이 다른 이와 몰래 맺은 맹약 */
@@ -134,10 +133,8 @@ export interface Race {
 export interface KingState {
   /** 용안(龍顔). -100 진노 ~ 100 흡족 */
   mood: number;
-  /** 붕당별 왕의 마음 -50 ~ 50 */
+  /** 붕당별 왕의 마음 -50 ~ 50. 한 당이 조정을 오래 쥐면 식고, 깊이 식으면 환국이 난다. */
   lean: Partial<Record<FactionId, number>>;
-  /** 한 당이 조정을 오래 쥐면 쌓이는 견제심 */
-  wary: Partial<Record<FactionId, number>>;
 }
 
 export type ModScope = 'char' | 'clan' | 'faction';
@@ -252,13 +249,15 @@ export interface PlayerState {
   /** 이번 달 몸을 낮추었다 */
   lowProfile: boolean;
   /** 이번 달 교유의 행동력 +1을 이미 받았다 */
-  socialBonus?: boolean;
+  socialBonus: boolean;
   /** 내가 이끈 논핵을 연 달들. 잦으면 왕과 조정이 싫증을 낸다. */
-  impeachAt?: number[];
+  impeachAt: number[];
   /** 개인 사건별로 마지막에 일어난 달 */
-  eventAt?: Record<string, number>;
+  eventAt: Record<string, number>;
   /** 앞서 간 선대들. 가문을 이어 하면 쌓인다. */
-  lineage?: Ancestor[];
+  lineage: Ancestor[];
+  /** 첫 해 길잡이에서 해낸 단계 */
+  guide: string[];
 }
 
 export interface Ancestor {

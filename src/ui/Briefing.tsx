@@ -3,7 +3,7 @@ import { P, josa, officeTitle, people } from '../engine/state';
 import { FACTION_META } from '../engine/data/meta';
 import { OFFICE_MAP } from '../engine/data/offices';
 import { backCandidate, raceBackError } from '../engine/court';
-import { kingSummary, WARY_WARN } from '../engine/king';
+import { kingSummary, WARY_TRIGGER, WARY_WARN } from '../engine/king';
 import { lineLabel, lineOf } from '../engine/party';
 import { knowsWant, wantName, WANT_META } from '../engine/relations';
 import { SIT_META, sitLine } from '../engine/situations';
@@ -14,7 +14,7 @@ export function Briefing() {
   const p = P(s);
   const plots = s.plots.filter((x) => x.known);
   const races = [...s.races].sort((a, b) => OFFICE_MAP[a.office].rank - OFFICE_MAP[b.office].rank).slice(0, 5);
-  const myWary = p.faction !== 'none' ? Math.round(s.king.wary[p.faction] ?? 0) : 0;
+  const myLean = p.faction !== 'none' ? Math.round(s.king.lean[p.faction] ?? 0) : 0;
   const wants = people(s)
     .filter((c) => c.id !== p.id && knowsWant(s, c) && c.status !== 'exiled')
     .slice(0, 6);
@@ -29,12 +29,12 @@ export function Briefing() {
           <span>{kingSummary(s)}</span>
         </li>
         {p.faction !== 'none' && (
-          <li className={myWary >= WARY_WARN ? 'bad' : ''}>
+          <li className={myLean <= WARY_WARN ? 'bad' : ''}>
             <span className="b-k">{FACTION_META[p.faction].name}</span>
             <span>
               당론 {lineLabel(lineOf(s, p.faction))}
-              {myWary > 0 && ` · 왕의 경계 ${myWary}/80`}
-              {myWary >= WARY_WARN && ' — 환국 위험! 「당론과 거리 두기」로 몸을 사릴 수 있다.'}
+              {` · 왕의 마음 ${myLean > 0 ? '+' : ''}${myLean}`}
+              {myLean <= WARY_WARN && ` — 환국 위험 (${WARY_TRIGGER} 이하면 일어날 수 있다)! 「당론과 거리 두기」로 몸을 사릴 수 있다.`}
             </span>
           </li>
         )}

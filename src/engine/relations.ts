@@ -1,4 +1,4 @@
-import type { Bond, BondKind, Character, GameState, Want, WantKind } from './types';
+import type { Bond, Character, GameState, Want, WantKind } from './types';
 import { chance, weighted } from './rng';
 import { monthsSince, alive, clamp, inCourt, isP, josa, notice, owe, P, people, pushEvent } from './state';
 import { addMod, opinion, sway, topOf } from './opinion';
@@ -140,24 +140,25 @@ export function tickSuspicion(s: GameState) {
   }
 }
 
-/* ───────── 지기와 맹약 ───────── */
+/* ───────── 맹약 ─────────
+ * 예전의 지기(知己)와 맹약을 하나로 합쳤다. 청해서 맺거나(맹약 제안·밀서), 오래 가까이 지내면 저절로 맺어진다.
+ */
 
-export const BOND_META: Record<BondKind, { name: string; desc: string }> = {
-  jigi: { name: '지기(知己)', desc: '서로를 알아주는 벗. 당신을 겨누는 일을 꾸미지 않고, 당신이 논핵당하면 저절로 구원한다.' },
-  maengyak: { name: '맹약(盟約)', desc: '뜻을 함께하기로 한 약속. 당신의 논핵에는 동조하고, 당신이 논핵당하면 구원하며, 당신을 노리는 음모를 귀띔해 준다. 그를 공격하면 배신이 된다.' },
+export const BOND = {
+  name: '맹약(盟約)',
+  desc: '뜻을 함께하기로 한 사이. 당신의 논핵에 동조하고, 당신이 논핵당하면 구원하며, 당신을 노리는 음모를 귀띔해 준다. 그를 공격하면 배신이 된다.',
 };
 
-export const MAX_BONDS: Record<BondKind, number> = { jigi: 4, maengyak: 3 };
+export const MAX_BONDS = 4;
 
-export const bondWith = (s: GameState, id: string, kind?: BondKind): Bond | undefined =>
-  s.player.bonds.find((b) => b.with === id && (!kind || b.kind === kind));
+export const bondWith = (s: GameState, id: string): Bond | undefined => s.player.bonds.find((b) => b.with === id);
 
-export const bondCount = (s: GameState, kind: BondKind) => s.player.bonds.filter((b) => b.kind === kind && alive(s.chars[b.with])).length;
+export const bondCount = (s: GameState) => s.player.bonds.filter((b) => alive(s.chars[b.with])).length;
 
-export function addBond(s: GameState, kind: BondKind, c: Character, secret = false) {
-  if (bondWith(s, c.id, kind)) return;
-  s.player.bonds.push({ kind, with: c.id, since: s.t, secret });
-  addMod(s, 'char', c.id, P(s).id, BOND_META[kind].name, kind === 'jigi' ? 10 : 8, 0, 20);
+export function addBond(s: GameState, c: Character, secret = false) {
+  if (bondWith(s, c.id)) return;
+  s.player.bonds.push({ with: c.id, since: s.t, secret });
+  addMod(s, 'char', c.id, P(s).id, BOND.name, 10, 0, 20);
 }
 
 /** 맹약을 맺은 이를 공격했다 */
@@ -166,39 +167,43 @@ export function betray(s: GameState, c: Character): string {
   if (!b) return '';
   const p = P(s);
   s.player.bonds = s.player.bonds.filter((x) => x.with !== c.id);
-  const names = [BOND_META.jigi.name, BOND_META.maengyak.name];
-  for (const m of s.mods) if (m.scope === 'char' && m.holder === c.id && m.about === p.id && names.includes(m.label)) m.value = 0;
+  for (const m of s.mods) if (m.scope === 'char' && m.holder === c.id && m.about === p.id && m.label === BOND.name) m.value = 0;
   const fx = sway(s, c, p.id, -40, '배신', { clan: 0.4, decay: 0.05 });
   if (!c.grudges.includes(p.id)) c.grudges.push(p.id);
   p.prestige = clamp(p.prestige - 6, 0, 100);
-  notice(s, '배신', `${BOND_META[b.kind].name}을 맺은 ${josa(c.name, '을/를')} 등졌다. 선비 사회가 당신의 신의를 의심한다.\n\n명망 -6, ${fx.join(', ')}`, 'danger');
+  notice(s, '배신', `맹약을 맺은 ${josa(c.name, '을/를')} 등졌다. 선비 사회가 당신의 신의를 의심한다.
+
+명망 -6, ${fx.join(', ')}`, 'danger');
   return ' 배신이다.';
 }
 
-/** 오래 가까이 지내면 지기가 된다 */
+/** 오래 가까이 지내며 서로 아끼면 저절로 맹약이 맺어진다 */
 export function tickBonds(s: GameState) {
   const p = P(s);
   s.player.bonds = s.player.bonds.filter((b) => alive(s.chars[b.with]));
-  if (bondCount(s, 'jigi') >= MAX_BONDS.jigi || !chance(s, 0.3)) return;
+  if (bondCount(s) >= MAX_BONDS || !chance(s, 0.3)) return;
   const c = people(s).find(
     (x) =>
       !isP(s, x) &&
-      !bondWith(s, x.id, 'jigi') &&
+      !bondWith(s, x.id) &&
       x.status !== 'exiled' &&
       recentContacts(s, x.id) >= 2 &&
       opinion(s, x, p) >= 60 &&
       opinion(s, p, x) >= 30,
   );
   if (!c) return;
-  addBond(s, 'jigi', c);
-  notice(s, '지기를 얻다', `${josa(c.name, '과/와')} 오가는 사이 서로를 알아보게 되었다. 이제 그는 당신의 지기(知己)다.\n\n${BOND_META.jigi.desc}`, 'personal');
+  const cross = p.faction !== 'none' && c.faction !== 'none' && topOf(p.faction) !== topOf(c.faction);
+  addBond(s, c, cross);
+  notice(s, '뜻을 같이하다', `${josa(c.name, '과/와')} 오가는 사이 서로를 알아보게 되었다. 이제 둘은 맹약을 맺은 사이다.${cross ? ' 당색이 달라 세상에는 비밀이다.' : ''}
+
+${BOND.desc}`, 'personal');
 }
 
-/** 공방이 열리면 저절로 플레이어 편에 서는 이들: 지기, 맹약, 문인 */
+/** 공방이 열리면 저절로 플레이어 편에 서는 이들: 맹약을 맺은 이와 문인 */
 export function sworn(s: GameState, side: 'pro' | 'con'): Character[] {
   const p = P(s);
   const ids = new Set<string>();
-  for (const b of s.player.bonds) if (side === 'con' || b.kind === 'maengyak') ids.add(b.with);
+  for (const b of s.player.bonds) ids.add(b.with);
   for (const c of people(s)) if (c.teacher === p.id) ids.add(c.id);
   return [...ids].map((id) => s.chars[id]).filter((c): c is Character => alive(c) && inCourt(c));
 }

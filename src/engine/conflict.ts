@@ -45,7 +45,7 @@ export const SUCCESS: Outcome[] = ['dismiss', 'strip', 'exile', 'wiri', 'sasa'];
 const sum = (ps: RollPart[]) => ps.reduce((a, p) => a + p.value, 0);
 
 /** 최근 2년 동안 플레이어가 연 논핵 수. 잦을수록 왕과 조정이 싫증을 낸다. */
-export const recentImpeachments = (s: GameState) => (s.player.impeachAt ?? []).filter((t) => s.t - t <= 24).length;
+export const recentImpeachments = (s: GameState) => s.player.impeachAt.filter((t) => s.t - t <= 24).length;
 
 export function kill(s: GameState, c: Character, cause: string) {
   if (c.status === 'dead') return;
@@ -76,6 +76,7 @@ export function exile(s: GameState, c: Character, byId?: string, quiet = false) 
   c.location = region;
   c.exilePlace = place;
   c.exiledBy = byId;
+  c.exiledAt = s.t;
   c.exileLevel = 1;
   c.prestige = clamp(c.prestige - 8, 0, 100);
   if (!quiet) log(s, `${josa(c.name, '이/가')} ${place}에 유배되었다.`, isP(s, c) ? 'player' : 'court');
@@ -116,8 +117,9 @@ export function impeach(
   if (atk.grudges.includes(tgt.id)) aParts.push({ label: '설욕', value: 2 });
   if ((powerShare(s)[atk.faction] ?? 0) > 0.55 && atk.faction !== 'none') aParts.push({ label: '당세 우위', value: 1 });
   if (isP(s, atk)) {
-    const n = recentImpeachments(s) - 1;
-    if (n > 0) aParts.push({ label: `잦은 탄핵 (2년 새 ${n + 1}번째)`, value: -Math.min(3, n) });
+    // 2년에 두 번까지는 괜찮고, 그보다 잦으면 공격이 약해진다
+    const n = recentImpeachments(s) - 2;
+    if (n > 0) aParts.push({ label: `잦은 탄핵 (2년 새 ${n + 2}번째)`, value: -Math.min(2, n) });
   }
   for (const b of opt.bonus ?? []) if (b.value) aParts.push(b);
 

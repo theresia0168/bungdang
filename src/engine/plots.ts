@@ -12,7 +12,7 @@ export function startPlot(s: GameState, by: Character): boolean {
   if (bondWith(s, by.id) || s.plots.some((x) => x.by === by.id) || s.plots.length >= 2) return false;
   const plot: Plot = { id: uid(s, 'plot'), by: by.id, due: s.t + randInt(s, 2, 4), known: false };
   s.plots.push(plot);
-  const tip = s.player.bonds.map((b) => s.chars[b.with]).find((c) => alive(c) && inCourt(c) && c.faction === by.faction && bondWith(s, c.id, 'maengyak'));
+  const tip = s.player.bonds.map((b) => s.chars[b.with]).find((c) => alive(c) && inCourt(c) && c.faction === by.faction);
   if (tip) revealPlot(s, plot, `맹약을 맺은 ${josa(tip.name, '이/가')} 몰래 귀띔해 왔다`);
   return true;
 }

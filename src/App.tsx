@@ -2,22 +2,22 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { GameState } from './engine/types';
 import { newGame, type StartChoice } from './engine/setup';
 import { advanceMonth } from './engine/turn';
-import { ensureState } from './engine/migrate';
+import { updateGuide } from './engine/tutorial';
 import { Ctx } from './ui/ctx';
 import { StartScreen } from './ui/StartScreen';
 import { GameScreen } from './ui/GameScreen';
 import { EndScreen } from './ui/EndScreen';
 
-const SAVE_KEY = 'joseon-bungdang/save/v2';
+const SAVE_KEY = 'joseon-bungdang/save/v3';
+const OLD_KEYS = ['joseon-bungdang/save/v1', 'joseon-bungdang/save/v2'];
 
 function loadSave(): GameState | null {
   try {
-    localStorage.removeItem('joseon-bungdang/save/v1');
+    for (const k of OLD_KEYS) localStorage.removeItem(k);
     const raw = localStorage.getItem(SAVE_KEY);
     if (!raw) return null;
     const s = JSON.parse(raw) as GameState;
-    if (s.version !== 2) return null;
-    return ensureState(s);
+    return s.version === 3 ? s : null;
   } catch {
     return null;
   }
@@ -70,6 +70,7 @@ export default function App() {
       const s = game.current;
       if (!s) return;
       const msg = fn(s);
+      updateGuide(s);
       if (msg) toast(msg);
       refresh();
     },

@@ -32,7 +32,7 @@ export const BACKGROUNDS: Record<CustomSpec['background'], { name: string; desc:
 
 function blankState(seed: number): GameState {
   return {
-    version: 2,
+    version: 3,
     rng: seed | 0,
     t: 0,
     chars: {},
@@ -78,6 +78,11 @@ function blankState(seed: number): GameState {
       proteges: [],
       retainers: 0,
       lowProfile: false,
+      socialBonus: false,
+      impeachAt: [],
+      eventAt: {},
+      lineage: [],
+      guide: [],
     },
     flags: {},
     tension: 22,
@@ -88,7 +93,7 @@ function blankState(seed: number): GameState {
     cases: [],
     plots: [],
     races: [],
-    king: { mood: 10, lean: { seo: 5, dong: 5 }, wary: {} },
+    king: { mood: 10, lean: { seo: 5, dong: 5 } },
     line: { dong: 20, seo: 0 },
     situations: [],
     royal: initRoyal(),

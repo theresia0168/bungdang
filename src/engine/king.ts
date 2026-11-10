@@ -40,26 +40,30 @@ export function favoredFaction(s: GameState): [FactionId, number] | null {
   return best && best[1] >= 8 ? best : null;
 }
 
-export const WARY_WARN = 50;
-export const WARY_TRIGGER = 80;
+/** 왕의 마음이 이만큼 식으면 환국의 조짐이 보인다 */
+export const WARY_WARN = -20;
+/** 이만큼 식으면 환국이 일어날 수 있다 */
+export const WARY_TRIGGER = -35;
 
+/**
+ * 왕의 마음(lean)은 당마다 -50 ~ 50. 예전의 「견제(wary)」를 여기에 합쳤다:
+ * 한 당이 관직을 너무 많이 쥐거나 당론이 강경하면 그 당을 향한 마음이 식고, 깊이 식으면 환국이 난다.
+ */
 export function tickKing(s: GameState) {
   const k = s.king;
   kingMood(s, randInt(s, -8, 8) - k.mood * 0.08 - (s.war.active ? 1 : 0));
   for (const f of Object.keys(k.lean) as FactionId[]) k.lean[f] = (k.lean[f] ?? 0) * 0.97;
   const act = activeFactions(s);
   if (act.length && chance(s, 0.2)) kingLean(s, act[randInt(s, 0, act.length - 1)], randInt(s, -3, 6));
-  for (const f of act) if ((k.wary[f] ?? 0) >= WARY_WARN) kingLean(s, f, -0.6);
   const share = powerShare(s);
-  for (const f of activeFactions(s)) {
+  for (const f of act) {
     const sh = share[f] ?? 0;
-    const w = k.wary[f] ?? 0;
-    k.wary[f] = sh > 0.52 ? Math.min(100, w + (sh - 0.52) * 30) : w * 0.94;
+    if (sh > 0.52) kingLean(s, f, -(sh - 0.52) * 12);
   }
-  for (const f of activeFactions(s)) {
-    const w = k.wary[f] ?? 0;
+  for (const f of act) {
+    const v = k.lean[f] ?? 0;
     const warned = !!s.flags[`waryWarn_${f}`];
-    if (w >= WARY_WARN && !warned) {
+    if (v <= WARY_WARN && (share[f] ?? 0) > 0.45 && !warned) {
       s.flags[`waryWarn_${f}`] = true;
       log(s, `[조정] 왕이 ${FACTION_META[f].name}의 독주를 못마땅해한다는 말이 돈다.`, 'court');
       const p = P(s);
@@ -67,14 +71,15 @@ export function tickKing(s: GameState) {
         notice(
           s,
           '환국의 조짐',
-          `${FACTION_META[f].name}이 조정을 오래 쥐자 왕이 견제할 뜻을 비친다. 이대로 가면 왕이 판을 뒤집어 ${FACTION_META[f].name}의 요인들을 한꺼번에 갈아치울 수 있다(환국).\n\n당의 요인일수록, 당론에 깊이 붙어 있을수록 함께 쓸려 나간다. 「당론과 거리 두기」나 조제보합 상소로 몸을 사릴 수 있다.`,
+          `${FACTION_META[f].name}이 조정을 오래 쥐자 왕의 마음이 식었다. 이대로 가면 왕이 판을 뒤집어 ${FACTION_META[f].name}의 요인들을 한꺼번에 갈아치울 수 있다(환국).
+
+당의 요인일수록, 당론에 깊이 붙어 있을수록 함께 쓸려 나간다. 「당론과 거리 두기」나 조제보합 상소로 몸을 사릴 수 있다.`,
           'danger',
         );
-    } else if (w < WARY_WARN * 0.6 && warned) delete s.flags[`waryWarn_${f}`];
+    } else if (v > WARY_WARN / 2 && warned) delete s.flags[`waryWarn_${f}`];
   }
-  for (const f of Object.keys(k.wary) as FactionId[]) if (!s.factions[f]?.active) delete k.wary[f];
   if (s.war.active || monthsSince(s, 'lastHwanguk') < 48) return;
-  const f = activeFactions(s).find((x) => (k.wary[x] ?? 0) >= WARY_TRIGGER);
+  const f = act.find((x) => (k.lean[x] ?? 0) <= WARY_TRIGGER && (share[x] ?? 0) > 0.45);
   if (f && chance(s, 0.1)) hwanguk(s, f);
 }
 
@@ -89,10 +94,9 @@ function hwanguk(s: GameState, f: FactionId) {
     vacate(s, c);
     c.favor = clamp(c.favor - 15, -100, 100);
   }
-  s.king.wary[f] = 0;
   delete s.flags[`waryWarn_${f}`];
   s.flags.lastHwanguk = s.t;
-  kingLean(s, f, -25);
+  s.king.lean[f] = -10;
   for (const o of activeFactions(s)) if (o !== f) kingLean(s, o, 12);
   s.tension = clamp(s.tension + 8, 0, 100);
   log(s, `[환국] 왕이 ${FACTION_META[f].name}의 전횡을 꺾었다. ${holders.map((c) => c.name).join(', ')} 등이 하루아침에 자리에서 물러났다.`, 'history');
@@ -261,7 +265,7 @@ export const KING_EVENTS: Record<string, EventDef> = {
           {
             key: 'ally',
             label: ally ? `같은 당의 ${josa(ally.name, '을/를')} 천거한다` : '같은 당 사람을 천거한다',
-            hint: '그가 6개월간 임용 점수 +8을 받고 신세를 진다. 왕의 마음이 당신 당으로 조금 기운다. 왕의 견제심도 조금 쌓인다.',
+            hint: '그가 6개월간 임용 점수 +8을 받고 신세를 진다. 왕의 마음이 당신 당으로 조금 기운다.',
             disabled: ally ? undefined : '천거할 만한 같은 당 사람이 없다',
           },
           {
@@ -298,8 +302,7 @@ export const KING_EVENTS: Record<string, EventDef> = {
         s.recs[a.id] = s.t + 6;
         owe(s, a.id);
         sway(s, a, p.id, 10, '경연에서 천거', { decay: 0.15 });
-        kingLean(s, p.faction, 5);
-        s.king.wary[p.faction] = (s.king.wary[p.faction] ?? 0) + 5;
+        kingLean(s, p.faction, 2);
         return `${josa(a.name, '을/를')} 천거했다. 그가 신세를 졌다.`;
       }
       if (key === 'other') {
@@ -328,7 +331,7 @@ export function kingSummary(s: GameState): string {
   const fav = favoredFaction(s);
   const parts = [`용안 「${moodLabel(s.king.mood)}」`];
   if (fav) parts.push(`${FACTION_META[fav[0]].name}에 마음이 기울었다`);
-  const wary = activeFactions(s).filter((f) => (s.king.wary[f] ?? 0) >= WARY_WARN);
+  const wary = activeFactions(s).filter((f) => (s.king.lean[f] ?? 0) <= WARY_WARN);
   if (wary.length) parts.push(`${wary.map((f) => FACTION_META[f].name).join('·')}의 독주를 경계한다`);
   return parts.join(' · ');
 }

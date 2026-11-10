@@ -37,7 +37,7 @@ export function computeEnding(s: GameState): Ending {
     { label: '서원·문집', value: pl.built.length * 8 },
     { label: '드러난 흠결', value: -pubFlaws * 6 },
     { label: '유배', value: -pl.stats.exiled * 5 },
-    ...(pl.lineage ?? []).map((a) => ({ label: `선대 ${a.name}의 업적 (${a.score}점의 ${Math.round(ANCESTOR_WEIGHT * 100)}%)`, value: Math.round(a.score * ANCESTOR_WEIGHT) })),
+    ...pl.lineage.map((a) => ({ label: `선대 ${a.name}의 업적 (${a.score}점의 ${Math.round(ANCESTOR_WEIGHT * 100)}%)`, value: Math.round(a.score * ANCESTOR_WEIGHT) })),
   ].filter((b) => b.value !== 0);
   const score = breakdown.reduce((a, b) => a + b.value, 0);
 
@@ -76,7 +76,7 @@ export function computeEnding(s: GameState): Ending {
   const disciples = Object.values(s.chars).filter((c) => c.teacher === p.id);
   if (disciples.length) remarks.push(`문하에서 ${disciples.map((c) => c.name).join(', ')} 등이 나왔다`);
   if (remarks.length) lines.push(`사신(史臣)은 말한다. "${remarks.join('. ')}."`);
-  const anc = pl.lineage ?? [];
+  const anc = pl.lineage;
   if (anc.length)
     lines.push(
       `${p.clan}의 가계: ${anc.map((a) => `${a.name}(${a.peakOffice ?? '벼슬 없음'}, ${yearOf(a.died)}년 졸)`).join(' → ')} → ${p.name}.`,
