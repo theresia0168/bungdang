@@ -2,7 +2,8 @@ import type { Character, FactionId, GameState } from './types';
 import { OFFICE_MAP } from './data/offices';
 import { FLAW_POOL } from './data/meta';
 import { chance, pick, weighted } from './rng';
-import { addFlaw, clamp, hiddenFlaws, inCourt, isP, josa, knownFlaws, notice, P, people, pushEvent } from './state';
+import { addFlaw, alive, clamp, hiddenFlaws, inCourt, isP, josa, knownFlaws, monthsSince, notice, P, people, pushEvent } from './state';
+import { yearOf } from './calendar';
 import { inLaws, opinion, topOf } from './opinion';
 import { activeFactions, members } from './factions';
 import { memorial, recall } from './conflict';
@@ -256,4 +257,41 @@ export function npcMonth(s: GameState) {
     if (isP(s, c)) continue;
     c.favor = clamp(c.favor + (c.favor > 10 ? -0.2 : c.favor < 10 ? 0.2 : 0), -100, 100);
   }
+}
+
+/* ───────── 능력의 부침 ─────────
+ * 해마다 정월에 사람들의 정치력·학식이 오르내린다. 자리에서 단련되면 늘고, 물러나 있거나 늙으면 준다.
+ */
+export function tickStats(s: GameState) {
+  const y = yearOf(s.t);
+  const p = P(s);
+  const lines: string[] = [];
+  for (const c of people(s)) {
+    const me = isP(s, c);
+    const a = y - c.born;
+    const up = (k: 'politics' | 'learning', why: string) => {
+      if (c[k] >= 8) return;
+      c[k]++;
+      if (me) lines.push(`${k === 'politics' ? '정치력' : '학식'} +1 (${why})`);
+    };
+    const down = (k: 'politics' | 'learning', why: string) => {
+      if (c[k] <= 1) return;
+      c[k]--;
+      if (me) lines.push(`${k === 'politics' ? '정치력' : '학식'} -1 (${why})`);
+    };
+    // 노쇠
+    if (a >= 62 && chance(s, 0.12 + (a - 62) * 0.02)) down(chance(s, 0.5) ? 'politics' : 'learning', '노쇠');
+    if (me) {
+      if (monthsSince(s, 'workAt') > 12 && monthsSince(s, 'socialAt') > 12 && chance(s, 0.35)) down('politics', '세상일에서 멀어짐');
+      if (c.learning >= 4 && monthsSince(s, 'studyAt') > 24 && chance(s, 0.3)) down('learning', '학문을 놓음');
+      continue;
+    }
+    if (c.status === 'active' && c.office) {
+      const big = OFFICE_MAP[c.office]?.rank ?? 9;
+      if (a < 60 && chance(s, big <= 3 ? 0.14 : 0.07)) up('politics', '');
+    } else if ((c.status === 'retired' || c.status === 'exiled') && chance(s, 0.12)) down('politics', '');
+    if ((c.traits.includes('scholar') || c.traits.includes('writer')) && a < 65 && chance(s, 0.1)) up('learning', '');
+    else if (c.status === 'retired' && c.traits.includes('recluse') && chance(s, 0.12)) up('learning', '');
+  }
+  if (lines.length && alive(p)) notice(s, '한 해를 돌아보며', `지난 한 해 동안 당신의 능력이 달라졌다.\n\n${lines.join('\n')}`, 'personal');
 }

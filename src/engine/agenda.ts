@@ -11,6 +11,7 @@ import { appoint, appointParts, eligible, holderOf, vacate } from './court';
 import { recall } from './conflict';
 import { isAbroad } from './actions';
 import { fulfillAgainst } from './relations';
+import { lawOn, setLaw } from './laws';
 
 type Stance = Partial<Record<FactionId, number>>;
 type Vote = 'yes' | 'no' | 'abstain';
@@ -118,6 +119,7 @@ export const AGENDAS: AgendaDef[] = [
         const f: FactionId = s.factions.dong.active ? 'dong' : 'nam';
         reg.influence[f] = (reg.influence[f] ?? 0) + 2;
       }
+      setLaw(s, 'hyangyak', true);
       return '팔도에 향약이 반포되었다. 영남과 호서의 사족이 힘을 얻었다.';
     },
     fail: () => '향약은 고을마다 알아서 하도록 맡겨졌다.',
@@ -179,7 +181,8 @@ export const AGENDAS: AgendaDef[] = [
         const p = P(s);
         for (const c of people(s)) if (c.traits.includes('greedy') && c.status === 'active') sway(s, c, p.id, -5, '이권을 막음', { decay: 0.1 });
       }
-      return '공물 일부를 쌀로 거두기로 했다. 백성의 짐이 가벼워졌다. 방납하던 자들이 이를 간다.';
+      setLaw(s, 'sumi', true);
+      return '공물 일부를 쌀로 거두기로 했다. 백성의 짐이 가벼워졌다. 방납하던 자들이 이를 간다. (수미법 시행)';
     },
     fail: () => '공물 변통은 없던 일이 되었다.',
   },
@@ -223,7 +226,7 @@ export const AGENDAS: AgendaDef[] = [
     yes: () => '서얼에게 길을 열자',
     no: () => '명분을 지켜야 한다',
     pass(s) {
-      s.flags.seoeolOpen = true;
+      setLaw(s, 'seoeol', true);
       s.war.preparedness = clamp(s.war.preparedness + 4, 0, 100);
       return '서얼도 곡식을 바치면 벼슬할 수 있게 되었다.';
     },
@@ -244,7 +247,8 @@ export const AGENDAS: AgendaDef[] = [
     pass(s) {
       s.war.preparedness = clamp(s.war.preparedness + 12, 0, 100);
       allMinsim(s, -4);
-      return '각 도에 군사를 뽑고 성을 고치라는 명이 내려갔다. 고을마다 원성이 들린다.';
+      setLaw(s, 'yangbyeong', true);
+      return '각 도에 군사를 뽑고 성을 고치라는 명이 내려갔다. 고을마다 원성이 들린다. (양병이 시행된다)';
     },
     fail(s) {
       s.war.preparedness = clamp(s.war.preparedness - 2, 0, 100);
@@ -265,7 +269,8 @@ export const AGENDAS: AgendaDef[] = [
     pass(s) {
       s.war.preparedness = clamp(s.war.preparedness + 6, 0, 100);
       allMinsim(s, -3, ['jeolla', 'gyeongsang']);
-      return '전라·경상의 수영에 배를 더 짓게 했다.';
+      for (const r of ['jeolla', 'gyeongsang'] as RegionId[]) s.regions[r].defense.navy = Math.min(3, s.regions[r].defense.navy + 1);
+      return '전라·경상의 수영에 배를 더 짓게 했다. (두 도의 수군 +1)';
     },
     fail: () => '남해 방비는 수령들에게 맡겨졌다.',
   },
@@ -338,16 +343,23 @@ export const AGENDAS: AgendaDef[] = [
     repeat: 10,
     weight: 1.2,
     prepare(s) {
+      const fresh = (c: Character) => c.flaws.find((f) => f.public && !f.aired && f.label !== '무고(誣告)');
       const pool = people(s).filter(
-        (c) => !isP(s, c) && c.status === 'active' && c.office && c.faction !== 'none' && c.flaws.some((f) => f.public && f.label !== '무고(誣告)'),
+        (c) => !isP(s, c) && c.status === 'active' && c.office && c.faction !== 'none' && !!fresh(c) && monthsSince(s, `tamhak_${c.id}`) >= 36,
       );
-      return pool.length ? { who: pick(s, pool).id } : null;
+      if (!pool.length) return null;
+      const w = pick(s, pool);
+      const f = fresh(w)!;
+      // 한 번 조정에서 다룬 허물은 다시 쟁점으로 올리지 않는다
+      f.aired = s.t;
+      s.flags[`tamhak_${w.id}`] = s.t;
+      return { who: w.id, flaw: f.label };
     },
     title: '탐학한 관원의 처분',
     text(s, c) {
       const w = s.chars[c.who];
-      const f = w.flaws.find((x) => x.public)!;
-      return `${officeTitle(w)} ${w.name}(${FACTION_META[w.faction].name})의 「${f.label}」 건이 조정에 알려졌다. 대간은 파직하자고 하고, 그와 같은 당은 사소한 허물이라며 감싼다.`;
+      const label = c.flaw ?? w.flaws.find((x) => x.public)?.label ?? '비행';
+      return `${officeTitle(w)} ${w.name}(${FACTION_META[w.faction].name})의 「${label}」 건이 조정에 알려졌다. 대간은 파직하자고 하고, 그와 같은 당은 사소한 허물이라며 감싼다.`;
     },
     stance(s, c) {
       const w = s.chars[c.who];
@@ -464,6 +476,8 @@ export const AGENDAS: AgendaDef[] = [
 ];
 
 const AGENDA_MAP = Object.fromEntries(AGENDAS.map((a) => [a.id, a]));
+/** 이미 시행된 법을 다시 논하지 않도록 */
+const AGENDA_LAW: Record<string, string> = { gongnap: 'sumi', hyangyak: 'hyangyak', seoeol: 'seoeol', yangbyeong: 'yangbyeong' };
 
 const STRENGTH = (v: number) => (Math.abs(v) >= 0.8 ? '강하게 ' : Math.abs(v) >= 0.4 ? '' : '다소 ');
 const sideWord = (v: number) => (v > 0 ? '찬성' : v < 0 ? '반대' : '관망');
@@ -545,6 +559,7 @@ export function rollAgenda(s: GameState) {
     if (s.t < tOf(a.from[0], a.from[1]) || s.t > tOf(a.to[0], a.to[1])) continue;
     const prev = s.flags[`ag_${a.id}`];
     if (typeof prev === 'number' && (!a.repeat || s.t - prev < a.repeat)) continue;
+    if (AGENDA_LAW[a.id] && lawOn(s, AGENDA_LAW[a.id])) continue;
     pool.push([a, a.weight ?? 1]);
   }
   if (!pool.length) return;

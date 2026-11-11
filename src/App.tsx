@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { GameState } from './engine/types';
-import { newGame, type StartChoice } from './engine/setup';
+import { newGame, upgrade, type StartChoice } from './engine/setup';
 import { advanceMonth } from './engine/turn';
 import { updateGuide } from './engine/tutorial';
 import { Ctx } from './ui/ctx';
@@ -17,7 +17,7 @@ function loadSave(): GameState | null {
     const raw = localStorage.getItem(SAVE_KEY);
     if (!raw) return null;
     const s = JSON.parse(raw) as GameState;
-    return s.version === 3 ? s : null;
+    return s.version === 3 || s.version === 4 ? upgrade(s) : null;
   } catch {
     return null;
   }

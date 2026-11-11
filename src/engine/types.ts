@@ -39,6 +39,8 @@ export interface Flaw {
   t: number;
   /** 날조된 혐의. 탄핵이 실패하면 들통날 수 있다. */
   fake?: boolean;
+  /** 조정 쟁점으로 이미 다루어진 달. 같은 허물로 거듭 논하지 않는다. */
+  aired?: number;
 }
 
 export interface Character {
@@ -83,6 +85,8 @@ export interface Character {
   /** 지낸 관직별로 물러난 달. 같은 자리에 곧바로 다시 앉지 않는다. */
   leftOffices?: Record<string, number>;
   teacher?: string;
+  /** 살면서 당적을 바꾼 횟수 */
+  switched?: number;
   /** 지금 이 사람이 바라는 것. 들어주면 크게 고마워한다. */
   want?: Want;
   historical: boolean;
@@ -128,6 +132,10 @@ export interface Race {
   candidates: string[];
   /** 후보별 지지한 사람 */
   backers: Record<string, string[]>;
+  /** 경쟁이 시작될 때 자리에 있던 사람. 그가 물러나야 할 때만 물린다. */
+  holder?: string;
+  /** 이조가 의망하여 왕이 낙점한 후보 */
+  nominee?: string;
 }
 
 export interface KingState {
@@ -151,7 +159,7 @@ export interface OpinionMod {
 }
 
 export type FocusKind = 'duty' | 'study' | 'social' | 'teach' | 'estate' | 'rest' | 'seowon' | 'munjip' | 'memorial';
-export type MemorialTopic = 'sipye' | 'jojae' | 'recall';
+export type MemorialTopic = 'sipye' | 'jojae' | 'recall' | 'law';
 export type ProjectKind = 'seowon' | 'munjip';
 
 /** 여러 달에 걸친 논핵. 그동안 양쪽이 동조자와 구원자를 모은다. */
@@ -192,6 +200,10 @@ export interface Focus {
   kind: FocusKind;
   topic?: MemorialTopic;
   targetId?: string;
+  /** 변법 상소: 다룰 법 */
+  lawId?: string;
+  /** 변법 상소: 폐지를 청하는가 */
+  abolish?: boolean;
   progress: number;
   required: number;
   cosigners: string[];
@@ -258,6 +270,72 @@ export interface PlayerState {
   lineage: Ancestor[];
   /** 첫 해 길잡이에서 해낸 단계 */
   guide: string[];
+  /** 이번 달에 이미 한 월간 행동 */
+  done: string[];
+  /** 강학의 진척 (6이 되면 문인 +1) */
+  teach: number;
+  /** 가진 전장(田莊). 가을마다 소작료가 들어온다 */
+  land: number;
+  /** 장부에서 뺀 은결(隱結). 세를 내지 않아 소출이 더 들어오지만 들키면 흠결이 된다 */
+  hiddenLand: number;
+  /** 빌려준 장리(長利) */
+  loans: { amount: number; due: number }[];
+  /** 살면서 당적을 바꾼 횟수 */
+  factionChanges: number;
+}
+
+export interface RegionDefense {
+  /** 성곽 0~5 */
+  fort: number;
+  /** 진보(鎭堡) 0~3 */
+  jin: number;
+  /** 군사 조련 0~100 */
+  drill: number;
+  /** 수군 판옥선 0~3 (바닷가 도) */
+  navy: number;
+}
+
+export type RealmProjectKind = 'fort' | 'jin' | 'drill' | 'navy' | 'dyke' | 'survey' | 'palace' | 'relief';
+
+/** 나라에서 벌이는 사업. 국고에서 다달이 비용이 나간다. */
+export interface RealmProject {
+  id: string;
+  kind: RealmProjectKind;
+  region?: RegionId;
+  /** 맡은 사람 */
+  by: string;
+  left: number;
+  cost: number;
+  started: number;
+  /** 맡은 이가 공사비를 빼돌린다 */
+  skim?: boolean;
+}
+
+export interface Ledger {
+  t: number;
+  revenue: number;
+  byRegion: Partial<Record<RegionId, { due: number; got: number; gamsa: number; suryeong: number }>>;
+}
+
+export interface RealmState {
+  /** 국고 */
+  treasury: number;
+  /** 지난해 세입 */
+  ledger: Ledger | null;
+  /** 지난달 지출 내역 */
+  spent: { label: string; value: number }[];
+  /** 왕실 경비 수준 0.6~1.4 */
+  royal: number;
+  projects: RealmProject[];
+  /** 국고가 바닥난 지 몇 달 */
+  broke: number;
+  /** 임진년의 전황: 막아냄 / 역사대로 / 무너짐 */
+  warPath?: 'held' | 'history' | 'rout';
+}
+
+export interface LawState {
+  on: boolean;
+  since: number;
 }
 
 export interface Ancestor {
@@ -283,6 +361,11 @@ export interface RegionState {
   tags: string[];
   /** 올해 작황. -2 대흉, -1 흉작, 0 평년, 1 풍작 */
   harvest?: number;
+  defense: RegionDefense;
+  /** 장부에서 빠진 땅의 비율 0~0.5 */
+  hidden: number;
+  /** 감찰로 수령의 착복이 줄어드는 시점 */
+  inspectUntil?: number;
 }
 
 export type SituationKind = 'heir' | 'scandal' | 'omen' | 'illness' | 'inlaw';
@@ -360,6 +443,8 @@ export interface GameState {
   line: Partial<Record<FactionId, number>>;
   situations: Situation[];
   royal: RoyalState;
+  realm: RealmState;
+  laws: Record<string, LawState>;
   nextId: number;
   over?: { reason: string; t: number };
 }

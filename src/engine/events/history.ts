@@ -14,6 +14,9 @@ import { caseById, openCase } from '../cases';
 import { members } from '../factions';
 import { fromRoster, leanOf } from '../generate';
 import { endDebateByHistory, settleHeir } from '../royal';
+import { decideWarPath, defenseScore, warReadiness } from '../realm';
+import { kingMood } from '../king';
+import { setLaw } from '../laws';
 
 const live = (s: GameState, id: string): Character | undefined => (alive(s.chars[id]) ? s.chars[id] : undefined);
 const pIs = (s: GameState, id: string) => s.player.charId === id;
@@ -50,6 +53,24 @@ function eulhaeAftermath(s: GameState) {
 }
 
 // ───────────────────────────── 계미삼찬 ─────────────────────────────
+
+const PANSEO = ['ijo', 'hojo', 'yejo', 'byeongjo', 'hyeongjo', 'gongjo'];
+/** 지금 앉아 있거나 가장 최근에 지낸 판서 자리 */
+function panseoOf(c: Character | undefined): string | undefined {
+  if (!c) return undefined;
+  if (c.office && PANSEO.includes(c.office)) return c.office;
+  const left = Object.entries(c.leftOffices ?? {}).filter(([id]) => PANSEO.includes(id));
+  left.sort((a, b) => b[1] - a[1]);
+  return left[0]?.[0];
+}
+const PANSEO_ABUSE: Record<string, [string, string]> = {
+  ijo: ['이조판서', '인사(人事)'],
+  hojo: ['호조판서', '재정(財政)'],
+  yejo: ['예조판서', '예정(禮政)'],
+  byeongjo: ['병조판서', '병정(兵政)'],
+  hyeongjo: ['형조판서', '형옥(刑獄)'],
+  gongjo: ['공조판서', '공역(工役)'],
+};
 
 function gyemiOutcome(s: GameState, extra: string[] = []) {
   for (const id of ['song_eunggae', 'heo_bong', ...extra]) {
@@ -206,7 +227,8 @@ export const SCHEDULE: Scheduled[] = [
     id: 'gyemi',
     at: [1583, 6],
     window: 6,
-    cond: (s) => live(s, 'yi_i')?.status === 'active',
+    // 판서를 지내며 그 권한을 휘두른 일이 있어야 탄핵거리가 된다
+    cond: (s) => live(s, 'yi_i')?.status === 'active' && !!panseoOf(s.chars.yi_i),
     run(s) {
       const p = P(s);
       if (pIs(s, 'yi_i') || (inCourt(p) && (pTop(s) === 'dong' || p.faction === 'seo'))) pushEvent(s, 'h_gyemi');
@@ -311,8 +333,14 @@ export const SCHEDULE: Scheduled[] = [
     at: [1592, 4],
     run(s) {
       s.war.active = true;
-      s.war.zones = [...WAR_ZONES_1592];
-      log(s, '임진왜란: 왜군 15만이 부산포에 상륙했다. 부산진과 동래성이 하루 만에 무너졌다.', 'war');
+      const path = decideWarPath(s);
+      const ready = warReadiness(s).score;
+      s.war.zones = path === 'held' ? ['gyeongsang', 'chungcheong'] : [...WAR_ZONES_1592];
+      if (path === 'held')
+        log(s, `임진왜란: 왜군 15만이 부산포에 상륙했다. 그러나 미리 쌓은 성과 조련한 군사가 고을마다 버티며 왜군의 발을 묶었다. (전쟁 대비 ${ready})`, 'war');
+      else if (path === 'rout')
+        log(s, `임진왜란: 왜군 15만이 부산포에 상륙했다. 성은 허물어져 있고 군적은 빈 이름뿐이라, 왜군이 거의 싸움 없이 북상한다. (전쟁 대비 ${ready})`, 'war');
+      else log(s, `임진왜란: 왜군 15만이 부산포에 상륙했다. 부산진과 동래성이 하루 만에 무너졌다. (전쟁 대비 ${ready})`, 'war');
       const gh = live(s, 'gwanghae');
       if (gh && !s.heir) {
         settleHeir(s, gh.id, 'war');
@@ -321,9 +349,10 @@ export const SCHEDULE: Scheduled[] = [
       const cheol = live(s, 'jeong_cheol');
       if (cheol?.status === 'exiled') recall(s, cheol);
       for (const c of people(s)) if (c.status === 'exiled' && !isP(s, c) && chance(s, 0.3)) recall(s, c);
-      for (const r of WAR_ZONES_1592) s.regions[r].minsim = clamp(s.regions[r].minsim - 25, 0, 100);
+      const hit = path === 'rout' ? 35 : path === 'held' ? 15 : 25;
+      for (const r of s.war.zones) s.regions[r].minsim = clamp(s.regions[r].minsim - hit, 0, 100);
       const p = P(s);
-      if (WAR_ZONES_1592.includes(p.home)) p.wealth = Math.round(p.wealth * 0.7);
+      if (s.war.zones.includes(p.home)) p.wealth = Math.round(p.wealth * (path === 'rout' ? 0.55 : 0.7));
       if (s.flags.warned) {
         p.prestige = clamp(p.prestige + 8, 0, 100);
         notice(s, '경고가 옳았다', '왜의 침략을 경고했던 당신의 말이 옳았음이 드러났다. 명망 +8', 'war');
@@ -331,8 +360,43 @@ export const SCHEDULE: Scheduled[] = [
       pushEvent(s, 'h_imjin');
     },
   },
-  { id: 'w1', at: [1592, 5], run: warLog('한성이 함락되었다. 왕은 평양으로 몽진했다. 성난 백성들이 궁궐에 불을 질렀다.') },
-  { id: 'w2', at: [1592, 6], run: warLog('평양이 함락되었다. 어가는 의주로 향했다. 세자 광해군은 분조(分朝)를 이끌고 각지를 돌며 의병을 독려했다.') },
+  {
+    id: 'w1',
+    at: [1592, 5],
+    run(s) {
+      if (s.realm.warPath === 'held') {
+        log(s, '신립과 이일의 군사가 조령의 관문과 충주성을 지켜 냈다. 왜군은 고개를 넘지 못하고 경상도로 물러났다. 도성은 무사하다.', 'war');
+        s.war.preparedness = clamp(s.war.preparedness + 5, 0, 100);
+        return;
+      }
+      log(s, '한성이 함락되었다. 왕은 평양으로 몽진했다. 성난 백성들이 궁궐에 불을 질렀다.', 'war');
+    },
+  },
+  {
+    id: 'w2',
+    at: [1592, 6],
+    run(s) {
+      const path = s.realm.warPath;
+      if (path === 'held') {
+        log(s, '왜군이 경상도 남해안의 성에 틀어박혔다. 조정은 도성을 지키며 각 도의 근왕병을 모은다.', 'war');
+        s.war.zones = ['gyeongsang'];
+        return;
+      }
+      if (path === 'rout' && chance(s, 0.6)) {
+        s.flags.kingCaptive = true;
+        kingMood(s, -40);
+        log(s, '평양으로 가던 어가가 임진강가에서 왜군 선봉에 따라잡혔다. 왕이 사로잡혔다! 세자 광해군이 분조를 이끌고 나라를 지탱한다.', 'war');
+        for (const r of ['pyeongan', 'hwanghae'] as RegionId[]) s.regions[r].minsim = clamp(s.regions[r].minsim - 15, 0, 100);
+        const p = P(s);
+        if (inCourt(p) && p.status !== 'exiled' && chance(s, 0.25) && p.office) {
+          notice(s, '사로잡힌 어가', '어가를 따르던 길에 왜군의 습격을 받았다. 겨우 목숨을 건졌으나 크게 다쳤다.', 'war');
+          s.player.sick = true;
+        }
+        return;
+      }
+      log(s, '평양이 함락되었다. 어가는 의주로 향했다. 세자 광해군은 분조(分朝)를 이끌고 각지를 돌며 의병을 독려했다.', 'war');
+    },
+  },
   { id: 'w3', at: [1592, 7], run: warLog('이순신이 한산도 앞바다에서 왜 수군을 크게 무찔렀다.') },
   { id: 'w4', at: [1592, 10], run: warLog('김시민이 진주성에서 왜군의 대공세를 막아냈다.') },
   {
@@ -344,9 +408,21 @@ export const SCHEDULE: Scheduled[] = [
     }),
   },
   { id: 'w6', at: [1592, 12], run: warLog('명나라 이여송이 4만 원군을 이끌고 압록강을 건넜다.') },
-  { id: 'w7', at: [1593, 1], run: warLog('조명 연합군이 평양성을 되찾았다.') },
+  {
+    id: 'w7',
+    at: [1593, 1],
+    run(s) {
+      if (s.realm.warPath === 'held') return log(s, '명나라 원군과 함께 남해안의 왜성을 에워쌌다.', 'war');
+      if (s.flags.kingCaptive) {
+        delete s.flags.kingCaptive;
+        kingMood(s, 20);
+        return log(s, '조명 연합군이 평양성을 되찾았다. 왜군이 끌고 다니던 왕을 강화 협상의 볼모로 내놓고 물러났다. 왕이 반년 만에 풀려났다.', 'war');
+      }
+      log(s, '조명 연합군이 평양성을 되찾았다.', 'war');
+    },
+  },
   { id: 'napsok', at: [1593, 2], cond: (s) => P(s).status !== 'exiled' && P(s).wealth >= 20, run: (s) => pushEvent(s, 'h_napsok') },
-  { id: 'w8', at: [1593, 2], run: warLog('권율이 행주산성에서 왜군을 대파했다.') },
+  { id: 'w8', at: [1593, 2], cond: (s) => s.realm.warPath !== 'held', run: warLog('권율이 행주산성에서 왜군을 대파했다.') },
   {
     id: 'w9',
     at: [1593, 4],
@@ -355,10 +431,11 @@ export const SCHEDULE: Scheduled[] = [
     }),
   },
   { id: 'w10', at: [1593, 6], run: warLog('진주성이 다시 함락되어 성 안의 군민이 몰살당했다.') },
-  { id: 'w11', at: [1593, 8], run: warLog('훈련도감을 설치해 포수·사수·살수의 삼수병을 기르기 시작했다.') },
+  { id: 'w11', at: [1593, 8], run: warLog('훈련도감을 설치해 포수·사수·살수의 삼수병을 기르기 시작했다.', (s) => setLaw(s, 'hullyeon', true)) },
   {
     id: 'w12',
     at: [1593, 10],
+    cond: (s) => s.realm.warPath !== 'held',
     run: warLog('왕이 한성으로 돌아왔다. 궁궐이 모두 불타 월산대군의 옛집을 행궁으로 삼았다.', (s) => {
       const p = P(s);
       if (s.flags.hojong && inCourt(p)) p.location = 'hanseong';
@@ -370,7 +447,10 @@ export const SCHEDULE: Scheduled[] = [
     id: 'w15',
     at: [1597, 1],
     run: warLog('정유재란: 왜군이 다시 바다를 건너왔다.', (s) => {
-      s.war.zones = ['gyeongsang', 'jeolla', 'chungcheong'];
+      // 전라도가 단단히 지키면 호남이 짓밟히지 않는다
+      const jl = defenseScore(s, 'jeolla');
+      s.war.zones = jl >= 55 ? ['gyeongsang'] : ['gyeongsang', 'jeolla', 'chungcheong'];
+      if (jl >= 55) log(s, '전라도의 성과 수영이 단단해 왜군이 호남으로 넘어오지 못했다.', 'war');
       for (const r of s.war.zones) s.regions[r].minsim = clamp(s.regions[r].minsim - 15, 0, 100);
     }),
   },
@@ -649,9 +729,13 @@ export const HISTORY_EVENTS: Record<string, EventDef> = {
       return {
         title: '계미삼찬(癸未三竄)',
         kind: 'history',
-        text: self
-          ? '동인 삼사가 일제히 당신을 탄핵했다. 병조판서로서 왕의 재가 없이 일을 처리했고, 왕의 부름에 병을 핑계로 나오지 않았다는 것이다.'
-          : '동인 삼사의 송응개·허봉·박근원이 이이를 탄핵했다. 왕의 재가 없이 병정(兵政)을 처리했다는 것이다. 왕은 이이를 감싸는 기색이다.',
+        text: (() => {
+          const [title, field] = PANSEO_ABUSE[panseoOf(s.chars.yi_i) ?? 'byeongjo'];
+          const was = s.chars.yi_i.office && PANSEO.includes(s.chars.yi_i.office) ? '' : '지난날 ';
+          return self
+            ? `동인 삼사가 일제히 당신을 탄핵했다. ${was}${title}로서 왕의 재가 없이 ${field}을 멋대로 처리했고, 왕의 부름에 병을 핑계로 나오지 않았다는 것이다.`
+            : `동인 삼사의 송응개·허봉·박근원이 이이를 탄핵했다. ${was}${title}로서 왕의 재가 없이 ${field}을 처리했다는 것이다. 왕은 이이를 감싸는 기색이다.`;
+        })(),
         choices: self
           ? [
               { key: 'resign', label: '스스로 물러나기를 청한다', hint: '낙향. 명망 +6, 성심 +10. 왕이 탄핵한 자들을 벌한다.' },
@@ -981,8 +1065,12 @@ export const HISTORY_EVENTS: Record<string, EventDef> = {
   h_imjin: {
     build(s) {
       const p = P(s);
-      const text =
-        '왜군이 부산에 상륙해 파죽지세로 북상하고 있다. 상주와 충주에서 관군이 무너졌다는 급보가 잇따른다. 왕은 도성을 버리고 피란길에 오르려 한다.';
+      const held = s.realm.warPath === 'held';
+      const text = held
+        ? '왜군이 부산에 상륙했다. 그러나 동래와 밀양의 성이 버티고, 미리 조련한 군사가 고개마다 지키고 있다. 조정은 도성을 지키며 근왕병을 모으기로 했다.'
+        : s.realm.warPath === 'rout'
+          ? '왜군이 부산에 상륙해 거침없이 북상하고 있다. 성은 무너져 있고 군사는 흩어졌다. 열흘 만에 충주가 떨어졌다는 급보가 들어왔다. 왕은 도성을 버리고 피란길에 오르려 한다.'
+          : '왜군이 부산에 상륙해 파죽지세로 북상하고 있다. 상주와 충주에서 관군이 무너졌다는 급보가 잇따른다. 왕은 도성을 버리고 피란길에 오르려 한다.';
       if (p.status === 'exiled')
         return {
           title: '임진왜란',

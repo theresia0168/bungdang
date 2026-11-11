@@ -106,6 +106,9 @@ export function noteContact(s: GameState, t: Character, kind: keyof typeof CONTA
   const pl = s.player;
   const n = recentContacts(s, t.id);
   pl.contacts[t.id] = [...(pl.contacts[t.id] ?? []).filter((m) => s.t - m < 12), s.t];
+  // 사람을 만나는 것도 처세를 익히는 일이다
+  s.flags.socialAt = s.t;
+  pl.exp.politics += 0.5;
   const out: string[] = [];
   if (n >= 2 && t.rank <= 2 && p.rank >= t.rank + 2 && t.status === 'active' && chance(s, 0.4)) {
     p.prestige = clamp(p.prestige - 1, 0, 100);

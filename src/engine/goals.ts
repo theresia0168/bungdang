@@ -59,12 +59,12 @@ export const GOALS: Record<GoalKind, GoalDef> = {
   },
   seowon: {
     name: () => '고향에 서원을 세운다',
-    desc: '이번 달의 일에서 「서원 건립」을 고른다.',
+    desc: '이달의 행동에서 「서원 건립」을 거듭한다.',
     progress: (s) => ({ text: `${s.player.projects.seowon ?? 0}/${PROJECTS.seowon.months}개월`, done: s.player.built.includes('seowon') }),
   },
   munjip: {
     name: () => '문집을 펴낸다',
-    desc: '이번 달의 일에서 「문집 편찬」을 고른다. 학식 4 이상.',
+    desc: '이달의 행동에서 「문집 편찬」을 거듭한다. 학식 4 이상.',
     progress: (s) => ({ text: `${s.player.projects.munjip ?? 0}/${PROJECTS.munjip.months}개월`, done: s.player.built.includes('munjip') }),
   },
   family: {

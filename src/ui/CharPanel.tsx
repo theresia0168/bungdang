@@ -225,7 +225,7 @@ export function CharPanel({ id }: { id: string }) {
                   <b>
                     {a.name}
                     <span className={`cost ${cost === 'authority' ? 'auth' : cost === 0 ? 'free' : ''}`}>
-                      {cost === 'authority' ? '직권' : cost === 0 ? '이번 달의 일' : '●'.repeat(cost)}
+                      {cost === 'authority' ? '직권' : cost === 0 ? '상소' : '●'.repeat(cost)}
                     </span>
                   </b>
                   <span>{err ?? a.desc}</span>

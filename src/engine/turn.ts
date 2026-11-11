@@ -6,7 +6,8 @@ import { alive, clamp, isP, josa, log, notice, P, pushEvent } from './state';
 import { decayMods } from './opinion';
 import { checkSplit, updateLeaders } from './factions';
 import { fillVacancies, holderOf, settleRaces, tickRaces, turnover } from './court';
-import { npcMonth } from './npc';
+import { npcMonth, tickStats } from './npc';
+import { collectTaxes, tickRealm, tickWarFront } from './realm';
 import { kill } from './conflict';
 import { refreshAp, RETAINER_UPKEEP, tickFocus, tickScheme } from './actions';
 import { rollAudience, tickKing } from './king';
@@ -29,7 +30,8 @@ import { updateGuide } from './tutorial';
 function income(s: GameState) {
   const p = P(s);
   if (p.status === 'active' && p.office) {
-    p.wealth += salaryOf(p.rank) * 0.5 + (p.office === 'hojo' ? 2 : 0);
+    // 국고가 바닥나면 녹봉이 반으로 깎인다
+    p.wealth += (salaryOf(p.rank) * 0.5 + (p.office === 'hojo' ? 2 : 0)) * (s.realm.treasury < 0 ? 0.5 : 1);
   }
   p.wealth += 0.5;
   const pl = s.player;
@@ -171,6 +173,10 @@ export function advanceMonth(s: GameState) {
   tickParty(s);
   tickRoyal(s);
   tickSituations(s);
+  tickRealm(s);
+  if (m === 10) collectTaxes(s);
+  tickWarFront(s);
+  if (m === 1) tickStats(s);
   destinyChecks(s);
   warTick(s);
   if (m === 3 && (y - 1576) % 3 === 0) exam(s);

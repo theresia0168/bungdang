@@ -69,7 +69,6 @@ export const SALLIM_EVENTS: Record<string, EventDef> = {
       if (key === 'go') {
         p.status = 'idle';
         p.location = 'hanseong';
-        if (s.player.focus?.kind === 'teach') s.player.focus = null;
         s.recs[p.id] = s.t + 6;
         fav(p, 3);
         return '역마를 타고 한성으로 올라왔다. (6개월간 임용 점수 +8, 성심 +3)';

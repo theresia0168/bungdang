@@ -2246,3 +2246,138 @@ button.mini:disabled {
   text-align: center;
   color: var(--green);
 }
+
+/* ───────── 국정 ───────── */
+.bad-text {
+  color: #e07a5f;
+}
+.realm {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+  gap: 0 14px;
+  align-items: start;
+}
+.realm-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  margin: 4px 0 8px;
+}
+.realm-big {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--gold2);
+  display: flex;
+  flex-direction: column;
+  line-height: 1.1;
+}
+.realm-big.bad-text {
+  color: #e07a5f;
+}
+.realm-big.good-text {
+  color: var(--green);
+}
+.realm-big small {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--muted);
+}
+.ledger {
+  list-style: none;
+  padding: 0;
+  margin: 6px 0;
+}
+.ledger li {
+  display: flex;
+  justify-content: space-between;
+  border-bottom: 1px dotted var(--line);
+  padding: 2px 0;
+  font-size: 13px;
+}
+.realm-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  margin-top: 6px;
+}
+.realm-table th,
+.realm-table td {
+  border-bottom: 1px solid var(--line);
+  padding: 3px 4px;
+  text-align: right;
+}
+.realm-table th:first-child,
+.realm-table td:first-child,
+.realm-table td:last-child {
+  text-align: left;
+}
+.realm-table th {
+  color: var(--muted);
+  font-weight: 400;
+}
+.realm-table tr.war-row td {
+  background: rgba(192, 71, 47, 0.15);
+}
+.propose,
+.law-pick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0;
+}
+.propose select,
+.law-pick select,
+.nominate select {
+  background: var(--bg2);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 4px;
+  font: inherit;
+  font-size: 12px;
+  max-width: 100%;
+}
+.law-pick select {
+  flex: 1;
+  min-width: 0;
+}
+.laws {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.laws li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line);
+}
+.law-state {
+  align-self: flex-start;
+  font-size: 11px;
+  padding: 0 6px;
+  border: 1px solid var(--line2);
+  border-radius: 8px;
+  color: var(--muted);
+}
+.law-state.on {
+  color: var(--bg);
+  background: var(--gold);
+  border-color: var(--gold);
+}
+.nominate {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.nominate select {
+  flex: 1;
+  min-width: 0;
+}
+@media (max-width: 700px) {
+  .realm {
+    grid-template-columns: 1fr;
+  }
+}

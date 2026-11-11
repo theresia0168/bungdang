@@ -12,9 +12,11 @@ import { RegionTab } from './tabs/RegionTab';
 import { ChronicleTab } from './tabs/ChronicleTab';
 import { RoyalTab } from './tabs/RoyalTab';
 import { NetworkTab } from './tabs/NetworkTab';
+import { RealmTab } from './tabs/RealmTab';
 
 const TABS = [
   { id: 'court', name: '조정', el: CourtTab },
+  { id: 'realm', name: '국정', el: RealmTab },
   { id: 'royal', name: '왕실', el: RoyalTab },
   { id: 'people', name: '인물', el: PeopleTab },
   { id: 'network', name: '인맥', el: NetworkTab },

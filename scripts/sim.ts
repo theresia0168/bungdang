@@ -3,10 +3,10 @@ import { newGame, PLAYABLE } from '../src/engine/setup';
 import { advanceMonth, resolveEvent } from '../src/engine/turn';
 import { viewEvent } from '../src/engine/events';
 import { computeEnding } from '../src/engine/ending';
+import { warReadiness } from '../src/engine/realm';
 import { P } from '../src/engine/state';
 import { FACTION_META } from '../src/engine/data/meta';
-import { TARGET_ACTIONS, FOCUS_INFO, runSelfAction, setFocus } from '../src/engine/actions';
-import type { FocusKind } from '../src/engine/types';
+import { TARGET_ACTIONS, MONTHLY, runMonthly, runSelfAction, startMemorial } from '../src/engine/actions';
 
 const runs = Number(process.argv[2] ?? 3);
 const ids = [...PLAYABLE.map((p) => p.id)];
@@ -38,10 +38,8 @@ for (const id of ids) {
       }
       // 낙향해 있으면 다시 벼슬을 구하러 올라간다 (시묘·처분 중이면 저절로 막힌다)
       if (P(s).status === 'retired' && s.t % 6 === 0) runSelfAction(s, 'capital');
-      if (!s.player.focus) {
-        const kinds = Object.keys(FOCUS_INFO) as FocusKind[];
-        setFocus(s, kinds[s.t % 5], 'sipye');
-      }
+      for (const a of MONTHLY) if (!a.estate || s.t % 3 === 0) runMonthly(s, a.id);
+      if (!s.player.focus && s.t % 7 === 0) startMemorial(s, 'law', { lawId: 'sumi' });
       advanceMonth(s);
     }
     const p = P(s);
@@ -54,7 +52,7 @@ for (const id of ids) {
     console.log(
       `${id.padEnd(15)} run${r} end=${1575 + Math.floor(s.t / 12)}.${(s.t % 12) + 1} ${s.over?.reason.slice(0, 18).padEnd(18)} ` +
         `office=${(s.player.peakOffice ?? '-').padEnd(8)} prestige=${Math.round(p.prestige)} faction=${FACTION_META[p.faction].name} ` +
-        `score=${e.score} chars=${alive} mods=${s.mods.length} log=${s.log.length} acts=${actions} factions=${factions} tension=${Math.round(s.tension)} flags=${['gichuk', 'geonjeo', 'daedong'].filter((k) => s.flags[k]).join(',')}`,
+        `score=${e.score} chars=${alive} mods=${s.mods.length} log=${s.log.length} acts=${actions} treasury=${Math.round(s.realm.treasury)} war=${s.realm.warPath ?? '-'} ready=${warReadiness(s).score} pol=${p.politics}/${p.learning} age=${1575 + Math.floor(s.t / 12) - p.born} laws=${Object.entries(s.laws).filter(([, v]) => v.on).map(([k]) => k).join(',')} factions=${factions} tension=${Math.round(s.tension)} flags=${['gichuk', 'geonjeo', 'daedong'].filter((k) => s.flags[k]).join(',')}`,
     );
   }
 }

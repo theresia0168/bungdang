@@ -54,17 +54,19 @@ function startScandal(s: GameState) {
   const p = P(s);
   const pool = people(s).filter((c) => c.status === 'active' && c.office && OFFICE_MAP[c.office] && c.rank <= 3 && c.faction !== 'none' && !caseOn(s, c.id));
   const meHit = !!p.office && p.status === 'active' && p.rank <= 4 && hiddenFlaws(p).length > 0 && chance(s, 0.15);
-  const who = meHit ? p : pick(s, pool.filter((c) => !isP(s, c)));
+  const who = meHit ? p : pick(s, pool.filter((c) => !isP(s, c) && monthsSince(s, `scandal_${c.id}`) >= 48));
   if (!who) return;
+  s.flags[`scandal_${who.id}`] = s.t;
   const hidden = hiddenFlaws(who);
   let label: string;
   if (hidden.length && chance(s, 0.6)) {
     const f = hidden[randInt(s, 0, hidden.length - 1)];
     f.public = true;
+    f.aired = s.t;
     label = f.label;
   } else {
     label = pick(s, SCANDALS);
-    addFlaw(s, who, label, true);
+    addFlaw(s, who, label, true).aired = s.t;
   }
   begin(s, 'scandal', randInt(s, 4, 6), { who: who.id, faction: who.faction, label });
   s.tension = clamp(s.tension + 4, 0, 100);

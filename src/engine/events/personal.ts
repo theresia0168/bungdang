@@ -144,7 +144,6 @@ export const PERSONAL_EVENTS: Record<string, EventDef> = {
       }
       s.player.sick = true;
       if (key === 'rest') {
-        s.player.focus = { kind: 'rest', progress: 0, required: 0, cosigners: [] };
         return '요양에 들어갔다.';
       }
       if (chance(s, 0.3) && p.vigor > 1) {

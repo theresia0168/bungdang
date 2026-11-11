@@ -3,7 +3,7 @@ import { advanceMonth, resolveEvent } from '../src/engine/turn';
 import { viewEvent } from '../src/engine/events';
 import { computeEnding } from '../src/engine/ending';
 import { P } from '../src/engine/state';
-import { TARGET_ACTIONS, setFocus } from '../src/engine/actions';
+import { TARGET_ACTIONS, runMonthly } from '../src/engine/actions';
 import { holderOf } from '../src/engine/court';
 
 const id = process.argv[2] ?? 'yi_wonik';
@@ -23,8 +23,7 @@ for (let r = 0; r < runs; r++) {
     }
     if (s.over) break;
     const p = P(s);
-    const want = p.status === 'active' ? 'duty' : 'study';
-    if (!s.player.focus || s.player.focus.kind !== want) setFocus(s, want);
+    runMonthly(s, p.status === 'active' ? 'work' : 'study');
     for (const officeId of ['ijo', 'jeonrang']) {
       const h = holderOf(s, officeId);
       if (!h) continue;
@@ -33,7 +32,6 @@ for (let r = 0; r < runs; r++) {
         if (!a.check(s, h)) a.run(s, h);
       }
     }
-    if (p.status === 'retired') s.player.focus = null;
     advanceMonth(s);
   }
   const p = P(s);

@@ -1,3 +1,5 @@
+import { initDefense, initRealm } from './realm';
+import { initLaws } from './laws';
 import type { Character, FactionId, GameState, RegionId, SchoolId, TraitId } from './types';
 import { ROSTER } from './data/roster';
 import { OFFICES, OFFICE_MAP } from './data/offices';
@@ -32,7 +34,7 @@ export const BACKGROUNDS: Record<CustomSpec['background'], { name: string; desc:
 
 function blankState(seed: number): GameState {
   return {
-    version: 3,
+    version: 4,
     rng: seed | 0,
     t: 0,
     chars: {},
@@ -46,7 +48,7 @@ function blankState(seed: number): GameState {
       none: { id: 'none', active: true, division: 0 },
     },
     regions: Object.fromEntries(
-      REGIONS.map((r) => [r.id, { id: r.id, influence: { ...r.influence }, minsim: 60, tags: [] }]),
+      REGIONS.map((r) => [r.id, { id: r.id, influence: { ...r.influence }, minsim: 60, tags: [], defense: initDefense(r.id), hidden: r.id === 'hanseong' ? 0 : 0.06 }]),
     ) as unknown as GameState['regions'],
     player: {
       charId: '',
@@ -83,6 +85,12 @@ function blankState(seed: number): GameState {
       eventAt: {},
       lineage: [],
       guide: [],
+      done: [],
+      teach: 0,
+      land: 2,
+      hiddenLand: 0,
+      loans: [],
+      factionChanges: 0,
     },
     flags: {},
     tension: 22,
@@ -97,6 +105,8 @@ function blankState(seed: number): GameState {
     line: { dong: 20, seo: 0 },
     situations: [],
     royal: initRoyal(),
+    realm: initRealm(),
+    laws: initLaws(),
     nextId: 100,
   };
 }
@@ -169,3 +179,25 @@ export function newGame(choice: StartChoice, seed = Date.now()): GameState {
 }
 
 export const PLAYABLE = ROSTER.filter((r) => r.playable);
+
+/** 예전 저장본에 새로 생긴 항목을 채운다 */
+export function upgrade(s: GameState): GameState {
+  if (s.version >= 4) return s;
+  const pl = s.player;
+  pl.done ??= [];
+  pl.teach ??= 0;
+  pl.land ??= 2;
+  pl.hiddenLand ??= 0;
+  pl.loans ??= [];
+  pl.factionChanges ??= 0;
+  if (pl.focus && pl.focus.kind !== 'memorial') pl.focus = null;
+  for (const r of Object.values(s.regions)) {
+    r.defense ??= initDefense(r.id);
+    r.hidden ??= r.id === 'hanseong' ? 0 : 0.06;
+  }
+  s.realm ??= initRealm();
+  s.laws ??= initLaws();
+  if (s.flags.seoeolOpen) s.laws.seoeol = { on: true, since: s.t };
+  s.version = 4;
+  return s;
+}

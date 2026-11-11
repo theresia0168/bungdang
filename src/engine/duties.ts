@@ -269,7 +269,7 @@ export function rollDuty(s: GameState) {
   const p = P(s);
   if (p.status !== 'active' || !p.office || s.pending.length >= 2) return;
   if (monthsSince(s, 'dutyAt') < 3) return;
-  const keen = s.player.focus?.kind === 'duty';
+  const keen = monthsSince(s, 'workAt') <= 1;
   if (!chance(s, keen ? 0.3 : 0.15)) return;
   const d = pick(s, DUTIES.filter((x) => x.when(s, p.office!)));
   if (!d) return;

@@ -50,17 +50,19 @@ export function rollHarvest(s: GameState) {
     const e = REGION_ECON[r];
     if (!e.yield) continue;
     const v = e.volatile;
+    const reg = s.regions[r];
+    const dyke = reg.tags.includes('dyke') ? 0.5 : 1;
     let h = weighted<number>(s, [
       [1, 2],
       [0, 5],
-      [-1, 1.6 * v],
-      [-2, 0.5 * v],
+      [-1, 1.6 * v * dyke],
+      [-2, 0.5 * v * dyke],
     ])!;
     if (s.war.active && s.war.zones.includes(r)) h = Math.max(-2, h - 1);
     if (drought >= s.t && chance(s, 0.5)) h = Math.max(-2, h - 1);
-    const reg = s.regions[r];
     reg.harvest = h;
-    reg.minsim = clamp(reg.minsim + (h === 1 ? 5 : h === -1 ? -5 : h === -2 ? -12 : 0), 0, 100);
+    const soft = s.laws?.sachang?.on ? 0.6 : 1;
+    reg.minsim = clamp(reg.minsim + (h === 1 ? 5 : h === -1 ? -5 * soft : h === -2 ? -12 * soft : 0), 0, 100);
     if (h !== 0) parts.push(`${REGION_META[r].short} ${HARVEST_LABEL[h]}`);
   }
   delete s.flags.droughtUntil;
@@ -68,11 +70,14 @@ export function rollHarvest(s: GameState) {
   const p = P(s);
   const home = harvestOf(s, p.home);
   if (p.status !== 'exiled') {
-    const rent = Math.round(8 * (MULT[home] ?? 1));
+    const pl = s.player;
+    const hid = Math.min(pl.hiddenLand, pl.land);
+    // 전장마다 소작료 4, 은결은 세를 내지 않아 2를 더 남긴다 (대동법이면 그 이득이 반으로 준다)
+    const rent = Math.round((pl.land * 4 + hid * (s.laws?.daedong?.on ? 1 : 2)) * (MULT[home] ?? 1));
     p.wealth += rent;
     if (p.home === 'hanseong') return;
     if (home === -2) notice(s, '고향의 대흉', `고향 ${REGION_META[p.home].short}에 대흉년이 들었다. 전장(田莊)에서 올라온 소출이 재산 +${rent}에 그쳤다. 고향 사람들이 굶주린다.`, 'personal');
-    else log(s, `고향 ${REGION_META[p.home].short}의 작황은 ${HARVEST_LABEL[home]}. 전장의 소출 재산 +${rent}.`, 'player');
+    else log(s, `고향 ${REGION_META[p.home].short}의 작황은 ${HARVEST_LABEL[home]}. 전장 ${pl.land}결의 소작료 재산 +${rent}${hid ? ` (은결 ${hid}결 포함)` : ''}.`, 'player');
   }
 }
 

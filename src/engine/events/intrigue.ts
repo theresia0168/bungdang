@@ -210,7 +210,7 @@ export function rollTalent(s: GameState) {
   const p = P(s);
   if (s.pending.length >= 2 || p.status === 'exiled' || p.wealth < 20 || s.player.proteges.length >= 2) return;
   if (monthsSince(s, 'talentAt') < 12) return;
-  const ch = (p.learning >= 6 ? 0.04 : 0.02) + (s.player.focus?.kind === 'teach' ? 0.06 : 0) + (p.status === 'retired' ? 0.02 : 0);
+  const ch = (p.learning >= 6 ? 0.04 : 0.02) + (monthsSince(s, 'teachAt') <= 1 ? 0.06 : 0) + (p.status === 'retired' ? 0.02 : 0);
   if (!chance(s, ch)) return;
   s.flags.talentAt = s.t;
   pushEvent(s, 'talent', { learning: randInt(s, 4, 6) });

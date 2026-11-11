@@ -16,7 +16,7 @@ export const WAR_SCENES: (Scene & { at: [number, number]; ok(s: GameState): bool
   {
     id: 'mongjin',
     at: [1592, 5],
-    ok: atCourt,
+    ok: (s) => atCourt(s) && s.realm.warPath !== 'held',
     title: '몽진(蒙塵)',
     text: () => '왜군이 충주를 넘었다는 급보가 들어왔다. 왕이 한밤중에 도성을 버리고 서쪽으로 떠나려 한다. 비가 쏟아지는 돈의문 밖으로 어가가 나서는데, 따르는 신하가 백도 되지 않는다.',
     opts: () => [
@@ -43,7 +43,7 @@ export const WAR_SCENES: (Scene & { at: [number, number]; ok(s: GameState): bool
   {
     id: 'bunjo',
     at: [1592, 7],
-    ok: (s) => atCourt(s) && s.heir === 'gwanghae' && alive(s.chars.gwanghae),
+    ok: (s) => atCourt(s) && s.realm.warPath !== 'held' && s.heir === 'gwanghae' && alive(s.chars.gwanghae),
     title: '분조(分朝)',
     text: () => '의주까지 밀려난 왕은 요동으로 건너갈 생각까지 한다. 조정을 둘로 나누어, 세자 광해군이 따로 분조를 이끌고 강원·황해를 돌며 의병을 모으기로 했다. 세자를 따를 신하를 뽑는다.',
     opts: () => [

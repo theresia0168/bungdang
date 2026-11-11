@@ -3,7 +3,7 @@ import { newGame, PLAYABLE } from '../src/engine/setup';
 import { advanceMonth, resolveEvent } from '../src/engine/turn';
 import { viewEvent } from '../src/engine/events';
 import { P } from '../src/engine/state';
-import { setFocus, focusCheck, TARGET_ACTIONS, actionError, runTargetAction } from '../src/engine/actions';
+import { runMonthly, startMemorial, TARGET_ACTIONS, actionError, runTargetAction } from '../src/engine/actions';
 import type { ImpeachReport } from '../src/engine/conflict';
 
 const runs = Number(process.argv[2] ?? 10);
@@ -68,7 +68,9 @@ for (const pl of PLAYABLE) {
           if (!actionError(s, TARGET_ACTIONS.find((x) => x.id === a)!, f)) runTargetAction(s, a, f.id);
         }
       }
-      if (!s.player.focus) setFocus(s, focusCheck(s, 'duty') ? (s.t % 6 === 0 ? 'memorial' : 'study') : 'duty', 'sipye');
+      if (s.t % 6 === 0 && !s.player.focus) startMemorial(s, 'law', { lawId: 'hopae' });
+      runMonthly(s, 'work');
+      runMonthly(s, 'study');
       advanceMonth(s);
       for (const x of s.plots) {
         if (seenPlots.has(x.id)) continue;

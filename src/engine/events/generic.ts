@@ -35,7 +35,7 @@ export const GENERIC_EVENTS: Record<string, EventDef> = {
           '· 탄핵은 두 달 동안 이어지는 공방입니다. 남을 구원해 주면 그가 신세를 지고, 신세는 당신이 위태로울 때 돌아옵니다.\n' +
           '· 두세 달마다 조정에 쟁점이 오릅니다. 어느 편에 서느냐가 당과 왕의 마음을 움직입니다.\n' +
           '· 천명의 해가 오면 해마다 생사를 판정합니다. 명의를 부르면 버틸 수 있습니다.\n' +
-          '· 한 턴은 한 달입니다. 이번 달의 일을 정하고 인물을 눌러 교유한 뒤, 우측 상단의 다음 달 버튼(Space)으로 턴을 넘기십시오.\n' +
+          '· 한 턴은 한 달입니다. 왼쪽 「이달의 행동」에 행동력을 쓰고 인물을 눌러 교유한 뒤, 우측 상단의 다음 달 버튼(Space)으로 턴을 넘기십시오.\n' +
           '· 성심·명망 같은 수치에 마우스를 올리면 어디에 쓰이는지 나옵니다. 전체 설명은 우측 상단 「? 도움말」에 있습니다.',
         choices: [{ key: 'ok', label: '조정에 나아간다' }],
       };
@@ -225,9 +225,9 @@ export const GENERIC_EVENTS: Record<string, EventDef> = {
         kind: 'court',
         text: `추수가 끝나 ${officeTitle(p).replace(' 관찰사', '')}의 공납을 거둘 때가 되었다. ${note}\n\n${REGION_META[p.location].short}의 살림: ${REGION_ECON[p.location].produce}.`,
         choices: [
-          { key: 'clean', label: '청렴 — 정해진 만큼만 거두어 모두 나라에 바친다', hint: `명망 +3, 민심 +${h < 0 ? 6 : 4}` },
-          { key: 'normal', label: '관행 — 관례대로 거두고 관례대로 남긴다', hint: `재산 +${t.normal}${h < 0 ? ', 민심 -3' : ''}` },
-          { key: 'exploit', label: '수탈 — 방납을 눈감아 주고 몫을 챙긴다', hint: `재산 +${t.exploit}, 숨은 흠결 1, 민심 -${harsh}` },
+          { key: 'clean', label: '청렴 — 정해진 만큼만 거두어 모두 나라에 바친다', hint: `명망 +3, 민심 +${h < 0 ? 6 : 4}. 도의 세가 온전히 국고에 든다` },
+          { key: 'normal', label: '관행 — 관례대로 거두고 관례대로 남긴다', hint: `재산 +${t.normal}${h < 0 ? ', 민심 -3' : ''}. 도의 세 8%가 국고에 들지 않는다` },
+          { key: 'exploit', label: '수탈 — 방납을 눈감아 주고 몫을 챙긴다', hint: `재산 +${t.exploit}, 숨은 흠결 1, 민심 -${harsh}. 도의 세 25%가 국고에 들지 않는다` },
         ],
       };
     },
@@ -236,6 +236,7 @@ export const GENERIC_EVENTS: Record<string, EventDef> = {
       const r = s.regions[p.location];
       const t = tributeAmounts(s);
       const h = harvestOf(s, p.location);
+      s.flags.tributeChoice = key;
       if (key === 'clean') {
         p.prestige = clamp(p.prestige + 3, 0, 100);
         r.minsim = clamp(r.minsim + (h < 0 ? 6 : 4), 0, 100);

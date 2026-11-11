@@ -156,10 +156,12 @@ export function audienceEligible(s: GameState): boolean {
 }
 
 export function rollAudience(s: GameState) {
-  if (!audienceEligible(s) || s.pending.length >= 2) return;
+  if (!audienceEligible(s) || s.pending.length >= 2 || s.flags.kingCaptive) return;
   if (monthsSince(s, 'audienceAt') < 3) return;
   const p = P(s);
-  if (!chance(s, HONGMUN.includes(p.office!) ? 0.25 : 0.12)) return;
+  // 지난달 업무에 힘썼으면 왕의 눈에 띈다
+  const keen = monthsSince(s, 'workAt') <= 1 ? 0.12 : 0;
+  if (!chance(s, (HONGMUN.includes(p.office!) ? 0.25 : 0.12) + keen)) return;
   const pool = TOPICS.filter((x) => (!x.from || s.t >= tOf(...x.from)) && (!x.to || s.t <= tOf(...x.to)));
   const topic = pool[randInt(s, 0, pool.length - 1)];
   s.flags.audienceAt = s.t;

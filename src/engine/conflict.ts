@@ -7,6 +7,7 @@ import { opinion, sway, swayFaction, topOf } from './opinion';
 import { powerShare } from './factions';
 import { END_T, shortDate } from './calendar';
 import { fulfillAgainst, fulfillAll } from './relations';
+import { LAW_MAP, lawStance, setLaw } from './laws';
 
 export interface RollPart {
   label: string;
@@ -273,11 +274,21 @@ export const TOPIC_LABEL: Record<MemorialTopic, string> = {
   sipye: '시폐(時弊) 상소',
   jojae: '조제보합(調劑保合) 상소',
   recall: '신원(伸冤) 상소',
+  law: '변법(變法) 상소',
 };
 
 /** 기획안 4.2 상소: 1d6 + 연명 + 상황 ≥ 왕의 선호도 */
-export function memorial(s: GameState, init: Character, topic: MemorialTopic, cosigners: string[], targetId?: string): MemorialResult {
+export function memorial(
+  s: GameState,
+  init: Character,
+  topic: MemorialTopic,
+  cosigners: string[],
+  targetId?: string,
+  opt: { lawId?: string; abolish?: boolean } = {},
+): MemorialResult {
   const tgt = targetId ? s.chars[targetId] : undefined;
+  const law = topic === 'law' && opt.lawId ? LAW_MAP[opt.lawId] : undefined;
+  const enact = !opt.abolish;
   const ds = holderOf(s, 'doseungji');
   if (ds && ds.id !== init.id && !cosigners.includes(ds.id) && !isP(s, ds) && opinion(s, ds, init) < -15 && chance(s, 0.35)) {
     addFlaw(s, ds, '언로 차단', true);
@@ -303,6 +314,13 @@ export function memorial(s: GameState, init: Character, topic: MemorialTopic, co
   if (s.situations?.some((x) => x.kind === 'illness')) parts.push({ label: '왕의 환후', value: -1 });
 
   let difficulty = topic === 'sipye' ? 5 : 6;
+  if (law) {
+    // 왕의 마음과 조정 세력의 입장이 법의 어려움을 정한다
+    const k = enact ? law.king : -law.king;
+    const share = powerShare(s);
+    const court = (['dong', 'seo', 'nam', 'buk'] as const).reduce((a, f) => a + (share[f] ?? 0) * lawStance(law, f, enact), 0);
+    difficulty = Math.round(7 - k * 2 - court * 3);
+  }
   if (topic === 'jojae' && s.tension > 60) difficulty += 1;
   if (topic === 'recall' && tgt?.tags.includes('royalWrath')) difficulty += 2;
 
@@ -318,6 +336,20 @@ export function memorial(s: GameState, init: Character, topic: MemorialTopic, co
         init.prestige = clamp(init.prestige + 4 + (init.traits.includes('upright') ? 2 : 0), 0, 100);
         init.favor = clamp(init.favor + 3, -100, 100);
         text = `${init.name}의 시폐 상소가 가납되었다. 명망이 올랐다.`;
+        break;
+      case 'law':
+        if (law) {
+          setLaw(s, law.id, enact, init.name);
+          init.prestige = clamp(init.prestige + 5, 0, 100);
+          for (const f of ['dong', 'seo', 'nam', 'buk'] as const) {
+            if (!s.factions[f].active) continue;
+            const v = lawStance(law, f, enact);
+            if (Math.abs(v) >= 0.3) swayFaction(s, f, init.id, Math.round(v * 8), enact ? `${law.name} 시행` : `${law.name} 폐지`, 0.08);
+          }
+          if (law.id === 'sumi' || law.id === 'daedong' || law.id === 'nobi')
+            for (const c of Object.values(s.chars)) if (alive(c) && !isP(s, c) && c.traits.includes('greedy') && c.rank <= 4) sway(s, c, init.id, -6, '이권을 막음', { decay: 0.1 });
+          text = `${init.name}의 상소로 ${josa(law.name, '이/가')} ${enact ? '시행되었다' : '폐지되었다'}.`;
+        }
         break;
       case 'jojae':
         s.tension = clamp(s.tension - 12, 0, 100);
@@ -354,7 +386,9 @@ export function memorial(s: GameState, init: Character, topic: MemorialTopic, co
     }
   } else {
     if (topic === 'sipye') init.prestige = clamp(init.prestige + 1, 0, 100);
-    text = `${init.name}의 ${josa(TOPIC_LABEL[topic], '이/가')} 받아들여지지 않았다.`;
+    text = law
+      ? `${law.name}${enact ? '을 세우자는' : '을 없애자는'} ${init.name}의 상소가 받아들여지지 않았다.`
+      : `${init.name}의 ${josa(TOPIC_LABEL[topic], '이/가')} 받아들여지지 않았다.`;
     if (disaster) {
       init.favor = clamp(init.favor - 12, -100, 100);
       text += ' 왕이 크게 노하여 성심을 잃었다.';

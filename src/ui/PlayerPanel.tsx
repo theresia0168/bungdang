@@ -1,8 +1,28 @@
+import { useState } from 'react';
 import { useG } from './ctx';
-import type { FocusKind, MemorialTopic } from '../engine/types';
 import { P, officeTitle, statusLabel } from '../engine/state';
 import { FACTION_META, REGION_META, SCHOOL_META, TRAIT_META } from '../engine/data/meta';
-import { FOCUS_INFO, PROJECTS, RETAINER_UPKEEP, SELF_ACTIONS, focusCheck, runSelfAction, setFocus } from '../engine/actions';
+import {
+  MAX_SWITCHES,
+  MEMORIAL_INFO,
+  MONTHLY,
+  PROJECTS,
+  RETAINER_UPKEEP,
+  SELF_ACTIONS,
+  dropMemorial,
+  expNeed,
+  joinError,
+  joinFaction,
+  leaveError,
+  leaveFaction,
+  memorialError,
+  monthlyError,
+  runMonthly,
+  runSelfAction,
+  startMemorial,
+} from '../engine/actions';
+import { LAWS, LAW_MAP, lawOpen } from '../engine/laws';
+import { activeFactions } from '../engine/factions';
 import { BOND } from '../engine/relations';
 import { TOPIC_LABEL } from '../engine/conflict';
 import { standing } from '../engine/factions';
@@ -12,17 +32,15 @@ import { GUIDE, guideOn } from '../engine/tutorial';
 import { Bar, CharLink, FactionBadge, Opinion, Portrait } from './common';
 import { Tip } from './guide';
 
-const PICK_FOCUS: FocusKind[] = ['duty', 'study', 'social', 'teach', 'estate', 'rest', 'seowon', 'munjip'];
-const MEMORIALS: { topic: MemorialTopic; desc: string }[] = [
-  { topic: 'sipye', desc: '시정의 폐단을 논한다. 받아들여지면 명망과 성심이 오른다. 가장 쉽다.' },
-  { topic: 'jojae', desc: '붕당의 화합을 청한다. 받아들여지면 긴장도가 크게 내리지만 당내에서 미온적이라는 말을 듣는다.' },
-];
 
 export function PlayerPanel() {
   const { s, act, select } = useG();
   const p = P(s);
   const pl = s.player;
   const f = pl.focus;
+  const [lawChoice, setLawPick] = useState('sumi');
+  const openLaws = LAWS.filter((l) => lawOpen(s, l));
+  const lawPick = openLaws.some((l) => l.id === lawChoice) ? lawChoice : (openLaws[0]?.id ?? '');
   const ex = pl.exp;
   const tgt = f?.targetId ? s.chars[f.targetId] : undefined;
   const st = p.faction !== 'none' ? standing(s, p.faction) : null;
@@ -58,7 +76,7 @@ export function PlayerPanel() {
               학식 <em className="cap">학문의 깊이</em>
             </span>
             <b>{p.learning}</b>
-            <Bar value={ex.learning} max={20 + p.learning * 6} />
+            <Bar value={ex.learning} max={expNeed(p.learning)} />
           </div>
         </Tip>
         <Tip k="politics" s={s} place="right">
@@ -67,7 +85,7 @@ export function PlayerPanel() {
               정치력 <em className="cap">수완과 처세</em>
             </span>
             <b>{p.politics}</b>
-            <Bar value={ex.politics} max={20 + p.politics * 6} />
+            <Bar value={ex.politics} max={expNeed(p.politics)} />
           </div>
         </Tip>
       </div>
@@ -159,69 +177,136 @@ export function PlayerPanel() {
       )}
 
       <section className="pp-sec">
-        <h4>이번 달의 일</h4>
-        {f ? (
-          <div className="focus-now">
-            <b>{f.kind === 'memorial' ? TOPIC_LABEL[f.topic ?? 'sipye'] : FOCUS_INFO[f.kind].name}</b>
-            {tgt && <span> — {tgt.name}</span>}
-            {f.kind === 'memorial' && (
-              <>
-                <Bar value={f.progress} max={f.required} />
-                <span className="small muted">
-                  {f.progress}/{f.required}개월 · 연명 {f.cosigners.length}인 (인물 창에서 연명을 청하라)
-                </span>
-              </>
-            )}
-            {(f.kind === 'seowon' || f.kind === 'munjip') && (
-              <>
-                <Bar value={pl.projects[f.kind] ?? 0} max={PROJECTS[f.kind].months} />
-                <span className="small muted">
-                  {pl.projects[f.kind] ?? 0}/{PROJECTS[f.kind].months}개월 · 매달 재산 {PROJECTS[f.kind].cost}
-                </span>
-              </>
-            )}
-            {f.kind === 'teach' && <Bar value={f.progress} max={6} label="다음 문인까지" />}
-          </div>
-        ) : (
-          <div className="focus-now muted">하는 일 없이 지낸다. 아래에서 고르라.</div>
-        )}
-        {p.status === 'active' && p.office && f?.kind !== 'duty' && <p className="small muted">직무는 저절로 돌아간다 (성심·정치 경험이 조금씩).</p>}
+        <h4>
+          이달의 행동 <span className="muted small">행동력 {pl.ap} 남음 · 같은 일은 한 달에 한 번</span>
+        </h4>
         <div className="focus-grid">
-          {PICK_FOCUS.map((k) => {
-            const err = focusCheck(s, k);
+          {MONTHLY.filter((a) => !a.estate).map((a) => {
+            const err = monthlyError(s, a);
+            const done = pl.done.includes(a.id);
+            const prog = a.id === 'seowon' || a.id === 'munjip' ? pl.projects[a.id] ?? 0 : 0;
+            if ((a.id === 'teach' || a.id === 'rest') && err && !done && !pl.sick && p.status !== 'retired') return null;
             return (
               <button
-                key={k}
-                className={`fbtn ${f?.kind === k ? 'on' : ''}`}
-                disabled={!!err || f?.kind === k}
-                title={err ?? (f?.kind === k ? '지금 하고 있는 일이다' : FOCUS_INFO[k].desc)}
-                onClick={() => act((g) => setFocus(g, k))}
+                key={a.id}
+                className={`fbtn ${done ? 'on' : ''}`}
+                disabled={!!err}
+                title={err ? `${err}\n\n${a.desc}` : a.desc}
+                onClick={() => act((g) => runMonthly(g, a.id))}
               >
-                {FOCUS_INFO[k].name}
-                {(k === 'seowon' || k === 'munjip') && (pl.projects[k] ?? 0) > 0 && f?.kind !== k && (
-                  <small> {pl.projects[k]}/{PROJECTS[k].months}</small>
+                {a.name}
+                {prog > 0 && (
+                  <small>
+                    {' '}
+                    {prog}/{PROJECTS[a.id as 'seowon' | 'munjip'].months}
+                  </small>
                 )}
-              </button>
-            );
-          })}
-          {MEMORIALS.map((m) => {
-            const err = focusCheck(s, 'memorial');
-            const on = f?.kind === 'memorial' && f.topic === m.topic;
-            return (
-              <button
-                key={m.topic}
-                className={`fbtn ${on ? 'on' : ''}`}
-                disabled={!!err || on}
-                title={err ?? `${m.desc} 2개월이 걸리며 그동안 연명을 모은다.`}
-                onClick={() => act((g) => setFocus(g, 'memorial', m.topic))}
-              >
-                {TOPIC_LABEL[m.topic].replace(/\(.*\)/, '')}
+                <span className="cost">{done ? '✓' : '●'.repeat(a.cost)}</span>
               </button>
             );
           })}
         </div>
-        {f?.kind === 'memorial' && <p className="small muted">다른 일을 고르면 쓰던 상소는 버려진다.</p>}
-        {(f?.kind === 'seowon' || f?.kind === 'munjip') && <p className="small muted">다른 일을 골라도 진척은 남는다.</p>}
+        {p.status === 'active' && p.office && !pl.done.includes('work') && (
+          <p className="small muted">업무 집중을 석 달 넘게 거르면 성심이 조금씩 식는다.</p>
+        )}
+        {p.id === pl.charId && <p className="small muted">학식 {expNeed(p.learning)} · 정치 {expNeed(p.politics)}의 경험이 차야 한 단계 오른다.</p>}
+      </section>
+
+      <section className="pp-sec">
+        <h4>상소</h4>
+        {f?.kind === 'memorial' ? (
+          <div className="focus-now">
+            <b>
+              {f.topic === 'law' && f.lawId ? `${LAW_MAP[f.lawId]?.name} ${f.abolish ? '폐지' : '시행'} 상소` : TOPIC_LABEL[f.topic ?? 'sipye']}
+            </b>
+            {tgt && <span> — {tgt.name}</span>}
+            <Bar value={f.progress} max={f.required} />
+            <span className="small muted">
+              {f.progress}/{f.required}개월 · 연명 {f.cosigners.length}인 (인물 창에서 「연명 요청」)
+            </span>
+            <button className="mini" onClick={() => act((g) => dropMemorial(g))}>
+              거두기
+            </button>
+          </div>
+        ) : (
+          <>
+            <div className="law-pick">
+              <select value={lawPick} onChange={(e) => setLawPick(e.target.value)}>
+                {openLaws.map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {s.laws[l.id]?.on ? `${l.name} 폐지` : `${l.name} 시행`}
+                  </option>
+                ))}
+              </select>
+              <button
+                className="fbtn"
+                disabled={!!memorialError(s) || !LAW_MAP[lawPick]}
+                title={memorialError(s) ?? `${MEMORIAL_INFO.law.desc}\n\n${LAW_MAP[lawPick]?.desc ?? ''}\n효과: ${LAW_MAP[lawPick]?.effect ?? ''}`}
+                onClick={() => act((g) => startMemorial(g, 'law', { lawId: lawPick, abolish: !!g.laws[lawPick]?.on }))}
+              >
+                변법 상소
+              </button>
+            </div>
+            <div className="focus-grid">
+              <button className="fbtn" disabled={!!memorialError(s)} title={memorialError(s) ?? MEMORIAL_INFO.jojae.desc} onClick={() => act((g) => startMemorial(g, 'jojae'))}>
+                조제 상소
+              </button>
+            </div>
+            <p className="small muted">상소는 행동력이 들지 않는다. 두 달 동안 지으며 연명을 모은다. 나라의 법은 「국정」 탭에서 볼 수 있다.</p>
+          </>
+        )}
+      </section>
+
+      <section className="pp-sec">
+        <h4>
+          가산 <span className="muted small">재산 {Math.round(p.wealth)}</span>
+        </h4>
+        <div className="small">
+          전장 {pl.land}결{pl.hiddenLand > 0 && <span className="bad-text"> (은결 {pl.hiddenLand})</span>}
+          {pl.loans.length > 0 && <span> · 놓은 장리 {pl.loans.map((l) => `${l.amount}(${l.due - s.t}달 뒤)`).join(', ')}</span>}
+        </div>
+        <div className="focus-grid">
+          {MONTHLY.filter((a) => a.estate).map((a) => {
+            const err = monthlyError(s, a);
+            const done = pl.done.includes(a.id);
+            return (
+              <button key={a.id} className={`fbtn ${done ? 'on' : ''}`} disabled={!!err} title={err ? `${err}\n\n${a.desc}` : a.desc} onClick={() => act((g) => runMonthly(g, a.id))}>
+                {a.name}
+                <span className="cost">{done ? '✓' : '●'.repeat(a.cost)}</span>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="pp-sec">
+        <h4>
+          당적 <span className="muted small">한평생 {MAX_SWITCHES}번까지 · 지금까지 {pl.factionChanges}번</span>
+        </h4>
+        <div className="focus-grid">
+          {activeFactions(s)
+            .filter((x) => x !== 'none' && x !== p.faction)
+            .map((x) => {
+              const err = joinError(s, x);
+              return (
+                <button
+                  key={x}
+                  className="fbtn"
+                  disabled={!!err}
+                  title={err ?? `${FACTION_META[x].name}에 들기를 청한다. ${p.faction === 'none' ? '' : '지금의 당을 버리는 일이라 옛 동지들의 원한을 산다.'}`}
+                  onClick={() => act((g) => joinFaction(g, x))}
+                >
+                  {p.faction === 'none' ? '입당' : '전향'}: {FACTION_META[x].name}
+                </button>
+              );
+            })}
+          {p.faction !== 'none' && (
+            <button className="fbtn" disabled={!!leaveError(s)} title={leaveError(s) ?? '당을 떠나 어느 편에도 서지 않는다. 옛 당의 호감이 크게 깎인다.'} onClick={() => act((g) => leaveFaction(g))}>
+              탈당
+            </button>
+          )}
+        </div>
+        <p className="small muted">무당의 인물은 인물 창의 「포섭」으로 끌어들일 수 있다.</p>
       </section>
 
       {(sc || debtors.length > 0 || bonds.length > 0 || pl.retainers > 0 || pl.proteges.length > 0) && (

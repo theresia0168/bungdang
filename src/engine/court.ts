@@ -2,7 +2,7 @@ import type { Character, GameState, RegionId, Status } from './types';
 import { OFFICES, OFFICE_MAP, type OfficeDef } from './data/offices';
 import { REGION_META } from './data/meta';
 import { chance, rand, randInt, weighted } from './rng';
-import { age, alive, isP, josa, log, notice, owe, P, people, pushEvent } from './state';
+import { age, alive, fav, isP, josa, log, notice, owe, P, people, pushEvent } from './state';
 import { opinion, sway } from './opinion';
 import { fulfill } from './relations';
 import { powerShare } from './factions';
@@ -83,12 +83,15 @@ export function appointGeneric(s: GameState, c: Character, kind: 'nanggwan' | 's
   }
 }
 
-export const PROMOTION_GAP = 30;
+export const PROMOTION_GAP = 36;
 /** 지금 자리에서 이만큼은 있어야 다른 자리로 옮길 수 있다 */
 export const MIN_TENURE = 6;
 
-/** 이 관직에 오르려면 갖춰야 할 최소 품계 */
-export const minRankFor = (officeRank: number) => (officeRank <= 1 ? 2 : officeRank === 2 ? 3 : officeRank === 3 ? 5 : officeRank === 4 ? 6 : 9);
+/** 이 관직에 오르려면 갖춰야 할 최소 품계. 당상관(3품)부터는 한 계단씩만 오른다. */
+export const minRankFor = (officeRank: number) => (officeRank <= 1 ? 2 : officeRank === 2 ? 3 : officeRank === 3 ? 4 : officeRank === 4 ? 6 : 9);
+
+/** 이 품계의 자리에 앉을 만한 나이. 젊은 판서가 없지는 않았으나 드물다. */
+export const minAgeFor = (officeRank: number) => (officeRank <= 1 ? 48 : officeRank === 2 ? 38 : officeRank === 3 ? 32 : officeRank === 4 ? 27 : 20);
 
 /** 품계가 오른 뒤에는 그보다 낮은 자리에 앉지 않는다. 참하관(6품 이하)은 따지지 않는다. */
 export const lowestOfficeFor = (rank: number) => (rank <= 5 ? rank : 9);
@@ -117,7 +120,7 @@ export function eligible(s: GameState, c: Character, o: OfficeDef): boolean {
   if (cooldownLeft(s, c, o) > 0) return false;
   if (c.rank > minRankFor(o.rank)) return false;
   if (c.rank > o.rank && s.t - c.promotedAt < PROMOTION_GAP) return false;
-  if (o.rank === 1 && age(s, c) < 45) return false;
+  if (age(s, c) < minAgeFor(o.rank)) return false;
   if (isP(s, c)) {
     const d = s.flags[`declined_${o.id}`];
     if (typeof d === 'number' && d > s.t) return false;
@@ -193,7 +196,11 @@ export function fillVacancies(s: GameState, max = 6) {
     if (filled >= max) break;
     let best: Character | undefined;
     let bs = -Infinity;
-    for (const c of people(s)) {
+    // 자리 경쟁이 붙어 있던 자리는 거론되던 후보 가운데서 고른다. 이조가 의망해 낙점받은 이가 있으면 그가 오른다.
+    const race = raceFor(s, o.id);
+    const nom = race?.nominee ? s.chars[race.nominee] : undefined;
+    const pool = nom && eligible(s, nom, o) ? [nom] : race ? race.candidates.map((id) => s.chars[id]).filter((c) => c && eligible(s, c, o)) : [];
+    for (const c of pool.length ? pool : people(s)) {
       if (!eligible(s, c, o)) continue;
       const sc = appointScore(s, c, o, hm);
       if (sc > bs) {
@@ -279,7 +286,7 @@ function startRace(s: GameState, o: OfficeDef, holder: Character): boolean {
     const lead = s.chars[s.factions[c.faction]?.leader ?? ''];
     if (alive(lead) && !isP(s, lead) && lead.id !== c.id && inCourtNow(lead)) backers[c.id].push(lead.id);
   }
-  s.races.push({ office: o.id, due: s.t + 2, candidates: pool.map((c) => c.id), backers });
+  s.races.push({ office: o.id, due: s.t + 2, candidates: pool.map((c) => c.id), backers, holder: holder.id });
   // 연대기를 덮지 않도록 정승 자리와 내가 얽힌 경쟁만 기록한다
   if (o.rank === 1 || isP(s, holder) || pool.some((c) => isP(s, c)))
     log(s, `[인사] ${o.name} ${josa(holder.name, '이/가')} 곧 물러난다는 말이 돈다. 후임으로 ${pool.map((c) => c.name).join(', ')} 등이 거론된다.`, 'court');
@@ -322,12 +329,14 @@ export function backCandidate(s: GameState, officeId: string, candId: string): s
   return `${OFFICE_MAP[officeId].name} 자리를 두고 ${josa(c.name, '을/를')} 밀기로 했다. 그가 오르면 신세를 진다. (${fx.join(', ')})`;
 }
 
-/** 기한이 된 경쟁: 현직을 물린다 */
+/** 기한이 된 경쟁: 경쟁이 시작될 때 앉아 있던 현직만 물린다 */
 export function tickRaces(s: GameState) {
   for (const r of s.races) {
     if (s.t < r.due) continue;
     const h = holderOf(s, r.office);
     if (!h) continue;
+    // 그사이 다른 사람이 앉았다면 (현직이 먼저 물러나 새로 제수된 경우) 그를 물리지 않는다
+    if (r.holder && h.id !== r.holder) continue;
     vacate(s, h);
     if (isP(s, h)) notice(s, '체직', `${OFFICE_MAP[r.office].name}의 임기를 마치고 물러났다.`);
   }
@@ -337,8 +346,11 @@ export function tickRaces(s: GameState) {
 export function settleRaces(s: GameState) {
   const p = P(s);
   for (const r of [...s.races]) {
-    if (s.t < r.due) continue;
     const w = holderOf(s, r.office);
+    // 현직이 기한 전에 물러나 이미 새 사람이 앉았으면 경쟁은 그것으로 끝난다
+    const early = !!w && !!r.holder && w.id !== r.holder;
+    if (s.t < r.due && !early) continue;
+    if (!early && w && w.id === r.holder) continue;
     if (!w && s.t < r.due + 3) continue;
     s.races = s.races.filter((x) => x !== r);
     const mine = r.candidates.find((id) => r.backers[id]?.includes(p.id));
@@ -368,4 +380,98 @@ export function exileSpot(s: GameState): [RegionId, string] {
   ] as [RegionId, number][]) as RegionId;
   const spots = REGION_META[r].exile ?? [REGION_META[r].short];
   return [r, spots[Math.floor(rand(s) * spots.length)]];
+}
+
+/* ───────── 이조의 의망(擬望) ─────────
+ * 이조판서는 빈자리나 곧 빌 자리에 사람을 골라 왕에게 올린다. 전랑은 삼사·청요직을 통청한다.
+ * 왕은 그 사람의 됨됨이, 이조판서에 대한 신임, 용안, 조정의 균형을 따져 낙점하거나 물리친다.
+ */
+
+/** 플레이어가 이 자리에 의망할 수 있는가 */
+export function nominateRight(s: GameState, o: OfficeDef): string | null {
+  const p = P(s);
+  if (p.status !== 'active') return '관직에 있어야 한다';
+  if (p.office === 'ijo') {
+    if (o.rank === 1) return '정승은 이조가 아니라 대신들의 복상(卜相)으로 정한다';
+  } else if (p.office === 'jeonrang') {
+    if (!o.samsa && !o.cheongyo) return '이조전랑은 삼사와 청요직만 통청한다';
+  } else return '이조판서나 이조전랑만 의망할 수 있다';
+  if (s.player.authorityUsed) return '이번 달 직권을 이미 썼다';
+  const h = holderOf(s, o.id);
+  const r = raceFor(s, o.id);
+  if (h && !r) return '빈자리이거나 곧 빌 자리여야 한다';
+  if (r?.nominee) return '이미 낙점받은 후보가 있다';
+  if (s.flags[`reserve_${o.id}`]) return '이미 제수가 진행 중이다';
+  return null;
+}
+
+/** 이 자리에 의망할 만한 사람들 (점수 순) */
+export function nomineePool(s: GameState, o: OfficeDef): { c: Character; score: number }[] {
+  const hm = holderMap(s);
+  const h = hm[o.id];
+  return people(s)
+    .filter((c) => !isP(s, c) && c.id !== h?.id && eligible(s, c, o))
+    .map((c) => ({ c, score: Math.round(appointParts(s, c, o, hm).reduce((a, x) => a + x.value, 0) * 10) / 10 }))
+    .sort((a, b) => b.score - a.score);
+}
+
+/** 왕이 낙점할 확률 */
+export function nominateChance(s: GameState, o: OfficeDef, cand: Character): { p: number; parts: ScorePart[] } {
+  const p = P(s);
+  const pool = nomineePool(s, o);
+  const best = pool[0]?.score ?? 0;
+  const mine = pool.find((x) => x.c.id === cand.id)?.score ?? best - 10;
+  const parts: ScorePart[] = [{ label: '기본', value: 70 }];
+  parts.push({ label: '이조에 대한 성심', value: Math.round(p.favor / 3) });
+  parts.push({ label: '용안', value: Math.round((s.king?.mood ?? 0) / 5) });
+  const gap = Math.max(0, best - mine);
+  if (gap) parts.push({ label: `더 나은 후보와의 차이 (${Math.round(gap)})`, value: -Math.round(gap * 4) });
+  if (cand.faction !== 'none') {
+    const share = powerShare(s)[cand.faction] ?? 0;
+    if (cand.faction === p.faction && share > 0.5) parts.push({ label: '한 당에 쏠린 인사', value: -15 });
+    const lean = s.king?.lean[cand.faction] ?? 0;
+    if (lean) parts.push({ label: '왕의 의중', value: Math.round(lean / 2) });
+  }
+  const pub = cand.flaws.filter((f) => f.public).length;
+  if (pub) parts.push({ label: '드러난 흠결', value: -pub * 8 });
+  if (cand.clan === p.clan) parts.push({ label: '제 집안 사람', value: -15 });
+  const v = parts.reduce((a, x) => a + x.value, 0);
+  return { p: Math.max(5, Math.min(95, v)) / 100, parts };
+}
+
+export function nominate(s: GameState, officeId: string, candId: string): string {
+  const o = OFFICE_MAP[officeId];
+  const err = nominateRight(s, o);
+  if (err) return err;
+  const cand = s.chars[candId];
+  if (!cand || !eligible(s, cand, o) || isP(s, cand)) return '그 자리에 오를 수 있는 사람이 아니다';
+  const p = P(s);
+  s.player.authorityUsed = true;
+  const { p: ch } = nominateChance(s, o, cand);
+  const r = raceFor(s, o.id);
+  if (chance(s, ch)) {
+    owe(s, cand.id);
+    const fx = sway(s, cand, p.id, 15, '의망의 은혜', { clan: 0.3, faction: 0.1, decay: 0.12, cap: 30 });
+    if (r) {
+      r.nominee = cand.id;
+      if (!r.candidates.includes(cand.id)) {
+        r.candidates.push(cand.id);
+        r.backers[cand.id] = [];
+      }
+      log(s, `[인사] 이조가 ${o.name} 후임으로 ${josa(cand.name, '을/를')} 의망하여 낙점을 받았다.`, 'player');
+      return `${o.name} 후임으로 ${josa(cand.name, '을/를')} 올렸고 왕이 낙점했다. 현직이 물러나면 그가 오른다. 그가 신세를 졌다. (${fx.join(', ')})`;
+    }
+    appoint(s, cand, o.id);
+    return `${o.name}에 ${josa(cand.name, '을/를')} 의망했고 왕이 낙점했다. 그가 신세를 졌다. (${fx.join(', ')})`;
+  }
+  // 물리침. 아주 터무니없었으면 이조판서가 문책을 받는다.
+  fav(p, -3);
+  if (ch < 0.3 && chance(s, 0.5)) {
+    fav(p, -5);
+    const title = OFFICE_MAP[p.office!]?.name ?? '이조';
+    vacate(s, p);
+    log(s, `[인사] 왕이 ${title} ${p.name}의 의망을 사사로운 인사라 꾸짖고 그를 갈았다.`, 'player');
+    return `왕이 ${josa(cand.name, '을/를')} 물리치고, 사사로이 사람을 쓰려 했다며 당신을 ${title}에서 갈았다. (성심 -8)`;
+  }
+  return `왕이 ${josa(cand.name, '을/를')} 물리쳤다. (낙점 확률 ${Math.round(ch * 100)}%, 성심 -3)`;
 }
