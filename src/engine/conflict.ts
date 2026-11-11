@@ -7,7 +7,7 @@ import { opinion, sway, swayFaction, topOf } from './opinion';
 import { powerShare } from './factions';
 import { END_T, shortDate } from './calendar';
 import { fulfillAgainst, fulfillAll } from './relations';
-import { LAW_MAP, lawStance, setLaw } from './laws';
+import { LAW_MAP, lawJosa, lawStance, setLaw } from './laws';
 
 export interface RollPart {
   label: string;
@@ -348,7 +348,7 @@ export function memorial(
           }
           if (law.id === 'sumi' || law.id === 'daedong' || law.id === 'nobi')
             for (const c of Object.values(s.chars)) if (alive(c) && !isP(s, c) && c.traits.includes('greedy') && c.rank <= 4) sway(s, c, init.id, -6, '이권을 막음', { decay: 0.1 });
-          text = `${init.name}의 상소로 ${josa(law.name, '이/가')} ${enact ? '시행되었다' : '폐지되었다'}.`;
+          text = `${init.name}의 상소로 ${lawJosa(law.name, '이/가')} ${enact ? '시행되었다' : '폐지되었다'}.`;
         }
         break;
       case 'jojae':
@@ -387,7 +387,7 @@ export function memorial(
   } else {
     if (topic === 'sipye') init.prestige = clamp(init.prestige + 1, 0, 100);
     text = law
-      ? `${law.name}${enact ? '을 세우자는' : '을 없애자는'} ${init.name}의 상소가 받아들여지지 않았다.`
+      ? `${lawJosa(law.name, '을/를')} ${enact ? '세우자는' : '없애자는'} ${init.name}의 상소가 받아들여지지 않았다.`
       : `${init.name}의 ${josa(TOPIC_LABEL[topic], '이/가')} 받아들여지지 않았다.`;
     if (disaster) {
       init.favor = clamp(init.favor - 12, -100, 100);

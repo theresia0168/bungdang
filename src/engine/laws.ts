@@ -1,6 +1,6 @@
 import type { FactionId, GameState } from './types';
 import { tOf } from './calendar';
-import { log } from './state';
+import { josa, log } from './state';
 import { topOf } from './opinion';
 
 /* ───────── 국법(國法) ─────────
@@ -154,6 +154,12 @@ export const LAWS: LawDef[] = [
   },
 ];
 
+/** 한자 풀이를 뺀 이름으로 조사를 고른다: lawJosa('사창제(社倉制)', '이/가') → '사창제(社倉制)가' */
+export function lawJosa(name: string, pair: string): string {
+  const bare = name.replace(/\([^)]*\)/g, '');
+  return name + josa(bare, pair).slice(bare.length);
+}
+
 export const LAW_MAP: Record<string, LawDef> = Object.fromEntries(LAWS.map((l) => [l.id, l]));
 
 export function initLaws(): Record<string, { on: boolean; since: number }> {
@@ -172,7 +178,7 @@ export function setLaw(s: GameState, id: string, on: boolean, by?: string) {
   s.laws[id] = { on, since: s.t };
   if (on && l.excludes && s.laws[l.excludes]?.on) s.laws[l.excludes] = { on: false, since: s.t };
   if (id === 'seoeol') s.flags.seoeolOpen = on;
-  log(s, `[국법] ${l.name}${on ? '이 시행되었다' : '이 폐지되었다'}.${by ? ` (${by}의 상소)` : ''}`, 'court');
+  log(s, `[국법] ${lawJosa(l.name, '이/가')} ${on ? '시행되었다' : '폐지되었다'}.${by ? ` (${by}의 상소)` : ''}`, 'court');
 }
 
 /** 이 법을 세우는(enact=true) 일에 대한 당의 입장 */
@@ -180,4 +186,22 @@ export function lawStance(l: LawDef, f: FactionId, enact: boolean): number {
   if (f === 'none') return 0;
   const v = topOf(f) === 'seo' ? l.stance.seo : l.stance.dong;
   return enact ? v : -v;
+}
+
+/** 이 당 사람이 밀 만한 법: 당론이 뚜렷이 찬성하는데 아직 없는 법, 또는 뚜렷이 반대하는데 시행 중인 법 */
+export function lawToPush(s: GameState, f: FactionId): { lawId: string; abolish: boolean } | null {
+  if (f === 'none') return null;
+  const opts: { lawId: string; abolish: boolean; w: number }[] = [];
+  for (const l of LAWS) {
+    if (!lawOpen(s, l)) continue;
+    const on = !!s.laws[l.id]?.on;
+    // 막 바뀐 법은 한동안 다시 다투지 않는다
+    if (s.t - (s.laws[l.id]?.since ?? 0) < 24 && s.laws[l.id]?.since) continue;
+    const v = lawStance(l, f, !on);
+    if (v >= 0.4) opts.push({ lawId: l.id, abolish: on, w: v });
+  }
+  if (!opts.length) return null;
+  opts.sort((a, b) => b.w - a.w);
+  const x = opts[0];
+  return { lawId: x.lawId, abolish: x.abolish };
 }

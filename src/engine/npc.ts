@@ -2,8 +2,10 @@ import type { Character, FactionId, GameState } from './types';
 import { OFFICE_MAP } from './data/offices';
 import { FLAW_POOL } from './data/meta';
 import { chance, pick, weighted } from './rng';
-import { addFlaw, alive, clamp, hiddenFlaws, inCourt, isP, josa, knownFlaws, monthsSince, notice, P, people, pushEvent } from './state';
+import { addFlaw, alive, clamp, hiddenFlaws, inCourt, isP, josa, knownFlaws, log, monthsSince, notice, P, people, pushEvent } from './state';
 import { yearOf } from './calendar';
+import { LAW_MAP, lawJosa, lawToPush } from './laws';
+import { FACTION_META } from './data/meta';
 import { inLaws, opinion, topOf } from './opinion';
 import { activeFactions, members } from './factions';
 import { memorial, recall } from './conflict';
@@ -147,16 +149,42 @@ function npcCosignRequests(s: GameState) {
   );
   if (!asker) return;
   const exiled = members(s, p.faction).filter((c) => c.status === 'exiled' && !isP(s, c));
-  const roll = chance(s, 0.5) ? 'impeach' : exiled.length && chance(s, 0.5) ? 'recall' : 'sipye';
+  const push = lawToPush(s, p.faction);
+  const roll = chance(s, 0.5) ? 'impeach' : exiled.length && chance(s, 0.5) ? 'recall' : push && chance(s, 0.6) ? 'law' : 'sipye';
   if (roll === 'impeach') {
     const tgt = pickTarget(s, asker, false);
     if (!tgt || isP(s, tgt)) return;
     pushEvent(s, 'cosign_request', { initiator: asker.id, topic: 'impeach', target: tgt.id });
   } else if (roll === 'recall') {
     pushEvent(s, 'cosign_request', { initiator: asker.id, topic: 'recall', target: pick(s, exiled).id });
+  } else if (roll === 'law' && push) {
+    s.flags[`lawPush_${push.lawId}`] = s.t;
+    pushEvent(s, 'cosign_request', { initiator: asker.id, topic: 'law', ...push });
   } else {
     pushEvent(s, 'cosign_request', { initiator: asker.id, topic: 'sipye' });
   }
+}
+
+/** 당의 중진이 당론에 따라 법을 세우거나 없애자는 상소를 올린다 */
+function npcLawMemorials(s: GameState) {
+  if (!chance(s, 0.035)) return;
+  const f = pick(s, activeFactions(s).filter((x) => x !== 'none'));
+  if (!f) return;
+  const push = lawToPush(s, f);
+  if (!push || monthsSince(s, `lawPush_${push.lawId}`) < 18) return;
+  const pool = members(s, f).filter((c) => !isP(s, c) && c.status === 'active' && c.location === 'hanseong' && c.politics >= 3);
+  const init = pool.sort((a, b) => b.politics + b.learning - (a.politics + a.learning))[0];
+  if (!init) return;
+  s.flags[`lawPush_${push.lawId}`] = s.t;
+  const law = LAW_MAP[push.lawId];
+  log(s, `[국법] ${FACTION_META[f].name}의 ${josa(init.name, '이/가')} ${lawJosa(law.name, '을/를')} ${push.abolish ? '없애자는' : '세우자는'} 상소를 올렸다.`, 'court');
+  const ds = holderOf(s, 'doseungji');
+  if (ds && isP(s, ds)) {
+    pushEvent(s, 'veto_request', { initiator: init.id, topic: 'law', ...push });
+    return;
+  }
+  const co = pool.filter((c) => c.id !== init.id).slice(0, 3).map((c) => c.id);
+  memorial(s, init, 'law', co, undefined, push);
 }
 
 function npcRecallPetitions(s: GameState) {
@@ -252,6 +280,7 @@ export function npcMonth(s: GameState) {
   npcCosignRequests(s);
   npcRequests(s);
   npcRecallPetitions(s);
+  npcLawMemorials(s);
   npcMovement(s);
   for (const c of people(s)) {
     if (isP(s, c)) continue;

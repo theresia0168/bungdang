@@ -10,8 +10,6 @@ import {
   POWERS,
   PROJECT_DEFS,
   TAX_REGIONS,
-  WAR_HELD,
-  WAR_ROUT,
   approvalChance,
   defenseScore,
   militaryUpkeep,
@@ -23,6 +21,7 @@ import {
   suryeongSkimRate,
   usePower,
   warForecast,
+  warOdds,
   warReadiness,
 } from '../../engine/realm';
 import { LAWS, lawOpen } from '../../engine/laws';
@@ -189,7 +188,7 @@ export function RealmTab() {
       <section className="ogroup">
         <h3>국방</h3>
         <div className="realm-head">
-          <div className={`realm-big ${ready.score >= WAR_HELD ? 'good-text' : ready.score < WAR_ROUT ? 'bad-text' : ''}`}>
+          <div className={`realm-big ${warOdds(ready.score).held >= 0.4 ? 'good-text' : warOdds(ready.score).rout >= 0.2 ? 'bad-text' : ''}`}>
             {ready.score}
             <small>전쟁 대비</small>
           </div>
@@ -203,10 +202,10 @@ export function RealmTab() {
           </div>
         </div>
         <p className="small">
-          {preWar || s.war.active ? `${warForecast(ready.score)}.` : ''} <span className="muted">{ready.parts.map((x) => `${x.label} ${x.value >= 0 ? '+' : ''}${x.value}`).join(' · ')}</span>
+          {preWar ? `${warForecast(ready.score)}.` : ''} <span className="muted">{ready.parts.map((x) => `${x.label} ${x.value >= 0 ? '+' : ''}${x.value}`).join(' · ')}</span>
         </p>
         <p className="small muted">
-          왜군이 쳐들어오면 대비 점수 {WAR_HELD} 이상이면 남쪽에서 막아 내고, {WAR_ROUT} 아래면 어가마저 위태롭다. 조련은 내버려 두면 다달이 풀린다.
+          왜군이 쳐들어오면 주사위 둘에 대비 점수의 보정((대비-35)/8)을 더해 전황을 정한다. 11 이상이면 남쪽에서 막아내고, 3 이하면 남쪽이 무너진다. 도성이 떨어지면 몽진과 왜군의 진군이 주사위로 속도를 겨루고, 왜군이 빠르면 어가가 사로잡힌다 (경기·황해·도성의 방비가 진군을 늦춘다). 조련은 내버려 두면 다달이 풀린다.
         </p>
         <table className="realm-table">
           <thead>

@@ -14,7 +14,7 @@ import { caseById, openCase } from '../cases';
 import { members } from '../factions';
 import { fromRoster, leanOf } from '../generate';
 import { endDebateByHistory, settleHeir } from '../royal';
-import { decideWarPath, defenseScore, warReadiness } from '../realm';
+import { decideWarPath, defenseScore, raceForKing } from '../realm';
 import { kingMood } from '../king';
 import { setLaw } from '../laws';
 
@@ -333,14 +333,14 @@ export const SCHEDULE: Scheduled[] = [
     at: [1592, 4],
     run(s) {
       s.war.active = true;
-      const path = decideWarPath(s);
-      const ready = warReadiness(s).score;
+      const { path, text: roll } = decideWarPath(s);
+      const ready = roll;
       s.war.zones = path === 'held' ? ['gyeongsang', 'chungcheong'] : [...WAR_ZONES_1592];
       if (path === 'held')
-        log(s, `임진왜란: 왜군 15만이 부산포에 상륙했다. 그러나 미리 쌓은 성과 조련한 군사가 고을마다 버티며 왜군의 발을 묶었다. (전쟁 대비 ${ready})`, 'war');
+        log(s, `임진왜란: 왜군 15만이 부산포에 상륙했다. 그러나 미리 쌓은 성과 조련한 군사가 고을마다 버티며 왜군의 발을 묶었다. (${ready})`, 'war');
       else if (path === 'rout')
-        log(s, `임진왜란: 왜군 15만이 부산포에 상륙했다. 성은 허물어져 있고 군적은 빈 이름뿐이라, 왜군이 거의 싸움 없이 북상한다. (전쟁 대비 ${ready})`, 'war');
-      else log(s, `임진왜란: 왜군 15만이 부산포에 상륙했다. 부산진과 동래성이 하루 만에 무너졌다. (전쟁 대비 ${ready})`, 'war');
+        log(s, `임진왜란: 왜군 15만이 부산포에 상륙했다. 성은 허물어져 있고 군적은 빈 이름뿐이라, 왜군이 거의 싸움 없이 북상한다. (${ready})`, 'war');
+      else log(s, `임진왜란: 왜군 15만이 부산포에 상륙했다. 부산진과 동래성이 하루 만에 무너졌다. (${ready})`, 'war');
       const gh = live(s, 'gwanghae');
       if (gh && !s.heir) {
         settleHeir(s, gh.id, 'war');
@@ -382,10 +382,11 @@ export const SCHEDULE: Scheduled[] = [
         s.war.zones = ['gyeongsang'];
         return;
       }
-      if (path === 'rout' && chance(s, 0.6)) {
+      const race = raceForKing(s);
+      if (race.caught) {
         s.flags.kingCaptive = true;
         kingMood(s, -40);
-        log(s, '평양으로 가던 어가가 임진강가에서 왜군 선봉에 따라잡혔다. 왕이 사로잡혔다! 세자 광해군이 분조를 이끌고 나라를 지탱한다.', 'war');
+        log(s, `평양으로 가던 어가가 임진강가에서 왜군 선봉에 따라잡혔다. 왕이 사로잡혔다! 세자 광해군이 분조를 이끌고 나라를 지탱한다. (${race.text})`, 'war');
         for (const r of ['pyeongan', 'hwanghae'] as RegionId[]) s.regions[r].minsim = clamp(s.regions[r].minsim - 15, 0, 100);
         const p = P(s);
         if (inCourt(p) && p.status !== 'exiled' && chance(s, 0.25) && p.office) {
@@ -394,7 +395,7 @@ export const SCHEDULE: Scheduled[] = [
         }
         return;
       }
-      log(s, '평양이 함락되었다. 어가는 의주로 향했다. 세자 광해군은 분조(分朝)를 이끌고 각지를 돌며 의병을 독려했다.', 'war');
+      log(s, `평양이 함락되었다. 어가는 왜군보다 한발 앞서 의주로 향했다. 세자 광해군은 분조(分朝)를 이끌고 각지를 돌며 의병을 독려했다. (${race.text})`, 'war');
     },
   },
   { id: 'w3', at: [1592, 7], run: warLog('이순신이 한산도 앞바다에서 왜 수군을 크게 무찔렀다.') },
@@ -1096,6 +1097,7 @@ export const HISTORY_EVENTS: Record<string, EventDef> = {
       const p = P(s);
       switch (key) {
         case 'follow':
+          s.flags.escorted = true;
           p.favor = clamp(p.favor + 25, -100, 100);
           p.location = 'pyeongan';
           s.flags.hojong = true;

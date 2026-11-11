@@ -1,3 +1,4 @@
+import { LAW_MAP, lawJosa } from '../laws';
 import type { EventDef } from './types';
 import { OK } from './types';
 import type { ImpeachReport, MemorialResult } from '../conflict';
@@ -104,7 +105,9 @@ export const GENERIC_EVENTS: Record<string, EventDef> = {
           ? `${tgt ? `${fname(tgt.faction)} ${officeTitle(tgt)} ${josa(tgt.name, '을/를')}` : ''} 탄핵하는 상소`
           : c.topic === 'recall'
             ? `유배 중인 ${tgt?.name}의 신원을 청하는 상소`
-            : '시폐를 논하는 상소';
+            : c.topic === 'law' && LAW_MAP[c.lawId]
+              ? `${lawJosa(LAW_MAP[c.lawId].name, '을/를')} ${c.abolish ? '없애자는' : '세우자는'} 상소 (${LAW_MAP[c.lawId].effect})`
+              : '시폐를 논하는 상소';
       return {
         title: '연명 요청',
         kind: 'court',
@@ -143,7 +146,7 @@ export const GENERIC_EVENTS: Record<string, EventDef> = {
       if (c.topic === 'impeach') {
         if (alive(tgt) && tgt.status === 'active' && tgt.office) openCase(s, init, tgt, { pros: cos });
       } else {
-        const r = memorial(s, init, c.topic, cos, c.target);
+        const r = memorial(s, init, c.topic, cos, c.target, { lawId: c.lawId, abolish: c.abolish });
         if (key === 'accept') pushEvent(s, 'memorial_report', { result: r, topic: c.topic });
       }
       return msg;
@@ -157,7 +160,7 @@ export const GENERIC_EVENTS: Record<string, EventDef> = {
       return {
         title: '승정원에 들어온 상소',
         kind: 'court',
-        text: `${fname(init.faction)} ${init.name}의 ${TOPIC_LABEL[c.topic as keyof typeof TOPIC_LABEL]}${tgt ? `(${tgt.name} 관련)` : ''} 한 통이 승정원에 들어왔다. 도승지인 당신은 이를 왕에게 올리지 않고 돌려보낼 수 있다.`,
+        text: `${fname(init.faction)} ${init.name}의 ${TOPIC_LABEL[c.topic as keyof typeof TOPIC_LABEL]}${tgt ? `(${tgt.name} 관련)` : ''}${c.lawId && LAW_MAP[c.lawId] ? `(${LAW_MAP[c.lawId].name} ${c.abolish ? '폐지' : '시행'})` : ''} 한 통이 승정원에 들어왔다. 도승지인 당신은 이를 왕에게 올리지 않고 돌려보낼 수 있다.`,
         choices: [
           { key: 'pass', label: '그대로 올린다' },
           {
@@ -173,7 +176,7 @@ export const GENERIC_EVENTS: Record<string, EventDef> = {
       const init = s.chars[c.initiator];
       if (!alive(init)) return;
       if (key === 'pass') {
-        memorial(s, init, c.topic, [], c.target);
+        memorial(s, init, c.topic, [], c.target, { lawId: c.lawId, abolish: c.abolish });
         return '상소를 그대로 올렸다.';
       }
       addFlaw(s, p, '언로 차단', true);

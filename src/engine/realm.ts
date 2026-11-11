@@ -2,7 +2,7 @@ import type { Character, GameState, RealmProject, RealmProjectKind, RegionDefens
 import { OFFICE_MAP } from './data/offices';
 import { REGION_META } from './data/meta';
 import { monthOf, tOf } from './calendar';
-import { chance, pick, weighted } from './rng';
+import { chance, d6, pick, weighted } from './rng';
 import { addFlaw, alive, clamp, fav, isP, josa, log, monthsSince, notice, P, people, pres, uid } from './state';
 import { kingMood } from './king';
 import { holderOf, vacate } from './court';
@@ -144,9 +144,31 @@ export function warReadiness(s: GameState): { score: number; parts: { label: str
   return { score: parts.reduce((a, x) => a + x.value, 0), parts };
 }
 
-export const WAR_HELD = 60;
-export const WAR_ROUT = 20;
-export const warForecast = (score: number) => (score >= WAR_HELD ? '왜군을 남쪽에서 막아낼 만하다' : score < WAR_ROUT ? '변란이 나면 나라가 무너질 지경이다' : '변란이 나면 도성을 지키기 어렵다');
+/* 임진년의 전황은 주사위 둘(2d6)에 대비 점수의 보정을 더해 정한다.
+ * 11 이상이면 남쪽에서 막아내고, 3 이하면 남쪽이 무너진다. 그 사이는 역사대로. */
+export const WAR_HELD_ROLL = 11;
+export const WAR_ROUT_ROLL = 3;
+export const warMod = (score: number) => Math.round((score - 35) / 8);
+
+/** 대비 점수가 이만할 때 각 전황이 나올 확률 */
+export function warOdds(score: number): { held: number; history: number; rout: number } {
+  const m = warMod(score);
+  let held = 0;
+  let rout = 0;
+  for (let a = 1; a <= 6; a++)
+    for (let b = 1; b <= 6; b++) {
+      const r = a + b + m;
+      if (r >= WAR_HELD_ROLL) held++;
+      else if (r <= WAR_ROUT_ROLL) rout++;
+    }
+  return { held: held / 36, rout: rout / 36, history: (36 - held - rout) / 36 };
+}
+
+export const warForecast = (score: number) => {
+  const o = warOdds(score);
+  const pc = (v: number) => `${Math.round(v * 100)}%`;
+  return `왜란이 나면 — 남쪽에서 막아냄 ${pc(o.held)} · 도성 함락(역사대로) ${pc(o.history)} · 남쪽 붕괴 ${pc(o.rout)}`;
+};
 
 /* ───────── 나라 사업 ───────── */
 
@@ -610,11 +632,28 @@ export function usePower(s: GameState, id: PowerId): string {
 /* ───────── 임진년의 전황 ───────── */
 
 /** 1592년 4월, 왜군이 상륙할 때 대비 점수로 전황을 정한다 */
-export function decideWarPath(s: GameState): 'held' | 'history' | 'rout' {
+export function decideWarPath(s: GameState): { path: 'held' | 'history' | 'rout'; text: string } {
   const { score } = warReadiness(s);
-  const path = score >= WAR_HELD ? 'held' : score < WAR_ROUT ? 'rout' : 'history';
+  const a = d6(s);
+  const b = d6(s);
+  const m = warMod(score);
+  const r = a + b + m;
+  const path = r >= WAR_HELD_ROLL ? 'held' : r <= WAR_ROUT_ROLL ? 'rout' : 'history';
   s.realm.warPath = path;
-  return path;
+  return { path, text: `전쟁 대비 ${score}: 주사위 ${a}+${b} ${m >= 0 ? '+' : ''}${m} = ${r}` };
+}
+
+/** 몽진 속도와 왜군의 진군 속도를 겨룬다. 왜군이 빠르면 어가가 사로잡힌다. */
+export function raceForKing(s: GameState): { caught: boolean; text: string } {
+  const north: RegionId[] = ['hanseong', 'gyeonggi', 'hwanghae'];
+  const nd = north.reduce((a, r) => a + defenseScore(s, r), 0) / north.length;
+  const ja = d6(s);
+  const jMod = (s.realm.warPath === 'rout' ? 3 : 1) - Math.round(nd / 20);
+  const ka = d6(s);
+  const kMod = 3 + (s.flags.escorted ? 1 : 0) + (s.realm.treasury < 0 ? -1 : 0);
+  const jp = ja + jMod;
+  const kg = ka + kMod;
+  return { caught: jp > kg, text: `왜군의 진군 ${ja}${jMod >= 0 ? '+' : ''}${jMod}=${jp} · 몽진 ${ka}+${kMod}=${kg}` };
 }
 
 /** 전란 중 매달: 전장의 방비가 버티는지 */

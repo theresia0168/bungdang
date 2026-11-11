@@ -20,7 +20,7 @@ export const WAR_SCENES: (Scene & { at: [number, number]; ok(s: GameState): bool
     title: '몽진(蒙塵)',
     text: () => '왜군이 충주를 넘었다는 급보가 들어왔다. 왕이 한밤중에 도성을 버리고 서쪽으로 떠나려 한다. 비가 쏟아지는 돈의문 밖으로 어가가 나서는데, 따르는 신하가 백도 되지 않는다.',
     opts: () => [
-      { key: 'follow', label: '어가를 따라 몽진길에 오른다', fx: { say: '빗속에 어가를 따랐다. 왕이 그 얼굴을 기억할 것이다.', favor: 10, prestige: 3, sick: 0.15 } },
+      { key: 'follow', label: '어가를 따라 몽진길에 오른다', fx: { say: '빗속에 어가를 따랐다. 왕이 그 얼굴을 기억할 것이다.', favor: 10, prestige: 3, sick: 0.15, note: '몽진 속도 +1', run: (s) => void (s.flags.escorted = true) } },
       { key: 'stay', label: '도성에 남아 백성을 수습한다', fx: { say: '도성에 남아 흩어진 백성을 모았다.', prestige: 4, favor: -3, minsim: 6, minsimAt: 'hanseong' } },
       {
         key: 'flee',
