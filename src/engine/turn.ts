@@ -7,7 +7,7 @@ import { decayMods } from './opinion';
 import { checkSplit, updateLeaders } from './factions';
 import { fillVacancies, holderOf, settleRaces, tickRaces, turnover } from './court';
 import { npcMonth, tickStats } from './npc';
-import { collectTaxes, tickRealm, tickWarFront } from './realm';
+import { collectTaxes, tickRealm, tickWarFront, warReadiness } from './realm';
 import { tickAuthority } from './coup';
 import { tickStrife } from './strife';
 import { rollBunjo, rollWarFront } from './events/war';
@@ -79,7 +79,7 @@ function warTick(s: GameState) {
   if (!s.war.active) return;
   for (const c of Object.values(s.chars)) {
     if (!alive(c) || c.status === 'royal' || isP(s, c)) continue;
-    if (s.war.zones.includes(c.location) && chance(s, 0.004 * (1.3 - s.war.preparedness / 100))) kill(s, c, '전란 중에 목숨을 잃었다');
+    if (s.war.zones.includes(c.location) && chance(s, 0.004 * (1.3 - Math.min(100, warReadiness(s).score) / 100))) kill(s, c, '전란 중에 목숨을 잃었다');
   }
 }
 

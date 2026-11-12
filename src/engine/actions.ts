@@ -1,4 +1,5 @@
 import type { Character, FactionId, GameState, MemorialTopic, ProjectKind, TraitId } from './types';
+import { addPrep } from './realm';
 import { OFFICE_MAP } from './data/offices';
 import { REGION_META } from './data/meta';
 import { chance, randInt } from './rng';
@@ -97,7 +98,7 @@ export function refreshAp(s: GameState) {
 }
 
 /** 멀리 있어도 할 수 있는 행동 */
-const BY_LETTER: TargetActionId[] = ['letter', 'plead', 'secret'];
+const BY_LETTER: TargetActionId[] = ['visit', 'pact', 'cosign'];
 
 /** 행동 고유의 조건과 행동력·직권을 모두 따진다. 할 수 있으면 null. */
 export function actionError(s: GameState, a: TargetAction, t: Character): string | null {
@@ -325,7 +326,7 @@ export const TARGET_ACTIONS: TargetAction[] = [
         basic(s, t) ??
         traitForbids(P(s), 'deceit') ??
         traitForbids(P(s), 'cruel') ??
-        (heldFlaws(s, t).some((f) => !f.fake) ? null : '쥐고 있는 그의 약점이 없다 (탐문·뒷조사로 찾는다)') ??
+        (heldFlaws(s, t).some((f) => !f.fake) ? null : '쥐고 있는 그의 약점이 없다 (뒷조사로 찾는다)') ??
         cdMsg(s, `blackmail:${t.id}`)
       );
     },
@@ -536,7 +537,7 @@ export const TARGET_ACTIONS: TargetAction[] = [
   },
   {
     id: 'pact',
-    name: '맹약 제안',
+    name: '맹약',
     cost: () => 1,
     desc: `같은 당 사람과 뜻을 함께하기로 약속한다. 맹약을 맺은 이는 당신의 논핵에 동조하고, 당신이 논핵당하면 구원하며, 당신을 노리는 음모를 귀띔해 준다. 최대 ${MAX_BONDS}명. 그를 공격하면 배신이 된다.`,
     check(s, t) {
@@ -883,6 +884,91 @@ TARGET_ACTIONS.push(
   },
 );
 
+/* ───────── 행동 통폐합 ─────────
+ * 비슷한 행동을 하나로 묶는다. 옛 행동의 처리는 그대로 두고, 상황에 따라 알맞은 쪽으로 나뉜다.
+ */
+{
+  const take = (id: TargetActionId): TargetAction => {
+    const i = TARGET_ACTIONS.findIndex((a) => a.id === id);
+    return TARGET_ACTIONS.splice(i, 1)[0];
+  };
+  const get = (id: TargetActionId) => TARGET_ACTIONS.find((a) => a.id === id)!;
+  const letter = take('letter');
+  const probe = take('probe');
+  const secret = take('secret');
+  const bribe = take('bribe');
+  const plead = take('plead');
+  const disinfo = take('disinfo');
+  take('recommend');
+  void probe;
+
+  // 교유: 같은 곳에 있으면 찾아가고, 멀리 있으면 서신을 보낸다
+  const visit = get('visit');
+  const v0 = { check: visit.check, run: visit.run };
+  const far = (s: GameState, t: Character) => {
+    const p = P(s);
+    return p.status === 'exiled' || isAbroad(s) || t.status === 'exiled' || p.location !== t.location;
+  };
+  visit.name = '교유';
+  visit.desc = '사람을 사귄다. 같은 곳에 있으면 직접 찾아가 그 가문 전체에 인상을 남기고(쿨다운 4달), 멀리 있으면 서신을 보낸다(쿨다운 3달). 유배 중에도 서신은 보낼 수 있다.';
+  visit.check = (s, t) => (far(s, t) ? letter.check(s, t) : v0.check(s, t));
+  visit.run = (s, t) => (far(s, t) ? letter.run(s, t) : v0.run(s, t));
+
+  // 뒷조사: 탐문을 겸한다 (그가 바라는 것도 알아 온다)
+  const inv = get('investigate');
+  const i0 = inv.run;
+  inv.desc = `재산 ${INVESTIGATE_COST}을 들여 겸인에게 몇 달 동안 그의 뒤를 캐게 한다. 곧바로 그가 바라는 것을 알아 오고, 끝나면 숨긴 흠결을 잡을 수 있다. 한 번에 한 사람만.`;
+  inv.run = (s, t) => `${i0(s, t)}${learnWant(s, t)}`;
+
+  // 맹약: 같은 당이면 드러내 놓고, 다른 당이거나 유배 중이면 밀서로
+  const pact = get('pact');
+  const p0 = { check: pact.check, run: pact.run };
+  const secretMode = (s: GameState, t: Character) => {
+    const p = P(s);
+    return p.status === 'exiled' || p.faction === 'none' || topOf(p.faction) !== topOf(t.faction);
+  };
+  pact.desc = `뜻을 함께하기로 약속한다. 같은 당이면 드러내 놓고(호감 50), 다른 당이거나 유배 중이면 재산 5를 들여 밀서로(호감 40) 몰래 맺는다. 밀서는 가로채일 수 있다. 맹약한 이는 공방에서 당신 편에 서고 음모를 귀띔한다. 최대 ${MAX_BONDS}명.`;
+  pact.check = (s, t) => (secretMode(s, t) ? secret.check(s, t) : p0.check(s, t));
+  pact.run = (s, t) => (secretMode(s, t) ? secret.run(s, t) : p0.run(s, t));
+
+  // 청탁: 신세와 호감으로 부탁하고, 안 되면 예물을 곁들인다
+  const ask = get('ask_recommend');
+  const a0 = ask.run;
+  ask.name = '청탁';
+  ask.desc = '이조판서나 이조전랑에게 나를 천거해 달라고 부탁한다(6개월간 임용 점수 +8). 신세를 진 사이면 반드시, 호감이 높을수록 잘 들어준다. 거절당하면 재산 30으로 예물을 곁들여 다시 청한다 — 서로의 숨은 흠결이 생기고, 강직한 이는 노한다. 청렴·강직한 성품은 예물을 쓰지 않는다.';
+  ask.run = (s, t) => {
+    const p = P(s);
+    const r = a0(s, t);
+    if ((s.recs[p.id] ?? -1) > s.t) return r;
+    if (p.wealth < 30 || traitForbids(p, 'greed') || cdLeft(s, 'bribe')) return r;
+    return `${r} 예물을 곁들여 다시 청했다. ${bribe.run(s, t)}`;
+  };
+
+  // 연명·구원 요청: 내가 논핵당하고 있으면 구원을, 아니면 연명을 청한다
+  const co = get('cosign');
+  const c0 = { check: co.check, run: co.run };
+  const defending = (s: GameState) => !!caseOn(s, P(s).id);
+  co.name = '연명·구원 요청';
+  co.desc = '내가 이끄는 논핵이나 준비 중인 상소에 이름을 올려 달라고 청한다. 내가 논핵을 당하고 있으면 구원을 청한다(유배 중에도 서신으로). 신세를 진 이는 반드시 응한다.';
+  co.check = (s, t) => {
+    if (defending(s)) return plead.check(s, t);
+    if (P(s).status === 'exiled') return '유배 중이다';
+    return c0.check(s, t);
+  };
+  co.run = (s, t) => (defending(s) ? plead.run(s, t) : c0.run(s, t));
+
+  // 이간: 다른 당 사람이면 그의 당에 역정보를, 나를 믿는 이에게는 동료의 험담을
+  const al = get('alienate');
+  const al0 = { check: al.check, run: al.run };
+  const enemy = (s: GameState, t: Character) => {
+    const p = P(s);
+    return p.faction !== 'none' && t.faction !== 'none' && topOf(t.faction) !== topOf(p.faction);
+  };
+  al.desc = '다른 당 사람이면 재산 10을 들여 그가 우리 쪽과 내통한다는 소문을 그의 당에 흘린다. 나를 믿는 사람(호감 20 이상이거나 사돈)이면 그와 가장 가까운 동료의 험담을 흘려 둘 사이를 벌린다.';
+  al.check = (s, t) => (enemy(s, t) ? disinfo.check(s, t) : al0.check(s, t));
+  al.run = (s, t) => (enemy(s, t) ? disinfo.run(s, t) : al0.run(s, t));
+}
+
 /** 그가 가장 가까이하는 같은 당 동료 */
 function closestAlly(s: GameState, t: Character): Character | undefined {
   return Object.values(s.chars)
@@ -1021,7 +1107,7 @@ export const MONTHLY: MonthlyAction[] = [
     id: 'work',
     name: '업무 집중',
     cost: 2,
-    desc: '맡은 일에 온 힘을 쏟는다. 성심 +2 (70까지)와 정치 경험 +3. 이번 달 왕의 눈에 띄어 독대·직무 사건이 잦아진다. 관찰사는 도의 민심과 조련이, 병조판서는 국방 대비가, 호조판서는 국고가 오른다. 석 달 넘게 손을 놓으면 성심이 조금씩 식는다.',
+    desc: '맡은 일에 온 힘을 쏟는다. 성심 +2 (70까지)와 정치 경험 +3. 이번 달 왕의 눈에 띄어 독대·직무 사건이 잦아진다. 관찰사는 도의 민심과 조련이, 병조판서는 남쪽 방비가, 호조판서는 국고가 오른다. 석 달 넘게 손을 놓으면 성심이 조금씩 식는다.',
     check: (s) => (P(s).status === 'active' && P(s).office ? (isAbroad(s) ? '연행 중이다' : null) : '관직에 있어야 한다'),
     run(s) {
       const p = P(s);
@@ -1042,8 +1128,8 @@ export const MONTHLY: MonthlyAction[] = [
         r.minsim = clamp(r.minsim + 0.7, 0, 100);
         extra.push('고을 민심 +0.7');
       } else if (p.office === 'byeongjo') {
-        s.war.preparedness = clamp(s.war.preparedness + 1.5, 0, 100);
-        extra.push('국방 대비 +1.5');
+        addPrep(s, 1.5);
+        extra.push('남쪽 방비 +1.5');
       } else if (p.office === 'hojo') {
         s.realm.treasury += 6;
         extra.push('국고 +6');
@@ -1534,7 +1620,7 @@ export const SELF_ACTIONS: { id: SelfActionId; name: string; desc: string; check
   {
     id: 'retain',
     name: '식객 들이기',
-    desc: `재산 15로 식객을 들인다 (최대 ${MAX_RETAINERS}명, 매달 1명당 재산 ${RETAINER_UPKEEP}). 식객이 많을수록 나를 노리는 음모를 일찍 알아채고, 탐문이 잘 되며, 밀서가 덜 새어 나간다. 2명 이상이면 매달 행동력 +1.`,
+    desc: `재산 15로 식객을 들인다 (최대 ${MAX_RETAINERS}명, 매달 1명당 재산 ${RETAINER_UPKEEP}). 식객이 많을수록 나를 노리는 음모를 일찍 알아채고, 이간이 잘 되며, 밀서가 덜 새어 나간다. 2명 이상이면 매달 행동력 +1.`,
     check(s) {
       const p = P(s);
       if (p.status === 'exiled') return '유배 중이다';
@@ -1561,7 +1647,7 @@ export const SELF_ACTIONS: { id: SelfActionId; name: string; desc: string; check
   {
     id: 'donate',
     name: '진휼에 재물을 내놓다',
-    desc: '재산 30을 내어 굶주린 백성을 구한다. 고향(전란 중이면 전장) 민심 +8, 명망 +3. 전란 중이면 성심 +4, 국방 대비 +3.',
+    desc: '재산 30을 내어 굶주린 백성을 구한다. 고향(전란 중이면 전장) 민심 +8, 명망 +3. 전란 중이면 성심 +4, 남쪽 방비 +3.',
     check(s) {
       if (P(s).wealth < 30) return '재산이 30 이상 있어야 한다';
       return cdMsg(s, 'donate');
@@ -1576,9 +1662,9 @@ export const SELF_ACTIONS: { id: SelfActionId; name: string; desc: string; check
       p.prestige = clamp(p.prestige + 3, 0, 100);
       if (war) {
         p.favor = clamp(p.favor + 4, -100, 100);
-        s.war.preparedness = clamp(s.war.preparedness + 3, 0, 100);
+        addPrep(s, 3);
       }
-      return `${REGION_META[r].short}의 굶주린 백성에게 곡식을 풀었다. (민심 +8, 명망 +3${war ? ', 성심 +4, 국방 대비 +3' : ''})`;
+      return `${REGION_META[r].short}의 굶주린 백성에게 곡식을 풀었다. (민심 +8, 명망 +3${war ? ', 성심 +4, 남쪽 방비 +3' : ''})`;
     },
   },
 ];

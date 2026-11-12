@@ -50,7 +50,7 @@ export const OFFICES: OfficeDef[] = [
   { id: 'ijo', name: '이조판서', group: 'yukjo', rank: 2, weight: 8, term: 15, desc: '문관 인사를 맡는다. 관직 임용에 큰 영향을 주며 천거할 수 있다.' },
   { id: 'hojo', name: '호조판서', group: 'yukjo', rank: 2, weight: 5, term: 15, desc: '나라 살림을 맡는다. 녹봉이 많다.' },
   { id: 'yejo', name: '예조판서', group: 'yukjo', rank: 2, weight: 4, term: 15, desc: '과거를 주관한다. 같은 당 응시자가 유리해진다.' },
-  { id: 'byeongjo', name: '병조판서', group: 'yukjo', rank: 2, weight: 6, term: 15, desc: '군정을 맡는다. 직무에 힘쓰면 국방 대비가 오른다.' },
+  { id: 'byeongjo', name: '병조판서', group: 'yukjo', rank: 2, weight: 6, term: 15, desc: '군정을 맡는다. 직무에 힘쓰면 남쪽 방비가 오른다.' },
   { id: 'hyeongjo', name: '형조판서', group: 'yukjo', rank: 2, weight: 4, term: 15, desc: '형옥을 맡는다.' },
   { id: 'gongjo', name: '공조판서', group: 'yukjo', rank: 2, weight: 2, term: 15, desc: '토목과 공장을 맡는다.' },
   { id: 'daesaheon', name: '대사헌', group: 'samsa', rank: 2, weight: 6, term: 10, samsa: true, desc: '사헌부의 장. 탄핵 공격 +1.' },

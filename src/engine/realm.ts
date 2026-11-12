@@ -20,6 +20,12 @@ export const TAX_SCALE = 5.6;
 export const COASTAL: RegionId[] = ['gyeongsang', 'jeolla', 'chungcheong', 'gyeonggi', 'hwanghae'];
 export const TAX_REGIONS = (Object.keys(REGION_ECON) as RegionId[]).filter((r) => REGION_ECON[r].yield > 0);
 
+/** 남쪽 방비를 올린다: 왜란이 닥칠 남쪽 도들의 조련이 오른다 */
+export const SOUTH: RegionId[] = ['gyeongsang', 'jeolla', 'chungcheong', 'gyeonggi', 'hanseong'];
+export function addPrep(s: GameState, v: number) {
+  for (const r of SOUTH) s.regions[r].defense.drill = clamp(s.regions[r].defense.drill + v * 1.5, 0, 100);
+}
+
 export const initDefense = (r: RegionId): RegionDefense => ({
   fort: r === 'hamgyeong' || r === 'pyeongan' ? 2 : r === 'hanseong' ? 2 : 1,
   jin: r === 'hamgyeong' ? 2 : r === 'gyeongsang' || r === 'jeolla' || r === 'pyeongan' ? 1 : r === 'hanseong' ? 0 : 1,
@@ -28,7 +34,7 @@ export const initDefense = (r: RegionId): RegionDefense => ({
 });
 
 export function initRealm(): GameState['realm'] {
-  return { treasury: 300, ledger: null, spent: [], royal: 1, projects: [], broke: 0, budget: { tax: 'normal', army: 'keep', royal: 'normal' }, authority: 60 };
+  return { treasury: 300, ledger: null, spent: [], royal: 1, projects: [], broke: 0, budget: { tax: 'normal', army: 'keep', royal: 'normal' } };
 }
 
 /* ───────── 예산의 결 ───────── */
@@ -42,7 +48,7 @@ export const ROYAL_NAME: Record<RoyalLevel, string> = { cut: '절감', normal: '
 export const BUDGET_DESC = {
   tax: '전세(田稅)를 얼마나 거둘지. 경감하면 세입 -15%에 민심이 오르고, 가렴하면 세입 +15%에 민심이 깎이며 은결이 는다.',
   army: '군비를 얼마나 댈지. 성곽·진보·수군의 유지비에 견주어 감군 70% · 유지 100% · 확충 130%를 댄다. 모자라면 조련이 풀리고 시설이 허물어지며, 넉넉하면 조련이 오른다.',
-  royal: '내수사와 궁방의 씀씀이. 절감하면 용안이 어두워지고 왕실 권위가 깎이며, 넉넉하면 그 반대다.',
+  royal: '내수사와 궁방의 씀씀이. 절감하면 용안이 어두워지고, 넉넉하면 밝아진다.',
 };
 
 /* ───────── 세입 ───────── */
@@ -208,8 +214,7 @@ export function warReadiness(s: GameState): { score: number; parts: { label: str
   const south: RegionId[] = ['gyeongsang', 'chungcheong', 'gyeonggi', 'hanseong'];
   const avg = south.reduce((a, r) => a + defenseScore(s, r), 0) / south.length;
   const parts = [
-    { label: '비변사의 대비', value: Math.round(s.war.preparedness * 0.5) },
-    { label: '남쪽 고을의 방비', value: Math.round(avg * 0.5) },
+    { label: '남쪽 고을의 방비', value: Math.round(avg) },
   ];
   if (lawOn(s, 'jeseung')) parts.push({ label: '제승방략', value: -8 });
   if (lawOn(s, 'jingwan')) parts.push({ label: '진관 체제', value: 6 });
@@ -541,7 +546,7 @@ export function tickRealm(s: GameState) {
   // 국고가 바닥나면
   if (realm.treasury < 0) {
     realm.broke++;
-    kingMood(s, -1.5);
+    kingMood(s, s.war.active ? -0.8 : -1.5);
     for (const r of Object.values(s.regions)) r.minsim = clamp(r.minsim - 0.3, 0, 100);
     const hj = holderOf(s, 'hojo');
     if (hj) fav(hj, -1);
@@ -598,7 +603,7 @@ export function sellTitles(s: GameState): number {
   s.flags.gongmyeongAt = s.t;
   s.realm.treasury += 120;
   // 전란 중의 납속은 나라를 구하는 일로 여겨 체통이 덜 깎인다
-  s.realm.authority = clamp(s.realm.authority - (s.war.active ? 1 : 3), 0, 100);
+  kingMood(s, s.war.active ? -2 : -6);
   for (const r of Object.values(s.regions)) r.minsim = clamp(r.minsim - 0.5, 0, 100);
   log(s, '[국고] 바닥난 국고를 메우려 공명첩(空名帖)을 팔고 납속(納粟)을 받았다. 벼슬을 돈으로 산다는 말에 조정의 체통이 깎였다.', 'court');
   return 120;
@@ -671,13 +676,13 @@ export const POWERS: OfficePower[] = [
   {
     id: 'hojo_titles',
     name: '공명첩 발매',
-    desc: '이름만 있는 벼슬 첩지를 팔고 곡식을 바치게 한다. 국고 +120. 왕실 권위 -3 (전란 중에는 -1), 명망 -2, 팔도 민심 조금 하락. 반년에 한 번.',
+    desc: '이름만 있는 벼슬 첩지를 팔고 곡식을 바치게 한다. 국고 +120. 용안이 어두워지고(전란 중에는 덜하다) 명망 -2, 팔도 민심 조금 하락. 반년에 한 번.',
     office: (o) => o === 'hojo',
     check: (s) => (monthsSince(s, 'gongmyeongAt') < 6 ? '반년에 한 번만 팔 수 있다' : null),
     run(s) {
       sellTitles(s);
       pres(P(s), -2);
-      return '공명첩을 팔아 국고를 메웠다. (국고 +120, 왕실 권위 -3, 명망 -2)';
+      return '공명첩을 팔아 국고를 메웠다. (국고 +120, 용안이 어두워짐, 명망 -2)';
     },
   },
   {
@@ -699,14 +704,14 @@ export const POWERS: OfficePower[] = [
   {
     id: 'byeongjo_review',
     name: '군적 점고',
-    desc: '팔도의 군적을 점검한다. 모든 도의 조련 +6, 국방 대비 +2. 권세가 자제의 빠진 이름이 드러나 고관들이 언짢아한다.',
+    desc: '팔도의 군적을 점검한다. 모든 도의 조련 +6, 남쪽 방비 +2. 권세가 자제의 빠진 이름이 드러나 고관들이 언짢아한다.',
     office: (o) => o === 'byeongjo',
     run(s) {
       const p = P(s);
       for (const r of Object.values(s.regions)) r.defense.drill = clamp(r.defense.drill + 6, 0, 100);
-      s.war.preparedness = clamp(s.war.preparedness + 2, 0, 100);
+      addPrep(s, 2);
       for (const c of people(s)) if (!isP(s, c) && c.rank <= 2 && c.traits.includes('greedy') && opinion(s, c, p) < 30) sway(s, c, p.id, -3, '군적 점고', { decay: 0.2 });
-      return '팔도 군적을 점고했다. (조련 +6, 국방 대비 +2)';
+      return '팔도 군적을 점고했다. (조련 +6, 남쪽 방비 +2)';
     },
   },
   {
@@ -809,7 +814,7 @@ export function tickWarFront(s: GameState) {
     reg.defense.drill = clamp(reg.defense.drill - 1.5, 0, 100);
     if (sc < 25) reg.minsim = clamp(reg.minsim - 1, 0, 100);
     if (sc >= 55 && chance(s, 0.06)) {
-      s.war.preparedness = clamp(s.war.preparedness + 2, 0, 100);
+      addPrep(s, 2);
       log(s, `[전황] ${REGION_META[r].short}의 성과 진보가 왜군의 공세를 막아냈다.`, 'war');
     } else if (sc < 20 && chance(s, 0.05) && reg.defense.fort > 0) {
       reg.defense.fort--;

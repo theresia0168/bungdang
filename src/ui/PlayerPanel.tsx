@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useG } from './ctx';
 import { P, officeTitle, statusLabel } from '../engine/state';
 import { FACTION_META, REGION_META, SCHOOL_META, TRAIT_META } from '../engine/data/meta';
@@ -23,6 +23,8 @@ import {
 } from '../engine/actions';
 import { LAWS, LAW_MAP, lawOpen } from '../engine/laws';
 import { activeFactions } from '../engine/factions';
+import { POWERS, powerError, usePower } from '../engine/realm';
+import { OFFICE_MAP } from '../engine/data/offices';
 import { BOND } from '../engine/relations';
 import { TOPIC_LABEL } from '../engine/conflict';
 import { standing } from '../engine/factions';
@@ -38,6 +40,14 @@ export function PlayerPanel() {
   const p = P(s);
   const pl = s.player;
   const f = pl.focus;
+  const powers = POWERS.filter((w) => p.status === 'active' && !!p.office && w.office(p.office));
+  const officeHints: string[] = [];
+  if (p.status === 'active' && p.office) {
+    if (p.office === 'ijo' || p.office === 'jeonrang') officeHints.push('빈자리 의망은 「조정」 탭에서 한다.');
+    if (p.office === 'hojo') officeHints.push('한 해 예산은 「국정」 탭에서 짠다.');
+    if (p.office.startsWith('gamsa_') || (OFFICE_MAP[p.office]?.rank ?? 9) <= 2) officeHints.push('나라 사업 건의는 「국정」 탭에서 한다.');
+    if (OFFICE_MAP[p.office]?.samsa) officeHints.push('언관이라 탄핵을 직권으로 한다 (인물 창).');
+  }
   const [lawChoice, setLawPick] = useState('sumi');
   const openLaws = LAWS.filter((l) => lawOpen(s, l));
   const lawPick = openLaws.some((l) => l.id === lawChoice) ? lawChoice : (openLaws[0]?.id ?? '');
@@ -162,12 +172,12 @@ export function PlayerPanel() {
                 {side === 'target' ? (
                   <>
                     <b>{cs.kind === 'aggravate' ? '가죄 공방' : '논핵당하는 중'}</b> 공격 <CharLink id={atk.id} /> · {left}달 뒤 판정 · 동조 {cs.pros.length} · 구원 {cs.cons.length}
-                    <div className="small">신세를 진 이에게 「구원 요청」을 하라.</div>
+                    <div className="small">신세를 진 이에게 「연명·구원 요청」을 하라.</div>
                   </>
                 ) : (
                   <>
                     <b>{side === 'attacker' ? '논핵을 이끄는 중' : side === 'pro' ? '동조 중' : '구원 중'}</b> <CharLink id={tg.id} /> · {left}달 뒤 판정 · 동조 {cs.pros.length} · 구원 {cs.cons.length}
-                    {side === 'attacker' && <div className="small">인물 창에서 「연명 요청」으로 동조를 모으라.</div>}
+                    {side === 'attacker' && <div className="small">인물 창에서 「연명·구원 요청」으로 동조를 모으라.</div>}
                   </>
                 )}
               </div>
@@ -176,10 +186,7 @@ export function PlayerPanel() {
         </section>
       )}
 
-      <section className="pp-sec">
-        <h4>
-          이달의 행동 <span className="muted small">행동력 {pl.ap} 남음 · 같은 일은 한 달에 한 번</span>
-        </h4>
+      <Fold id="month" title="이달의 행동" extra={<span className="muted small">행동력 {pl.ap} 남음 · 같은 일은 한 달에 한 번</span>} open>
         <div className="focus-grid">
           {MONTHLY.filter((a) => !a.estate).map((a) => {
             const err = monthlyError(s, a);
@@ -210,10 +217,29 @@ export function PlayerPanel() {
           <p className="small muted">업무 집중을 석 달 넘게 거르면 성심이 조금씩 식는다.</p>
         )}
         {p.id === pl.charId && <p className="small muted">학식 {expNeed(p.learning)} · 정치 {expNeed(p.politics)}의 경험이 차야 한 단계 오른다.</p>}
-      </section>
+        {p.status === 'active' && p.office && (
+          <>
+            <div className="sub-h">
+              직무 <span className="muted small">{officeTitle(p)}의 권한 · 직권은 한 달에 한 번</span>
+            </div>
+            {powers.length > 0 && (
+              <div className="focus-grid">
+                {powers.map((w) => {
+                  const err = powerError(s, w);
+                  return (
+                    <button key={w.id} className="fbtn" disabled={!!err} title={err ? `${err}\n\n${w.desc}` : w.desc} onClick={() => act((g) => usePower(g, w.id))}>
+                      {w.name} <span className="cost auth">직권</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            {officeHints.length > 0 && <p className="small muted">{officeHints.join(' ')}</p>}
+          </>
+        )}
+      </Fold>
 
-      <section className="pp-sec">
-        <h4>상소</h4>
+      <Fold id="memorial" title="상소" open>
         {f?.kind === 'memorial' ? (
           <div className="focus-now">
             <b>
@@ -222,7 +248,7 @@ export function PlayerPanel() {
             {tgt && <span> — {tgt.name}</span>}
             <Bar value={f.progress} max={f.required} />
             <span className="small muted">
-              {f.progress}/{f.required}개월 · 연명 {f.cosigners.length}인 (인물 창에서 「연명 요청」)
+              {f.progress}/{f.required}개월 · 연명 {f.cosigners.length}인 (인물 창에서 「연명·구원 요청」)
             </span>
             <button className="mini" onClick={() => act((g) => dropMemorial(g))}>
               거두기
@@ -255,12 +281,9 @@ export function PlayerPanel() {
             <p className="small muted">상소는 행동력이 들지 않는다. 두 달 동안 지으며 연명을 모은다. 나라의 법은 「국정」 탭에서 볼 수 있다.</p>
           </>
         )}
-      </section>
+      </Fold>
 
-      <section className="pp-sec">
-        <h4>
-          가산 <span className="muted small">재산 {Math.round(p.wealth)}</span>
-        </h4>
+      <Fold id="estate" title="가산" extra={<span className="muted small">재산 {Math.round(p.wealth)} · 전장 {pl.land}결</span>}>
         <div className="small">
           전장 {pl.land}결{pl.hiddenLand > 0 && <span className="bad-text"> (은결 {pl.hiddenLand})</span>}
           {pl.loans.length > 0 && <span> · 놓은 장리 {pl.loans.map((l) => `${l.amount}(${l.due - s.t}달 뒤)`).join(', ')}</span>}
@@ -277,12 +300,9 @@ export function PlayerPanel() {
             );
           })}
         </div>
-      </section>
+      </Fold>
 
-      <section className="pp-sec">
-        <h4>
-          당적 <span className="muted small">한평생 {MAX_SWITCHES}번까지 · 지금까지 {pl.factionChanges}번</span>
-        </h4>
+      <Fold id="party" title="당적" extra={<span className="muted small">한평생 {MAX_SWITCHES}번까지 · 지금까지 {pl.factionChanges}번</span>}>
         <div className="focus-grid">
           {activeFactions(s)
             .filter((x) => x !== 'none' && x !== p.faction)
@@ -307,11 +327,10 @@ export function PlayerPanel() {
           )}
         </div>
         <p className="small muted">무당의 인물은 인물 창의 「포섭」으로 끌어들일 수 있다.</p>
-      </section>
+      </Fold>
 
       {(sc || debtors.length > 0 || bonds.length > 0 || pl.retainers > 0 || pl.proteges.length > 0) && (
-        <section className="pp-sec">
-          <h4>공작과 신세</h4>
+        <Fold id="web" title="공작과 신세" extra={sc ? <span className="muted small">뒷조사 중</span> : undefined}>
           {bonds.length > 0 && (
             <div className="debtors small">
               <span className="muted">맹약 </span>
@@ -357,13 +376,10 @@ export function PlayerPanel() {
               ))}
             </div>
           )}
-        </section>
+        </Fold>
       )}
 
-      <section className="pp-sec">
-        <h4>
-          거취 <span className="muted small">행동력을 쓰지 않는다 (근신 제외)</span>
-        </h4>
+      <Fold id="self" title="거취" extra={<span className="muted small">행동력을 쓰지 않는다 (근신·통문 제외)</span>}>
         <div className="focus-grid">
           {SELF_ACTIONS.map((a) => {
             const err = a.check(s);
@@ -374,10 +390,9 @@ export function PlayerPanel() {
             );
           })}
         </div>
-      </section>
+      </Fold>
 
-      <section className="pp-sec deeds">
-        <h4>행장(行狀)</h4>
+      <Fold id="deeds" title="행장(行狀)" className="deeds">
         {pl.deeds.length ? (
           <ul>
             {pl.deeds
@@ -390,7 +405,37 @@ export function PlayerPanel() {
         ) : (
           <p className="muted small">아직 기록할 만한 일이 없다.</p>
         )}
-      </section>
+      </Fold>
     </div>
+  );
+}
+
+/** 접었다 펼 수 있는 묶음. 펼침 상태는 이 브라우저에 기억한다. */
+function Fold({ id, title, extra, open: def = false, className, children }: { id: string; title: string; extra?: ReactNode; open?: boolean; className?: string; children: ReactNode }) {
+  const key = `bungdang/fold/${id}`;
+  const [open, setOpen] = useState<boolean>(() => {
+    try {
+      const v = localStorage.getItem(key);
+      return v === null ? def : v === '1';
+    } catch {
+      return def;
+    }
+  });
+  const toggle = () => {
+    const n = !open;
+    setOpen(n);
+    try {
+      localStorage.setItem(key, n ? '1' : '0');
+    } catch {
+      /* 저장할 수 없으면 이번만 */
+    }
+  };
+  return (
+    <section className={`pp-sec fold ${open ? 'open' : ''} ${className ?? ''}`}>
+      <h4 className="fold-h" onClick={toggle}>
+        <span className="fold-mark">{open ? '▾' : '▸'}</span> {title} {extra}
+      </h4>
+      {open && children}
+    </section>
   );
 }

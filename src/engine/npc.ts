@@ -5,6 +5,7 @@ import { chance, pick, weighted } from './rng';
 import { addFlaw, alive, atSeat, chargeable, clamp, hiddenFlaws, impeachEtiquette, inCourt, isP, josa, log, monthsSince, notice, P, people, pushEvent, seat } from './state';
 import { yearOf } from './calendar';
 import { LAW_MAP, lawJosa, lawToPush } from './laws';
+import { openLawDebate } from './agenda';
 import { FACTION_META } from './data/meta';
 import { inLaws, opinion, topOf } from './opinion';
 import { activeFactions, members } from './factions';
@@ -186,8 +187,7 @@ function npcLawMemorials(s: GameState) {
     pushEvent(s, 'veto_request', { initiator: init.id, topic: 'law', ...push });
     return;
   }
-  const co = pool.filter((c) => c.id !== init.id).slice(0, 3).map((c) => c.id);
-  memorial(s, init, 'law', co, undefined, push);
+  openLawDebate(s, init.id, push.lawId, push.abolish);
 }
 
 function npcRecallPetitions(s: GameState) {

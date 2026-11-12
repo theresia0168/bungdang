@@ -9,7 +9,6 @@ import {
   ARMY_NAME,
   BUDGET_DESC,
   COASTAL,
-  POWERS,
   ROYAL_NAME,
   TAX_NAME,
   armyFunding,
@@ -21,12 +20,10 @@ import {
   defenseScore,
   militaryUpkeep,
   monthlyBudget,
-  powerError,
   projectError,
   proposeProject,
   regionTax,
   suryeongSkimRate,
-  usePower,
   warForecast,
   warOdds,
   warReadiness,
@@ -51,7 +48,6 @@ export function RealmTab() {
   const r = def.regional ? region : undefined;
   const perr = projectError(s, kind, r);
   const greed = traitForbids(p, 'greed');
-  const powers = POWERS.filter((w) => p.status === 'active' && p.office && w.office(p.office));
   const preWar = s.t < tOf(1592, 4);
   const est = TAX_REGIONS.reduce((a, x) => a + regionTax(s, x), 0);
   const hojo = p.status === 'active' && p.office === 'hojo';
@@ -119,9 +115,9 @@ export function RealmTab() {
           ))}
         </div>
         <div className="realm-head">
-          <div className={`realm-big ${realm.authority < COUP_LINE ? 'bad-text' : ''}`}>
-            {Math.round(realm.authority)}
-            <small>왕실 권위</small>
+          <div className={`realm-big ${s.king.mood < COUP_LINE ? 'bad-text' : ''}`}>
+            {Math.round(s.king.mood)}
+            <small>용안</small>
           </div>
           {coupRisk(s) > 0 && (
             <div className="realm-big bad-text">
@@ -131,7 +127,7 @@ export function RealmTab() {
           )}
         </div>
         <p className="small muted">
-          국고가 바닥나고 공명첩을 팔고 어가가 욕을 보면 왕실의 권위가 떨어진다. {COUP_LINE} 아래로 떨어지면 왕의 마음을 잃은 당이 반정을 꾸민다. 살림이 넉넉하면 천천히 회복한다.
+          국고가 바닥나고 공명첩을 팔고 어가가 욕을 보면 용안이 어두워진다. {COUP_LINE} 아래로 떨어지면 왕의 마음을 잃은 당이 반정을 꾸민다.
         </p>
         {realm.ledger && (
           <table className="realm-table">
@@ -219,21 +215,6 @@ export function RealmTab() {
           </button>
         </div>
         <p className="small muted">{def.desc} 판서·정승·관찰사가 직권으로 건의한다 (자리마다 다룰 수 있는 일이 다르다).</p>
-        {powers.length > 0 && (
-          <>
-            <h4>직무의 권한</h4>
-            <div className="focus-grid">
-              {powers.map((w) => {
-                const err = powerError(s, w);
-                return (
-                  <button key={w.id} className="fbtn" disabled={!!err} title={err ? `${err}\n\n${w.desc}` : w.desc} onClick={() => act((g) => usePower(g, w.id))}>
-                    {w.name} <span className="cost auth">직권</span>
-                  </button>
-                );
-              })}
-            </div>
-          </>
-        )}
       </section>
 
       <section className="ogroup">
@@ -242,10 +223,6 @@ export function RealmTab() {
           <div className={`realm-big ${warOdds(ready.score).held >= 0.4 ? 'good-text' : warOdds(ready.score).rout >= 0.2 ? 'bad-text' : ''}`}>
             {ready.score}
             <small>전쟁 대비</small>
-          </div>
-          <div className="realm-big">
-            {Math.round(s.war.preparedness)}
-            <small>비변사의 대비</small>
           </div>
           <div className="realm-big">
             {militaryUpkeep(s)} / {militaryNeed(s)}

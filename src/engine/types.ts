@@ -347,8 +347,6 @@ export interface RealmState {
   warPath?: 'held' | 'history' | 'rout';
   /** 호조가 짠 한 해 예산 */
   budget: Budget;
-  /** 왕실의 권위 0~100. 낮으면 반정(反正)의 기운이 돈다 */
-  authority: number;
   /** 꾸며지고 있는 반정 */
   coup?: { faction: FactionId; leader: string; due: number; joined?: boolean; reported?: boolean };
 }

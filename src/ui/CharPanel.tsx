@@ -13,21 +13,21 @@ import { ApPips, CharLink, FactionBadge, Opinion, Portrait, Stat } from './commo
 import { Tip } from './guide';
 
 /** 조건이 맞을 때만 보이는 행동 */
-const CONTEXTUAL: TargetActionId[] = ['recommend', 'ask_recommend', 'cosign', 'plead', 'recall', 'blackmail', 'reconcile', 'hush', 'sponsor', 'bribe'];
+const CONTEXTUAL: TargetActionId[] = ['ask_recommend', 'cosign', 'recall', 'blackmail', 'reconcile', 'hush', 'sponsor', 'persuade'];
 
 /** 이 사람이 나에게 어떤 쓸모가 있는가 */
 function usesOf(s: GameState, c: Character, op: number): [string, string][] {
   const p = P(s);
   const out: [string, string][] = [];
   const o = c.status === 'active' && c.office ? OFFICE_MAP[c.office] : undefined;
-  if (c.office === 'ijo') out.push(['', '인사권 — 그의 호감이 모든 임용 점수에 들어간다. 천거 부탁과 뇌물이 통한다.']);
-  else if (c.office === 'jeonrang') out.push(['', '통청권 — 그의 호감이 삼사·청요직 임용에 크게 들어간다. 천거 부탁과 뇌물이 통한다.']);
+  if (c.office === 'ijo') out.push(['', '인사권 — 그의 호감이 모든 임용 점수에 들어간다. 「청탁」이 통한다.']);
+  else if (c.office === 'jeonrang') out.push(['', '통청권 — 그의 호감이 삼사·청요직 임용에 크게 들어간다. 「청탁」이 통한다.']);
   else if (o?.samsa) out.push(['', '언관 — 상소 없이 바로 탄핵할 수 있다. 우군이면 든든한 칼, 적이면 위협.']);
   else if (c.office === 'doseungji') out.push(['', '도승지 — 미워하는 사람의 상소를 왕에게 올리지 않고 돌려보낼 수 있다.']);
   else if (o?.rank === 1) out.push(['', '정승 — 조정 쟁점과 정국의 방향에 큰 힘을 쓴다.']);
   if (c.faction !== 'none' && s.factions[c.faction].leader === c.id) out.push(['', '영수 — 자리 경쟁에서 제 당 후보를 밀고, 당론을 이끈다.']);
   if (c.want && knowsWant(s, c)) out.push(['good', `바람 「${wantName(s, c)}」 — ${WANT_META[c.want.kind].how}`]);
-  else if (c.want) out.push(['muted', '무언가 바라는 것이 있는 듯하다. 탐문하거나 찾아가 담소하면 알 수 있다.']);
+  else if (c.want) out.push(['muted', '무언가 바라는 것이 있는 듯하다. 뒷조사하거나 찾아가 담소하면 알 수 있다.']);
   const same = p.faction !== 'none' && topOf(p.faction) === topOf(c.faction);
   if (!bondWith(s, c.id) && inCourt(c)) {
     if (same) out.push([op >= 50 ? 'good' : 'muted', `맹약 — 호감 50이면 청할 수 있다 (지금 ${op})`]);

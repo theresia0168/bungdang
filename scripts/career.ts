@@ -27,7 +27,7 @@ for (let r = 0; r < runs; r++) {
     for (const officeId of ['ijo', 'jeonrang']) {
       const h = holderOf(s, officeId);
       if (!h) continue;
-      for (const aid of ['visit', 'letter'] as const) {
+      for (const aid of ['visit'] as const) {
         const a = TARGET_ACTIONS.find((x) => x.id === aid)!;
         if (!a.check(s, h)) a.run(s, h);
       }

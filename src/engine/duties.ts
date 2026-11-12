@@ -58,7 +58,7 @@ const DUTIES: Duty[] = [
     title: '군량이 떨어진다',
     text: (s) => `관군과 명군을 먹일 군량이 바닥났다. 국고는 ${Math.round(s.realm.treasury)}. 어디서든 곡식을 끌어와야 한다.`,
     opts: () => [
-      { key: 'napsok', label: '곡식을 바치면 벼슬과 면천을 준다 (납속)', fx: { say: '납속을 받아 군량을 채웠다. 천인이 양인이 되고 서얼이 벼슬을 얻었다.', prestige: -1, note: '국고 +70, 왕실 권위 -1', run: (s) => void ((s.realm.treasury += 70), (s.realm.authority = Math.max(0, s.realm.authority - 1))) } },
+      { key: 'napsok', label: '곡식을 바치면 벼슬과 면천을 준다 (납속)', fx: { say: '납속을 받아 군량을 채웠다. 천인이 양인이 되고 서얼이 벼슬을 얻었다.', prestige: -1, mood: -2, note: '국고 +70', run: (s) => void (s.realm.treasury += 70) } },
       { key: 'levy', label: '고을마다 군량을 더 거둔다', fx: { say: '고을마다 마지막 곡식까지 거두었다.', favor: 2, minsimAll: -3, note: '국고 +90', run: (s) => void (s.realm.treasury += 90) } },
       {
         key: 'ming',

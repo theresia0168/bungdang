@@ -63,7 +63,7 @@ for (const pl of PLAYABLE) {
           bump('player가 탄핵 시도');
         }
         const friends = Object.values(s.chars).filter((c) => c.status !== 'dead' && c.status !== 'royal' && c.id !== s.player.charId);
-        for (const a of ['visit', 'letter', 'letter'] as const) {
+        for (const a of ['visit'] as const) {
           const f = friends[(s.t * 7 + r + a.length) % friends.length];
           if (!actionError(s, TARGET_ACTIONS.find((x) => x.id === a)!, f)) runTargetAction(s, a, f.id);
         }

@@ -1,4 +1,5 @@
 import type { Character, GameState, RegionId } from './types';
+import { addPrep } from './realm';
 import type { EventDef } from './events/types';
 import { choicesOf, resolveScene, type Scene } from './scenes';
 import { REGION_META } from './data/meta';
@@ -97,7 +98,7 @@ const prewar = (s: GameState) => s.t < tOf(1592, 4);
 const INCIDENTS: Incident[] = [
   { region: 'hamgyeong', chance: (s) => (winter(s) ? 0.06 : 0.015), text: '함경도 육진에 여진의 무리가 넘어와 마을을 노략질했다.', minsim: -5 },
   { region: 'pyeongan', chance: (s) => (winter(s) ? 0.03 : 0.008), text: '평안도 압록강 변에 여진이 출몰해 백성을 잡아갔다.', minsim: -4 },
-  { region: 'jeolla', chance: (s) => (prewar(s) ? 0.02 : 0), text: '전라도 섬마을에 왜구가 들이닥쳤다.', minsim: -4, fx: (s) => (s.war.preparedness = clamp(s.war.preparedness + 1, 0, 100)) },
+  { region: 'jeolla', chance: (s) => (prewar(s) ? 0.02 : 0), text: '전라도 섬마을에 왜구가 들이닥쳤다.', minsim: -4, fx: (s) => (addPrep(s, 1)) },
   { region: 'gyeongsang', chance: (s) => (prewar(s) ? 0.015 : 0), text: '경상도 해안에 왜선이 나타나 어민을 위협했다.', minsim: -3 },
   { region: 'hwanghae', chance: () => 0.015, text: '황해도 구월산에 도적 떼가 다시 모였다는 장계가 올라왔다.', minsim: -3 },
   { region: 'jeolla', chance: (s) => (harvestOf(s, 'jeolla') < 0 ? 0.03 : 0.008), text: '전라도의 세곡선이 안흥량에서 침몰했다.', minsim: -2 },

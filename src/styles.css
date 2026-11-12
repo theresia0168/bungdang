@@ -2422,3 +2422,25 @@ button.mini:disabled {
   border-color: #b8432f;
   background: rgba(184, 67, 47, 0.12);
 }
+
+/* ───────── 접는 묶음 ───────── */
+.fold-h {
+  cursor: pointer;
+  user-select: none;
+}
+.fold-h:hover {
+  color: var(--gold2);
+}
+.fold-mark {
+  display: inline-block;
+  width: 1em;
+  color: var(--muted);
+}
+.pp-sec.fold:not(.open) {
+  padding-bottom: 0;
+}
+.sub-h {
+  margin: 10px 0 4px;
+  font-size: 13px;
+  color: var(--gold2);
+}

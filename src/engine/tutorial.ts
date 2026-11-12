@@ -15,7 +15,7 @@ export interface GuideStep {
 export const GUIDE: GuideStep[] = [
   { id: 'goal', name: '뜻을 세운다', how: '왼쪽 「뜻」의 세우기 버튼', done: (s) => !!s.player.goal || s.player.goalsDone.length > 0 },
   { id: 'focus', name: '이달의 행동을 한다', how: '왼쪽 「이달의 행동」에서 업무 집중이나 학문 수양을 누른다', done: (s) => s.player.done.length > 0 },
-  { id: 'contact', name: '사람을 사귄다', how: '조정이나 인물 탭에서 이름을 눌러 서신·방문을 한다', done: (s) => Object.keys(s.player.contacts).length > 0 },
+  { id: 'contact', name: '사람을 사귄다', how: '조정이나 인물 탭에서 이름을 눌러 「교유」를 한다', done: (s) => Object.keys(s.player.contacts).length > 0 },
   { id: 'month', name: '한 달을 보낸다', how: '오른쪽 위 「다음 달」 버튼이나 Space', done: (s) => s.t >= 1 },
   { id: 'memorial', name: '상소를 올린다', how: '왼쪽 「상소」에서 법을 골라 변법 상소를 올리고, 짓는 동안 인물 창에서 연명을 청한다', done: (s) => s.player.stats.memorials > 0 },
   { id: 'case', name: '조정 공방에 끼어든다', how: '오른쪽 「조정 공방」에서 동조하거나 구원한다 (구원하면 그가 신세를 진다)', done: (s) => !!s.flags.joinedCase || s.player.stats.impeachWins + s.player.stats.impeachFails > 0 },

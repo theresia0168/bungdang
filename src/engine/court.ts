@@ -322,7 +322,7 @@ function startRace(s: GameState, o: OfficeDef, holder: Character): boolean {
     notice(
       s,
       '자리 경쟁',
-      `${o.name} ${josa(holder.name, '이/가')} 두 달 뒤 물러난다. 후임으로 당신과 ${pool.filter((c) => !isP(s, c)).map((c) => c.name).join(', ')}이 거론된다.\n\n이조판서·전랑의 호감, 천거, 왕의 의중, 그리고 누가 누구를 미느냐가 승부를 가른다. 이조의 인물에게 「천거 부탁」을 하거나 뇌물을 쓸 수도 있다.`,
+      `${o.name} ${josa(holder.name, '이/가')} 두 달 뒤 물러난다. 후임으로 당신과 ${pool.filter((c) => !isP(s, c)).map((c) => c.name).join(', ')}이 거론된다.\n\n이조판서·전랑의 호감, 천거, 왕의 의중, 그리고 누가 누구를 미느냐가 승부를 가른다. 이조의 인물에게 「청탁」을 할 수도 있다.`,
       'court',
     );
   return true;

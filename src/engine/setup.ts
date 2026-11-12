@@ -197,7 +197,6 @@ export function upgrade(s: GameState): GameState {
   }
   s.realm ??= initRealm();
   s.realm.budget ??= { tax: 'normal', army: 'keep', royal: 'normal' };
-  s.realm.authority ??= 60;
   for (const r of Object.values(s.regions)) {
     r.arable ??= 1;
     r.hidden = Math.min(r.hidden, 0.3);

@@ -8,7 +8,7 @@ import { uid } from '../src/engine/state';
 import type { RegionId } from '../src/engine/types';
 
 type Row = Record<string, number>;
-const SEEDS = 10;
+const SEEDS = 6;
 function run(mode: 'idle' | 'defense' | 'crisis') {
   const rows: Record<number, Row[]> = {};
   const fin: string[] = [];
@@ -38,14 +38,14 @@ function run(mode: 'idle' | 'defense' | 'crisis') {
           treasury: s.realm.treasury, rev: s.realm.ledger?.revenue ?? 0, spend: monthlySpend(s) * 12, milNeed: militaryNeed(s) * 12,
           hidden: (TAX_REGIONS.reduce((a, x) => a + s.regions[x].hidden, 0) / TAX_REGIONS.length) * 100,
           arable: (TAX_REGIONS.reduce((a, x) => a + s.regions[x].arable, 0) / TAX_REGIONS.length) * 100,
-          ready: warReadiness(s).score, auth: s.realm.authority,
+          ready: warReadiness(s).score, auth: s.king.mood,
         });
       }
     }
     fin.push(`seed${r}: war=${s.realm.warPath} coups=${coups}(성공 ${wins}) 허물어진 시설=${lostFac} 예산=${s.realm.budget.tax}/${s.realm.budget.army}/${s.realm.budget.royal}`);
   }
   console.log(`\n=== ${mode} (${SEEDS}판 평균) ===`);
-  console.log('연도  국고  세입  지출  군유지  은결%  경작지%  전쟁대비  권위');
+  console.log('연도  국고  세입  지출  군유지  은결%  경작지%  전쟁대비  용안');
   for (const [y, rs] of Object.entries(rows)) {
     const avg = (k: string) => Math.round(rs.reduce((a, x) => a + x[k], 0) / rs.length);
     console.log(`${y}  ${String(avg('treasury')).padStart(5)} ${String(avg('rev')).padStart(5)} ${String(avg('spend')).padStart(5)} ${String(avg('milNeed')).padStart(6)} ${String(avg('hidden')).padStart(6)} ${String(avg('arable')).padStart(7)} ${String(avg('ready')).padStart(8)} ${String(avg('auth')).padStart(5)}`);

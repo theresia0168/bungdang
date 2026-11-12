@@ -26,7 +26,7 @@ export const FAVOR_EVENTS: Record<string, EventDef> = {
         text:
           `${a.name}(${fname(a.faction)}, ${officeTitle(a)})${josa(a.name, '이/가').slice(a.name.length)} 당신을 논핵하는 계사를 올렸다.\n\n` +
           (kf.length ? `그가 쥐고 있는 당신의 흠결: ${kf.map((f) => `「${f.label}」`).join(', ')}` : '그가 아는 당신의 흠결은 없다. 근거가 약한 공격이다.') +
-          `\n\n논핵은 ${CASE_MONTHS.impeach}개월 동안 이어진다. 그동안 인물 창의 「구원 요청」으로 편을 모으라. 당신에게 신세를 진 이들은 알아서 나선다. ` +
+          `\n\n논핵은 ${CASE_MONTHS.impeach}개월 동안 이어진다. 그동안 인물 창의 「연명·구원 요청」으로 편을 모으라. 당신에게 신세를 진 이들은 알아서 나선다. ` +
           '구원자 1인당 방어 +1(최대 +3), 공격 쪽 동조자도 마찬가지다.\n\n' +
           '격차가 1~2면 파직, 3~4면 삭탈관작, 5 이상이면 유배. 탄핵만으로 목숨을 잃지는 않는다.',
         choices: [
@@ -70,7 +70,7 @@ export const FAVOR_EVENTS: Record<string, EventDef> = {
         kind: 'danger',
         text:
           `${josa(a.name, '이/가')} 유배 중인 당신에게 ${nextLevelLabel(p)}의 죄를 더하라고 청했다.\n\n` +
-          `논의는 ${CASE_MONTHS.aggravate}개월 동안 이어진다. 서신으로 「구원 요청」을 보내 조정의 벗들에게 도움을 청하라. 당신에게 신세를 진 이들은 알아서 나선다.\n\n` +
+          `논의는 ${CASE_MONTHS.aggravate}개월 동안 이어진다. 서신으로 「연명·구원 요청」을 보내 조정의 벗들에게 도움을 청하라. 당신에게 신세를 진 이들은 알아서 나선다.\n\n` +
           `왕은 ${(p.exileLevel ?? 1) >= 2 ? '사사만은 쉽게 허락하지 않는다 (방어 +5)' : '죄를 더하는 데 신중하다 (방어 +2)'}. 왕의 진노를 샀거나 성심을 잃었다면 위험하다.`,
         choices: [{ key: 'ok', label: '벗들에게 서신을 쓴다' }],
       };

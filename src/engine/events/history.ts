@@ -1,4 +1,5 @@
 import { WAR_SCHEDULE } from './war';
+import { addPrep } from '../realm';
 import type { Character, GameState, RegionId } from '../types';
 import type { Choice, EventDef } from './types';
 import { OK } from './types';
@@ -201,7 +202,7 @@ export const SCHEDULE: Scheduled[] = [
     id: 'jeonghae',
     at: [1587, 2],
     run: warLog('정해왜변: 왜구가 전라도 손죽도를 습격해 녹도 권관 이대원이 전사했다.', (s) => {
-      s.war.preparedness = clamp(s.war.preparedness + 3, 0, 100);
+      addPrep(s, 3);
       s.regions.jeolla.minsim = clamp(s.regions.jeolla.minsim - 5, 0, 100);
     }),
   },
@@ -302,7 +303,7 @@ export const SCHEDULE: Scheduled[] = [
     at: [1591, 2],
     run(s) {
       if (!live(s, 'yu_seongryong')) return;
-      s.war.preparedness = clamp(s.war.preparedness + 8, 0, 100);
+      addPrep(s, 8);
       log(s, '류성룡의 천거로 정읍 현감 이순신이 전라좌도 수군절도사가 되었다.', 'history');
     },
   },
@@ -366,7 +367,7 @@ export const SCHEDULE: Scheduled[] = [
     run(s) {
       if (s.realm.warPath === 'held') {
         log(s, '신립과 이일의 군사가 조령의 관문과 충주성을 지켜 냈다. 왜군은 고개를 넘지 못하고 경상도로 물러났다. 도성은 무사하다.', 'war');
-        s.war.preparedness = clamp(s.war.preparedness + 5, 0, 100);
+        addPrep(s, 5);
         return;
       }
       log(s, '한성이 함락되었다. 왕은 평양으로 몽진했다. 성난 백성들이 궁궐에 불을 질렀다.', 'war');
@@ -582,10 +583,10 @@ function bukAttacker(s: GameState) {
 function courtWarDecision(s: GameState) {
   const share = (f: string) => people(s).filter((c) => c.status === 'active' && topOf(c.faction) === f).length;
   if (share('dong') >= share('seo')) {
-    s.war.preparedness = clamp(s.war.preparedness - 10, 0, 100);
+    addPrep(s, -10);
     log(s, '통신사가 돌아왔다. 정사 황윤길은 병화를 경고했으나, 조정은 "걱정할 것 없다"는 부사 김성일의 말을 따랐다.', 'history');
   } else {
-    s.war.preparedness = clamp(s.war.preparedness + 10, 0, 100);
+    addPrep(s, 10);
     log(s, '통신사가 돌아왔다. 조정은 황윤길의 경고를 받아들여 성을 쌓고 장수를 뽑았다.', 'history');
   }
 }
@@ -992,8 +993,8 @@ export const HISTORY_EVENTS: Record<string, EventDef> = {
       kind: 'history',
       text: '통신사가 돌아왔다. 정사 황윤길은 "반드시 병화가 있을 것"이라 했고, 부사 김성일은 "그런 기색을 보지 못했다. 민심을 어지럽혀서는 안 된다"고 했다. 조정의 의견이 둘로 갈린다.',
       choices: [
-        { key: 'warn', label: '침략에 대비해야 한다', hint: '국방 대비 +15. 전쟁이 나면 명망 +8. 동인이면 당내 반발.' },
-        { key: 'calm', label: '민심을 어지럽혀서는 안 된다', hint: '국방 대비 -5. 서인이면 당내 반발.' },
+        { key: 'warn', label: '침략에 대비해야 한다', hint: '남쪽 방비 +15. 전쟁이 나면 명망 +8. 동인이면 당내 반발.' },
+        { key: 'calm', label: '민심을 어지럽혀서는 안 된다', hint: '남쪽 방비 -5. 서인이면 당내 반발.' },
         { key: 'silent', label: '말을 아낀다' },
       ],
     }),
@@ -1001,11 +1002,11 @@ export const HISTORY_EVENTS: Record<string, EventDef> = {
       const p = P(s);
       let fx = '';
       if (key === 'warn') {
-        s.war.preparedness = clamp(s.war.preparedness + 15, 0, 100);
+        addPrep(s, 15);
         s.flags.warned = true;
         if (pTop(s) === 'dong') fx = swayFaction(s, p.faction, p.id, -4, '당론 이탈', 0.05);
       } else if (key === 'calm') {
-        s.war.preparedness = clamp(s.war.preparedness - 5, 0, 100);
+        addPrep(s, -5);
         if (p.faction === 'seo') fx = swayFaction(s, 'seo', p.id, -4, '당론 이탈', 0.05);
       }
       courtWarDecision(s);
@@ -1294,7 +1295,7 @@ export const HISTORY_EVENTS: Record<string, EventDef> = {
         p.favor = clamp(p.favor + 3, -100, 100);
         p.prestige = clamp(p.prestige - 4, 0, 100);
       }
-      s.war.preparedness = clamp(s.war.preparedness - 3, 0, 100);
+      addPrep(s, -3);
     },
   },
 };

@@ -1,4 +1,5 @@
 import type { Character, GameState, RegionId } from './types';
+import { addPrep } from './realm';
 import type { Choice } from './events/types';
 import { FACTION_META } from './data/meta';
 import { chance, d6 } from './rng';
@@ -94,7 +95,7 @@ export function describe(s: GameState, c: Ctx, fx: Fx): string {
   if (fx.favor) out.push(`성심 ${sg(fx.favor)}`);
   if (fx.minsim) out.push(`민심 ${sg(fx.minsim)}`);
   if (fx.minsimAll) out.push(`팔도 민심 ${sg(fx.minsimAll)}`);
-  if (fx.prep) out.push(`국방 대비 ${sg(fx.prep)}`);
+  if (fx.prep) out.push(`남쪽 방비 ${sg(fx.prep)}`);
   if (fx.tension) out.push(`긴장 ${sg(fx.tension)}`);
   if (fx.mood) out.push(fx.mood > 0 ? '용안이 밝아진다' : '용안이 어두워진다');
   if (fx.lean) out.push(fx.lean > 0 ? `왕의 마음이 우리 당으로 ${sg(fx.lean)}` : `왕의 견제 ${-fx.lean}`);
@@ -147,7 +148,7 @@ function apply(s: GameState, c: Ctx, fx: Fx, here: RegionId): string {
     r.minsim = clamp(r.minsim + fx.minsim, 0, 100);
   }
   if (fx.minsimAll) for (const r of Object.values(s.regions)) r.minsim = clamp(r.minsim + fx.minsimAll, 0, 100);
-  if (fx.prep) s.war.preparedness = clamp(s.war.preparedness + fx.prep, 0, 100);
+  if (fx.prep) addPrep(s, fx.prep);
   if (fx.tension) s.tension = clamp(s.tension + fx.tension, 0, 100);
   if (fx.mood) kingMood(s, fx.mood);
   if (fx.lean && p.faction !== 'none') kingLean(s, p.faction, fx.lean);

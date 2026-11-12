@@ -333,7 +333,7 @@ export const BUNJO_SCENES: Scene[] = [
     title: '분조 — 의병장들',
     text: (s) => `${princeName(s)}가 산골 고을을 돌며 의병장들을 불러 모았다. 의병장들은 관군의 지휘를 받지 않겠다고 버티면서도 군량과 관직을 원한다.`,
     opts: () => [
-      { key: 'title', label: '공명첩을 주어 의병장을 격려한다', fx: { say: '의병장들에게 첩지를 내려 사기를 북돋웠다.', prep: 4, prestige: 2, note: '왕실 권위 -1', run: (s) => void (s.realm.authority = Math.max(0, s.realm.authority - 1)) } },
+      { key: 'title', label: '공명첩을 주어 의병장을 격려한다', fx: { say: '의병장들에게 첩지를 내려 사기를 북돋웠다.', prep: 4, prestige: 2, mood: -2 } },
       {
         key: 'command',
         label: '관군의 절제를 받으라고 다그친다',

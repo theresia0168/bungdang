@@ -9,31 +9,22 @@ import { swayFaction, topOf } from './opinion';
 import { kingLean, kingMood } from './king';
 import { appoint, vacate } from './court';
 import { exile, kill } from './conflict';
+import { warReadiness } from './realm';
 
-/* ───────── 왕실의 권위와 반정(反正) ─────────
- * 나라 창고가 비고 공명첩을 팔고 어가가 욕을 보면 왕실의 권위가 떨어진다.
- * 권위가 바닥이면 왕의 마음을 잃은 당의 영수가 군사를 움직일 마음을 먹는다.
+/* ───────── 용안과 반정(反正) ─────────
+ * 나라 창고가 비고 공명첩을 팔고 어가가 욕을 보면 용안이 어두워지고 왕실의 체통이 떨어진다.
+ * 용안이 바닥이면 왕의 마음을 잃은 당의 영수가 군사를 움직일 마음을 먹는다.
  */
 
-export const COUP_LINE = 30;
+export const COUP_LINE = -40;
 
 /** 이달 반정이 꾸며질 확률 */
-export const coupRisk = (s: GameState) => (s.realm.authority >= COUP_LINE || s.realm.coup ? 0 : (COUP_LINE - s.realm.authority) / 1200);
+export const coupRisk = (s: GameState) => (s.king.mood >= COUP_LINE || s.realm.coup ? 0 : (COUP_LINE - s.king.mood) / 900);
 
 export function tickAuthority(s: GameState) {
   const realm = s.realm;
-  let d = 0;
-  // 전란 중의 궁핍은 어느 정도 참아 준다
-  const war = s.war.active ? 0.5 : 1;
-  if (realm.treasury < 0) d -= 0.35 * war;
-  if (realm.broke >= 6) d -= 0.3 * war;
-  if (s.flags.kingCaptive) d -= 1.5;
-  if (realm.budget.royal === 'cut') d -= 0.1;
-  if (realm.budget.royal === 'lavish') d += 0.1;
-  if (s.king.mood > 40) d += 0.05;
-  // 살림이 넉넉하고 태평하면 권위가 60쯤으로 돌아온다
-  if (realm.treasury > 0 && !s.flags.kingCaptive && realm.authority < 60) d += 0.3;
-  realm.authority = clamp(realm.authority + d, 0, 100);
+  // 적자와 왕실 경비는 realm.ts가 용안에 반영한다. 여기서는 어가가 겪는 굴욕만 더한다.
+  if (s.flags.kingCaptive) kingMood(s, -3);
 
   if (realm.coup) {
     if (s.t >= realm.coup.due) resolveCoup(s);
@@ -77,8 +68,8 @@ function resolveCoup(s: GameState) {
   const fname = FACTION_META[c.faction].name;
   const a = d6(s);
   const b = d6(s);
-  const atk = a + Math.round((COUP_LINE - s.realm.authority) / 10) + Math.round((powerShare(s)[c.faction] ?? 0) * 4) + (c.joined ? 1 : 0);
-  const def = b + 4 + Math.round(s.war.preparedness / 40) + (c.reported ? 4 : 0);
+  const atk = a + Math.round((COUP_LINE - s.king.mood) / 10) + Math.round((powerShare(s)[c.faction] ?? 0) * 4) + (c.joined ? 1 : 0);
+  const def = b + 4 + Math.round(warReadiness(s).score / 40) + (c.reported ? 4 : 0);
   const roll = `반정 ${a}→${atk} · 왕실 ${b}→${def}`;
   const cons = conspirators(s, c.faction, lead.id);
   if (atk > def) {
@@ -91,7 +82,7 @@ function resolveCoup(s: GameState) {
     }
     kingMood(s, -30);
     kingLean(s, c.faction, 25);
-    s.realm.authority = 40;
+    s.king.mood = -20;
     s.tension = clamp(s.tension + 20, 0, 100);
     log(s, `[반정] ${fname}의 ${josa(lead.name, '이/가')} 군사를 이끌고 궐에 들어가 왕을 핍박하고 조정을 쥐었다. 반대편 대신들이 모두 쫓겨났다. (${roll})`, 'history');
     if (c.joined) {
@@ -107,7 +98,7 @@ function resolveCoup(s: GameState) {
   kill(s, lead, '반정을 꾀하다 붙잡혀 사사되었다');
   for (const x of cons) if (chance(s, 0.6)) exile(s, x);
   kingLean(s, c.faction, -25);
-  s.realm.authority = clamp(s.realm.authority + 12, 0, 100);
+  kingMood(s, 20);
   s.tension = clamp(s.tension + 15, 0, 100);
   log(s, `[역모] ${fname} ${lead.name} 일당의 반정 기도가 발각되어 옥사가 일어났다. (${roll})`, 'history');
   if (c.joined) {
@@ -133,7 +124,7 @@ export const COUP_EVENTS: Record<string, EventDef> = {
         title: '반정의 기운',
         kind: 'danger',
         text: c && lead
-          ? `나라 창고가 비고 왕실의 체통이 땅에 떨어지자, ${fname}의 ${josa(lead.name, '이/가')} 은밀히 군사를 모은다는 사실을 알게 되었다. ${mine ? '그가 당신에게도 손을 내밀었다.' : '당신과는 다른 당의 일이다.'} 두 달 안에 일이 벌어진다.\n\n(왕실 권위 ${Math.round(s.realm.authority)})`
+          ? `나라 창고가 비고 왕실의 체통이 땅에 떨어지자, ${fname}의 ${josa(lead.name, '이/가')} 은밀히 군사를 모은다는 사실을 알게 되었다. ${mine ? '그가 당신에게도 손을 내밀었다.' : '당신과는 다른 당의 일이다.'} 두 달 안에 일이 벌어진다.\n\n(용안 ${Math.round(s.king.mood)})`
           : '도성의 기운이 가라앉았다.',
         choices: !c
           ? [{ key: 'silent', label: '확인' }]
