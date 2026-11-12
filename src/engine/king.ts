@@ -52,14 +52,21 @@ export const WARY_TRIGGER = -35;
 export function tickKing(s: GameState) {
   const k = s.king;
   kingMood(s, randInt(s, -8, 8) - k.mood * 0.08 - (s.war.active ? 1 : 0));
-  for (const f of Object.keys(k.lean) as FactionId[]) k.lean[f] = (k.lean[f] ?? 0) * 0.97;
+  for (const f of new Set([...Object.keys(k.lean), ...Object.keys(k.base ?? {})]) as Set<FactionId>) {
+    const b = k.base?.[f] ?? 0;
+    k.lean[f] = b + ((k.lean[f] ?? 0) - b) * 0.97;
+  }
   const act = activeFactions(s);
   if (act.length && chance(s, 0.2)) kingLean(s, act[randInt(s, 0, act.length - 1)], randInt(s, -3, 6));
   const share = powerShare(s);
+  // 왕마다 성향이 다르다: 탕평하는 왕은 한 당의 독주를 더 세게 누르고, 세도 아래에서는 외척의 당으로 기운다
+  const style = s.flags.kingStyle;
   for (const f of act) {
     const sh = share[f] ?? 0;
-    if (sh > 0.52) kingLean(s, f, -(sh - 0.52) * 12);
+    if (sh > 0.52) kingLean(s, f, -(sh - 0.52) * 12 * (style === 'tangpyeong' ? 2 : 1));
   }
+  if (style === 'sedo' && s.factions.noron.active) kingLean(s, 'noron', 0.6);
+  if (style === 'tangpyeong') s.tension = clamp(s.tension - 0.15, 0, 100);
   for (const f of act) {
     const v = k.lean[f] ?? 0;
     const warned = !!s.flags[`waryWarn_${f}`];
@@ -78,13 +85,15 @@ export function tickKing(s: GameState) {
         );
     } else if (v > WARY_WARN / 2 && warned) delete s.flags[`waryWarn_${f}`];
   }
-  if (s.war.active || monthsSince(s, 'lastHwanguk') < 48) return;
-  const f = act.find((x) => (k.lean[x] ?? 0) <= WARY_TRIGGER && (share[x] ?? 0) > 0.45);
-  if (f && chance(s, 0.1)) hwanguk(s, f);
+  // 숙종처럼 판을 자주 뒤집는 왕은 환국의 문턱이 낮다
+  const volatile = style === 'volatile';
+  if (s.war.active || monthsSince(s, 'lastHwanguk') < (volatile ? 36 : 84)) return;
+  const f = act.find((x) => (k.lean[x] ?? 0) <= (volatile ? WARY_TRIGGER + 10 : WARY_TRIGGER) && (share[x] ?? 0) > (volatile ? 0.4 : 0.45));
+  if (f && chance(s, volatile ? 0.12 : 0.04)) hwanguk(s, f);
 }
 
 /** 왕이 판을 뒤집는다 */
-function hwanguk(s: GameState, f: FactionId) {
+export function hwanguk(s: GameState, f: FactionId, _forced = false) {
   const p = P(s);
   const holders = people(s)
     .filter((c) => c.faction === f && c.status === 'active' && c.office && OFFICE_MAP[c.office] && !isP(s, c))
@@ -140,10 +149,17 @@ const TOPICS: Topic[] = [
   { id: 'daehak', title: '『대학연의』 강론', ask: '"수신(修身)과 치국(治國)이 어찌 하나로 이어진다는 것인가?"', risk: 0 },
   { id: 'hunt', title: '왕의 사냥', ask: '"과인이 근교에 나가 사냥을 하려는데, 신하들이 말이 많구나."', risk: 2 },
   { id: 'inlaw', title: '외척의 전횡', ask: '"외척이 권세를 부린다는 말이 있다. 경은 누구를 두고 하는 말이라 보는가?"', risk: 2 },
-  { id: 'party', title: '붕당의 폐해', ask: '"신하들이 동서로 갈려 서로 헐뜯으니, 과인은 누구를 믿어야 하는가?"', risk: 1 },
+  { id: 'party', title: '붕당의 폐해', ask: '"신하들이 당을 갈라 서로 헐뜯으니, 과인은 누구를 믿어야 하는가?"', risk: 1 },
   { id: 'heir', title: '세자 책봉', ask: '"국본(國本)을 정하라는 말이 있다지. 경도 같은 생각인가?"', risk: 3, from: [1589, 1], to: [1591, 12] },
   { id: 'japan', title: '왜의 동태', ask: '"왜가 군사를 기른다는 소문이 있다. 정말 쳐들어오겠는가?"', risk: 1, from: [1588, 1], to: [1592, 3] },
   { id: 'war', title: '전란의 수습', ask: '"종묘사직이 위태롭다. 이 난국을 어찌 수습해야 하는가?"', risk: 1, from: [1592, 5], to: [1598, 12] },
+  { id: 'later_jin', title: '명과 후금', ask: '"명은 은혜를 갚으라 하고 후금은 칼을 갈고 있다. 과인은 어느 쪽에 서야 하는가?"', risk: 2, from: [1610, 1], to: [1622, 12] },
+  { id: 'later_cheong', title: '청에 대한 의리', ask: '"삼전도의 치욕을 어찌 잊겠는가. 그러나 지금 청을 거스를 힘이 있는가?"', risk: 2, from: [1637, 3], to: [1659, 12] },
+  { id: 'later_ye', title: '예론(禮論)', ask: '"상복의 일로 조정이 갈렸다. 경은 예(禮)가 왕통보다 앞선다고 보는가?"', risk: 2, from: [1659, 6], to: [1680, 12] },
+  { id: 'later_hwanguk', title: '환국의 뒤', ask: '"과인이 판을 바꾼 것을 두고 말이 많다지. 경도 과인이 변덕스럽다 보는가?"', risk: 3, from: [1680, 1], to: [1720, 12] },
+  { id: 'later_tang', title: '탕평', ask: '"노론과 소론을 고루 쓰려 한다. 경은 탕평이 옳다고 보는가, 의리를 흐린다고 보는가?"', risk: 1, from: [1725, 1], to: [1800, 6] },
+  { id: 'later_seohak', title: '서학(西學)', ask: '"천주학이 선비들 사이에 번진다 한다. 엄금해야 하는가, 학문으로 다스려야 하는가?"', risk: 2, from: [1785, 1], to: [1821, 12] },
+  { id: 'later_sedo', title: '외척의 세도', ask: '"과인의 장인 집안을 두고 말이 많다. 경은 어찌 생각하는가?"', risk: 3, from: [1803, 1], to: [1821, 12] },
 ];
 
 const HONGMUN = ['bujehak', 'gyori1', 'gyori2', 'eunggyo', 'daejehak'];

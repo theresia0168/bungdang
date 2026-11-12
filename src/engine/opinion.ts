@@ -2,7 +2,7 @@ import type { Character, FactionId, GameState, ModScope } from './types';
 import { FACTION_META } from './data/meta';
 import { clamp } from './state';
 
-export const topOf = (f: FactionId): FactionId => (f === 'nam' || f === 'buk' ? 'dong' : f);
+export const topOf = (f: FactionId): FactionId => (f === 'nam' || f === 'buk' ? 'dong' : f === 'noron' || f === 'soron' ? 'seo' : f);
 
 export interface OpLine {
   label: string;

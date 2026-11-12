@@ -7,6 +7,15 @@ import { clamp, uid } from './state';
 import { yearOf } from './calendar';
 import { activeFactions } from './factions';
 
+/** 사라진 당에 들 사람을 살아 있는 당으로 돌린다 */
+export function liveFaction(s: GameState, f: FactionId, c?: Character): FactionId {
+  if (f === 'none' || s.factions[f]?.active) return f;
+  if (f === 'dong') return liveFaction(s, c?.lean ?? (chance(s, 0.5) ? 'nam' : 'buk'), c);
+  if (f === 'buk') return s.factions.nam.active ? 'nam' : 'none';
+  if (f === 'seo') return s.factions.noron.active ? (chance(s, 0.6) ? 'noron' : 'soron') : 'none';
+  return 'none';
+}
+
 export function regionFaction(s: GameState, r: RegionId): FactionId {
   const inf = s.regions[r].influence;
   const items: [FactionId, number][] = activeFactions(s).map((f) => [f, inf[f] ?? 0]);
@@ -82,6 +91,7 @@ export function genChar(s: GameState, o: GenOpts): Character {
   let faction = o.faction ?? regionFaction(s, home);
   const lean = leanOf(s, school);
   if (faction === 'dong' && !s.factions.dong.active) faction = lean;
+  faction = liveFaction(s, faction);
   const nm = o.name && o.clan ? { name: o.name, clan: o.clan } : genName(s);
   const born = year - o.age;
   let destiny = born + randInt(s, 55, 78);

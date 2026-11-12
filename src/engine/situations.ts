@@ -11,6 +11,7 @@ import { vacate } from './court';
 import { caseOn, joinCase, joinError, openCase } from './cases';
 import { kingLean, kingMood } from './king';
 import { consortOf, heirSit, startDebate } from './royal';
+import { TOPICS } from './gukbon';
 
 /* ───────── 정국 상황 ───────── */
 
@@ -19,6 +20,7 @@ export const SIT_META: Record<SituationKind, { name: string; effect: string }> =
   scandal: { name: '추문', effect: '추문에 휘말린 당의 사람들은 임용 점수 -2.' },
   omen: { name: '천변과 구언', effect: '왕이 바른말을 구한다. 상소 판정 +1.' },
   illness: { name: '왕의 환후', effect: '용안이 어둡고 상소 판정 -1. 국본 논의가 일기 쉽다.' },
+  gukbon: { name: '국본 논의', effect: '세자·후사·대리청정을 두고 조정이 둘로 갈렸다. 긴장이 쌓이고 용안이 어두워진다. 왕실 탭에서 줄을 설 수 있다.' },
   inlaw: { name: '외척의 발호', effect: '외척에 줄을 댄 이들은 임용 점수 +3. 끝날 때 사림의 역풍이 불 수 있다.' },
 };
 
@@ -36,6 +38,8 @@ export function sitLine(s: GameState, x: Situation): string {
           ? `${d.kin}의 전횡`
           : x.kind === 'heir'
             ? '세자 책봉을 두고 조정이 갈렸다'
+            : x.kind === 'gukbon'
+            ? `「${TOPICS[d.topic]?.title ?? '국본'}」${josa((TOPICS[d.topic]?.title ?? '국본').replace(/\([^)]*\)/g, ''), '을/를').slice(-1)} 두고 조정이 갈렸다`
             : '왕이 자리에 누웠다';
   return `${head} · 약 ${left || 1}달 남음`;
 }
@@ -145,15 +149,15 @@ function endSit(s: GameState, x: Situation) {
 /** 매달: 상황이 흘러가고, 새 상황이 일어난다 */
 export function tickSituations(s: GameState) {
   for (const x of [...s.situations]) {
-    if (x.kind === 'heir') continue;
+    if (x.kind === 'heir' || x.kind === 'gukbon') continue;
     if (x.kind === 'scandal' && !alive(s.chars[x.data.who])) x.until = s.t;
     if (x.kind === 'illness') kingMood(s, -2);
     if (x.kind === 'inlaw') s.tension = clamp(s.tension + 0.2, 0, 100);
     if (s.t >= x.until) endSit(s, x);
   }
-  const busy = s.situations.filter((x) => x.kind !== 'heir').length;
+  const busy = s.situations.filter((x) => x.kind !== 'heir' && x.kind !== 'gukbon').length;
   if (busy >= 2) return;
-  const king = s.chars.seonjo;
+  const king = s.chars[typeof s.flags.kingId === 'string' ? (s.flags.kingId as string) : 'seonjo'];
   const has = (k: SituationKind) => !!activeSit(s, k);
   if (!has('scandal') && monthsSince(s, 'sitAt_scandal') >= 12 && chance(s, 0.025)) return startScandal(s);
   if (!has('omen') && monthsSince(s, 'sitAt_omen') >= 24 && chance(s, 0.012 + (s.tension > 60 ? 0.008 : 0))) return startOmen(s);

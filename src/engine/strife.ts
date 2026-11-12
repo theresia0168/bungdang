@@ -204,6 +204,7 @@ function tickYusaeng(s: GameState) {
 
 export function startOksa(s: GameState, accused: Character, by?: string, fabricated = false) {
   if (s.oksa || !alive(accused)) return;
+  s.flags.oksaAt = s.t;
   const f = accused.faction;
   // 위관: 정승 가운데, 조정을 쥔 당 사람이 맡는다
   const share = powerShare(s);
@@ -220,7 +221,7 @@ export function startOksa(s: GameState, accused: Character, by?: string, fabrica
 
 function tickOksa(s: GameState) {
   // 긴장이 높고 왕이 한 당을 몹시 꺼리면, 그 당에서 역모 고변이 나오기도 한다
-  if (!s.oksa && s.tension >= 20 && monthsSince(s, 'oksaAt') >= 48 && chance(s, 0.005 + (s.tension - 20) / 2500)) {
+  if (!s.oksa && s.t >= 24 && s.tension >= 35 && monthsSince(s, 'oksaAt') >= 72 && chance(s, 0.004 + (s.tension - 35) / 2500)) {
     const f = activeFactions(s).sort((a, b) => (s.king.lean[a] ?? 0) - (s.king.lean[b] ?? 0))[0];
     const pool = f ? members(s, f).filter((c) => !isP(s, c) && (c.status === 'retired' || c.traits.includes('radical'))) : [];
     const a = pool.length ? pick(s, pool) : undefined;

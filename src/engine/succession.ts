@@ -6,10 +6,10 @@ import { randInt } from './rng';
 import { age, clamp, josa, log, P, uid } from './state';
 import { addMod } from './opinion';
 import { genChar, genName } from './generate';
-import { ANCESTOR_WEIGHT, computeEnding } from './ending';
+import { ANCESTOR_WEIGHT, ownScore } from './ending';
 
 /* ───────── 가문 계승 ─────────
- * 플레이어가 1600년 전에 죽으면 맏아들이 가문을 잇는다.
+ * 플레이어가 1821년 전에 죽으면 맏아들이 가문을 잇는다. 맏아들은 음서로 나서며, 과거에 급제해야 굴레를 벗는다.
  * 가문의 은원(恩怨)은 절반쯤 물려받고, 선대의 업적은 결말 점수에 반영된다.
  */
 
@@ -31,8 +31,11 @@ function makeHeir(s: GameState, f: Character): Character {
   const [bon, sur] = [f.clan.split(' ')[0], f.name.slice(0, 1)];
   const nm = genName(s, { bon, sur });
   const a = clamp(age(s, f) - randInt(s, 24, 30), 18, 40);
+  // 음서: 선친이 정승이면 6품, 판서면 7품, 당상관이면 8품에서 벼슬길을 연다
+  const peak = s.player.peakRank;
+  const rank = peak <= 1 ? 6 : peak <= 2 ? 7 : peak <= 3 ? 8 : 9;
   const c = genChar(s, {
-    rank: 9,
+    rank,
     age: a,
     status: 'retired',
     faction: f.faction,
@@ -45,8 +48,9 @@ function makeHeir(s: GameState, f: Character): Character {
   });
   c.politics = clamp(randInt(s, 2, 3) + (f.politics >= 6 ? 1 : 0), 1, 7);
   c.vigor = randInt(s, 3, 5);
-  c.prestige = Math.round(10 + f.prestige * 0.3);
-  c.wealth = Math.round(f.wealth * 0.7);
+  c.prestige = Math.round(10 + f.prestige * 0.3 + (rank <= 7 ? 5 : 0));
+  // 재산과 전장은 아우들에게도 나누어 준다(분재)
+  c.wealth = Math.round(Math.min(f.wealth, 400) * 0.5 + Math.max(0, f.wealth - 400) * 0.2);
   c.favor = Math.round(Math.max(0, f.favor) * 0.3);
   c.lean = f.lean;
   c.flaws = [];
@@ -55,6 +59,7 @@ function makeHeir(s: GameState, f: Character): Character {
   c.destiny = Math.max(c.destiny, c.born + randInt(s, 60, 74));
   c.bio = `${f.name}의 맏아들. 선친의 뒤를 이어 ${f.clan}의 가장이 되었다.`;
   c.tags.push('heir');
+  c.eumseo = true;
   return c;
 }
 
@@ -63,7 +68,8 @@ function takeOver(s: GameState, heirId: string, cause: string) {
   const f = P(s);
   const h = s.chars[heirId];
   const pl = s.player;
-  const score = computeEnding(s).score;
+  // 선대가 이룬 것은 그 사람 자신의 업적만 적는다 (윗대의 몫까지 거듭 쌓이지 않게)
+  const score = ownScore(s);
   pl.lineage.push({ id: f.id, name: f.name, died: s.t, cause, score, peakOffice: pl.peakOffice });
 
   // 가문의 은원을 절반 물려받는다
@@ -80,6 +86,9 @@ function takeOver(s: GameState, heirId: string, cause: string) {
       .filter(([, n]) => n > 0),
   );
   pl.charId = h.id;
+  pl.land = Math.max(2, Math.round(pl.land * 0.6));
+  pl.hiddenLand = Math.min(pl.hiddenLand, pl.land);
+  pl.examPrep = 0;
   pl.focus = null;
   pl.cooldowns = {};
   pl.exp = { learning: 0, politics: 0 };
@@ -121,7 +130,7 @@ export const SUCCESSION_EVENTS: Record<string, EventDef> = {
     build(s, c) {
       const f = P(s);
       const h = s.chars[c.heir];
-      const left = 1600 - yearOf(s.t);
+      const left = 1821 - yearOf(s.t);
       return {
         title: '가문을 잇다',
         kind: 'personal',
@@ -129,7 +138,7 @@ export const SUCCESSION_EVENTS: Record<string, EventDef> = {
           `${formatDate(s.t)}, ${josa(f.name, '이/가')} ${c.cause}.\n\n` +
           `${REGION_META[f.home].short}의 본가에서 맏아들 ${h.name}(${age(s, h)}세)${josa(h.name, '이/가').slice(h.name.length)} 상주가 되어 빈소를 지킨다. ` +
           `${f.faction !== 'none' ? `${FACTION_META[f.faction].name} 사람들은 그가 아버지의 뒤를 이을지 지켜본다. ` : ''}` +
-          `1600년까지는 ${left}년이 남았다.\n\n` +
+          `1821년까지는 ${left}년이 남았다. 맏아들은 선친의 음덕으로 벼슬길에 나서지만(음서) 청요직에 오르지 못하고 승진이 더디다. 과거에 급제하면 그 굴레를 벗는다.\n\n` +
           `아들은 학식 ${h.learning}, 정치력 ${h.politics}, 명망 ${h.prestige}, 재산 ${h.wealth}로 시작한다. 선친이 맺은 은혜와 원한은 절반쯤 물려받고, 신세를 진 이들 가운데 일부는 아들에게도 갚으려 한다. ` +
           `${HEIR_MOURNING}개월 상을 치른 뒤 상경할 수 있다.\n\n선대의 업적은 결말 점수에 ${Math.round(ANCESTOR_WEIGHT * 100)}%로 더해진다.`,
         choices: [

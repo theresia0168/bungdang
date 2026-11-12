@@ -31,8 +31,8 @@ export function log(s: GameState, text: string, kind: LogKind = 'court') {
   }
 }
 
-const LOG_CAP = 1000;
-const KEEP_LOG: LogKind[] = ['history', 'player', 'faction'];
+const LOG_CAP = 2500;
+const KEEP_LOG: LogKind[] = ['history', 'player', 'faction', 'war'];
 
 /** 명망을 더한다 (0~100) */
 export const pres = (c: Character, v: number) => (c.prestige = clamp(c.prestige + v, 0, 100));

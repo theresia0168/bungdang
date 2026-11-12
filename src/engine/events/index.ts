@@ -18,6 +18,9 @@ import { SALLIM_EVENTS } from './sallim';
 import { BUNJO_EVENTS, WAR_EVENTS, WAR_EXTRA_EVENTS } from './war';
 import { CASE_EVENTS } from '../cases';
 import { STRIFE_EVENTS } from '../strife';
+import { LATER_EVENTS } from '../later';
+import { GWAGEO_EVENTS } from '../gwageo';
+import { GUKBON_EVENTS } from '../gukbon';
 import { COUP_EVENTS } from '../coup';
 import { BOKSANG_EVENTS } from '../court';
 
@@ -29,6 +32,9 @@ export const EVENTS: Record<string, EventDef> = {
   ...BUNJO_EVENTS,
   ...CASE_EVENTS,
   ...STRIFE_EVENTS,
+  ...LATER_EVENTS,
+  ...GWAGEO_EVENTS,
+  ...GUKBON_EVENTS,
   ...COUP_EVENTS,
   ...BOKSANG_EVENTS,
   ...GENERIC_EVENTS,

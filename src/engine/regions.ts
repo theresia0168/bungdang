@@ -3,7 +3,7 @@ import { addPrep } from './realm';
 import type { EventDef } from './events/types';
 import { choicesOf, resolveScene, type Scene } from './scenes';
 import { REGION_META } from './data/meta';
-import { monthOf, tOf } from './calendar';
+import { monthOf, tOf, yearOf } from './calendar';
 import { chance, d6, pick, weighted } from './rng';
 import { fav, monthsSince, pres, addFlaw, alive, clamp, inCourt, isP, josa, log, notice, officeTitle, owe, P, people, pushEvent } from './state';
 import { sway, swayFaction } from './opinion';
@@ -194,8 +194,8 @@ const LOCALS: Scene[] = [
   {
     id: 'envoy',
     regions: ['pyeongan', 'hwanghae'],
-    title: '명 사신의 행차',
-    text: (s) => `명나라 사신 일행이 ${josa(short(s), '을/를')} 지난다. 연도의 고을마다 접대에 쓸 은과 인삼, 비단을 마련하느라 백성의 허리가 휜다.`,
+    title: '중국 사신의 행차',
+    text: (s) => `${yearOf(s.t) >= 1637 ? '청나라' : '명나라'} 사신 일행이 ${josa(short(s), '을/를')} 지난다. 연도의 고을마다 접대에 쓸 은과 인삼, 비단을 마련하느라 백성의 허리가 휜다.`,
     opts: () => [
       { key: 'lavish', label: '성대히 대접한다', fx: { say: '사신이 흡족해했다는 말이 왕의 귀에 들어갔다.', favor: 4, minsim: -5 } },
       { key: 'modest', label: '예법에 맞게 검소히 대접한다', odds: { p: 0.6, yes: { say: '예법대로 대접했다. 선비들이 칭찬한다.', prestige: 2 }, no: { say: '사신이 대접이 박하다고 투덜거렸고, 조정에서 말이 나왔다.', prestige: 2, favor: -3 } } },

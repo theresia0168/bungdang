@@ -1,7 +1,7 @@
 import type { ArmyLevel, Character, GameState, RealmProject, RealmProjectKind, RegionDefense, RegionId, RoyalLevel, TaxLevel } from './types';
 import { OFFICE_MAP } from './data/offices';
 import { REGION_META } from './data/meta';
-import { monthOf, tOf } from './calendar';
+import { monthOf, tOf, yearOf } from './calendar';
 import { chance, d6, pick, weighted } from './rng';
 import { addFlaw, alive, clamp, fav, isP, josa, log, monthsSince, notice, P, people, pres, uid } from './state';
 import { kingMood } from './king';
@@ -18,7 +18,8 @@ import { opinion, sway } from './opinion';
 
 export const TAX_SCALE = 5.6;
 export const COASTAL: RegionId[] = ['gyeongsang', 'jeolla', 'chungcheong', 'gyeonggi', 'hwanghae'];
-export const TAX_REGIONS = (Object.keys(REGION_ECON) as RegionId[]).filter((r) => REGION_ECON[r].yield > 0);
+/** 세를 내는 도 (도성은 빠진다). 다른 모듈의 값에 기대지 않도록 직접 적는다 — 모듈 순환 때문에 */
+export const TAX_REGIONS: RegionId[] = ['gyeonggi', 'chungcheong', 'jeolla', 'gyeongsang', 'gangwon', 'hwanghae', 'pyeongan', 'hamgyeong'];
 
 /** 남쪽 방비를 올린다: 왜란이 닥칠 남쪽 도들의 조련이 오른다 */
 export const SOUTH: RegionId[] = ['gyeongsang', 'jeolla', 'chungcheong', 'gyeonggi', 'hanseong'];
@@ -60,6 +61,14 @@ export function taxMult(s: GameState): number {
   if (lawOn(s, 'hopae')) m += 0.05;
   if (lawOn(s, 'nobi')) m += 0.05;
   if (lawOn(s, 'sachang')) m -= 0.03;
+  if (lawOn(s, 'gyunyeok')) m -= 0.03;
+  if (lawOn(s, 'tongong')) m += 0.03;
+  if (lawOn(s, 'napsok')) m += 0.06;
+  if (lawOn(s, 'yeongjeong')) m -= 0.04;
+  if (lawOn(s, 'ogajak')) m += 0.03;
+  if (lawOn(s, 'hopo')) m += 0.07;
+  if (lawOn(s, 'sangpyeong')) m += 0.04;
+  if (lawOn(s, 'seowon')) m += 0.03;
   return m;
 }
 
@@ -80,6 +89,7 @@ function gamsaSkimRate(c: Character | undefined): number {
 export function suryeongSkimRate(s: GameState, r: RegionId): number {
   let v = 0.06;
   if (lawOn(s, 'bumin')) v += 0.04;
+  if (lawOn(s, 'sinmungo')) v -= 0.02;
   if ((s.regions[r].inspectUntil ?? 0) > s.t) v -= 0.05;
   return Math.max(0.01, v);
 }
@@ -111,6 +121,12 @@ export function collectTaxes(s: GameState) {
   realm.treasury = Math.round(realm.treasury + now);
   s.flags.taxLater = total - now;
   realm.ledger = { t: s.t, revenue: total, byRegion };
+  // 창고가 넘치면 내수사와 각 관청의 씀씀이가 늘고 사신 접대가 사치해진다
+  if (realm.treasury > 900) {
+    const lost = Math.round((realm.treasury - 900) * 0.35);
+    realm.treasury -= lost;
+    log(s, `[국고] 창고가 넘치자 궁방과 각 관청의 씀씀이가 늘었다. (${lost} 소진)`, 'court');
+  }
   const lost = Object.values(byRegion).reduce((a, x) => a + (x?.gamsa ?? 0) + (x?.suryeong ?? 0), 0);
   log(s, `[국고] 올해 팔도의 세는 ${total}이다. 6할이 먼저 국고에 들고 나머지는 봄에 조운선으로 올라온다. 중간에 새어 나간 것이 ${lost}쯤 된다는 말이 있다. (국고 ${realm.treasury})`, 'court');
   if (p.status === 'active' && p.office === 'hojo')
@@ -178,6 +194,7 @@ export function militaryNeed(s: GameState): number {
   if (lawOn(s, 'jingwan')) v += 3;
   if (lawOn(s, 'yangbyeong')) v += 6;
   if (lawOn(s, 'hullyeon')) v += 5;
+  if (lawOn(s, 'gunyeong')) v += 4;
   if (s.war.active) v += 8;
   return Math.max(0, Math.round(v * 10) / 10);
 }
@@ -221,6 +238,7 @@ export function warReadiness(s: GameState): { score: number; parts: { label: str
   if (lawOn(s, 'yangbyeong')) parts.push({ label: '양병', value: 10 });
   if (lawOn(s, 'hullyeon')) parts.push({ label: '훈련도감', value: 6 });
   if (lawOn(s, 'sogo')) parts.push({ label: '속오군', value: 5 });
+  if (lawOn(s, 'gunyeong')) parts.push({ label: '어영청·금위영', value: 4 });
   if (s.realm.treasury < 0) parts.push({ label: '바닥난 국고', value: -6 });
   return { score: parts.reduce((a, x) => a + x.value, 0), parts };
 }
@@ -507,7 +525,6 @@ export function tickRealm(s: GameState) {
   const lost: string[] = [];
   for (const r of Object.values(s.regions)) {
     const d = r.defense;
-    let drift = fund >= 1.2 ? 0.5 : fund >= 1 ? -0.2 : -(0.5 + (1 - fund) * 4);
     if (fund < 1 && chance(s, (1 - fund) * 0.025)) {
       const opts = (['fort', 'jin', 'navy'] as const).filter((k) => d[k] > 0 && (k !== 'fort' || d.fort > 1 || r.id !== 'hanseong'));
       const k = opts.length ? pick(s, opts) : undefined;
@@ -516,12 +533,17 @@ export function tickRealm(s: GameState) {
         lost.push(`${REGION_META[r.id].short} ${k === 'fort' ? '성곽' : k === 'jin' ? '진보' : '판옥선'}`);
       }
     }
-    if (lawOn(s, 'hopae')) drift += 0.3;
-    if (lawOn(s, 'yangbyeong')) drift += 0.8;
-    if (lawOn(s, 'nobi')) drift += 0.2;
-    if (lawOn(s, 'sogo')) drift += 0.6;
-    if (lawOn(s, 'hullyeon') && (r.id === 'gyeonggi' || r.id === 'hanseong')) drift += 1.5;
-    d.drill = clamp(d.drill + drift, 0, 100);
+    // 조련은 군제와 군비가 정하는 목표치로 천천히 돌아간다. 사업과 점고로 끌어올려도 내버려 두면 다시 내려온다.
+    let target = 20;
+    if (lawOn(s, 'hopae')) target += 8;
+    if (lawOn(s, 'yangbyeong')) target += 20;
+    if (lawOn(s, 'nobi')) target += 4;
+    if (lawOn(s, 'sogo')) target += 12;
+    if (lawOn(s, 'hullyeon') && (r.id === 'gyeonggi' || r.id === 'hanseong')) target += 20;
+    if (lawOn(s, 'gunyeong') && (r.id === 'gyeonggi' || r.id === 'hanseong')) target += 12;
+    if (lawOn(s, 'ogajak')) target += 4;
+    target *= fund >= 1.2 ? 1.3 : fund >= 1 ? 1 : fund;
+    d.drill = clamp(d.drill + (target - d.drill) * (d.drill > target ? 0.03 : 0.05), 0, 100);
   }
   if (lost.length) {
     log(s, `[국방] 군량과 군포가 끊겨 ${lost.join(', ')}이 허물어지고 군사가 흩어졌다.`, 'court');
@@ -541,7 +563,17 @@ export function tickRealm(s: GameState) {
   if (lawOn(s, 'hopae')) mood -= 0.08;
   if (lawOn(s, 'hyangyak')) mood += 0.08;
   if (lawOn(s, 'sogo')) mood -= 0.06;
-  if (mood) for (const r of Object.values(s.regions)) r.minsim = clamp(r.minsim + mood, 0, 100);
+  if (lawOn(s, 'gyunyeok')) mood += 0.15;
+  if (lawOn(s, 'napsok')) mood -= 0.06;
+  if (lawOn(s, 'yeongjeong')) mood += 0.08;
+  if (lawOn(s, 'ogajak')) mood -= 0.05;
+  if (lawOn(s, 'hopo')) mood += 0.12;
+  if (lawOn(s, 'sangpyeong')) mood += 0.04;
+  if (lawOn(s, 'seowon')) mood += 0.04;
+  if (lawOn(s, 'sinmungo')) mood += 0.06;
+  if (mood) for (const r of Object.values(s.regions)) r.minsim = clamp(r.minsim + mood * 0.5, 0, 100);
+  // 민심은 오래 두면 60쯤으로 돌아온다: 좋은 법과 선정은 그 바탕을 조금 끌어올릴 뿐이다
+  for (const r of Object.values(s.regions)) r.minsim += (60 - r.minsim) * 0.02;
 
   // 국고가 바닥나면
   if (realm.treasury < 0) {
@@ -582,16 +614,36 @@ export function tickRealm(s: GameState) {
 
 /** 정월: 경작지가 늘고 줄며, 은결이 그 원인을 따라 늘고 준다 */
 export function yearlyLand(s: GameState) {
+  // 오랜 태평에 성첩과 진보가 허물어진다
+  const y = yearOf(s.t);
+  const calm = !s.war.active && !((y >= 1588 && y <= 1598) || (y >= 1619 && y <= 1637));
+  if (calm) {
+    const lost: string[] = [];
+    for (const r of Object.values(s.regions)) {
+      const d = r.defense;
+      if (d.fort > 1 && chance(s, 0.05)) {
+        d.fort--;
+        lost.push(`${REGION_META[r.id].short} 성곽`);
+      }
+      if (d.jin > 1 && chance(s, 0.05)) {
+        d.jin--;
+        lost.push(`${REGION_META[r.id].short} 진보`);
+      }
+    }
+    if (lost.length) log(s, `[국방] 오랜 태평에 ${lost.join(', ')}이 허물어지고 군적이 비었다.`, 'court');
+  }
   for (const r of TAX_REGIONS) {
     const reg = s.regions[r];
     const war = s.war.active && s.war.zones.includes(r);
     // 개간: 민심이 좋고 난리가 없으면 진전(陳田)이 다시 일구어진다
     if (war) reg.arable = Math.max(0.6, reg.arable - 0.04);
-    else if (reg.minsim >= 45) reg.arable = Math.min(1.5, reg.arable + 0.004 + (reg.minsim - 45) / 5000);
+    else if (reg.minsim >= 45) reg.arable = Math.min(1.5, reg.arable + (0.004 + (reg.minsim - 45) / 5000) * Math.max(0, (1.5 - reg.arable) / 0.5));
     // 은결: 고을에 뿌리박은 탐욕스러운 권세가, 수령 고소를 막는 법, 가렴주구가 키우고 감찰이 줄인다
     const greedy = people(s).filter((c) => c.home === r && c.traits.includes('greedy') && c.rank <= 4).length;
     let dh = 0.002 + Math.min(3, greedy) * 0.005;
     if (lawOn(s, 'bumin')) dh += 0.003;
+    if (lawOn(s, 'ogajak')) dh -= 0.002;
+    if (lawOn(s, 'hopo')) dh -= 0.002;
     if (s.realm.budget.tax === 'high') dh += 0.005;
     if ((reg.inspectUntil ?? 0) > s.t - 12) dh -= 0.01;
     reg.hidden = clamp(reg.hidden + dh, 0, 0.3);
@@ -613,7 +665,9 @@ export function sellTitles(s: GameState): number {
 function npcProjects(s: GameState) {
   const realm = s.realm;
   if (realm.treasury < 120 || realm.projects.length >= 4 || !chance(s, 0.07)) return;
-  const threat = s.t >= tOf(1590, 1) || s.war.active;
+  // 외적의 위협이 뚜렷한 때에만 대신들이 군비를 앞다투어 아뢴다
+  const y = yearOf(s.t);
+  const threat = s.war.active || (y >= 1588 && y <= 1598) || (y >= 1619 && y <= 1637) || (y >= 1650 && y <= 1659);
   const opts: [[RealmProjectKind, string, RegionId | undefined], number][] = [];
   const by = (id: string) => holderOf(s, id);
   const bj = by('byeongjo');
@@ -821,4 +875,20 @@ export function tickWarFront(s: GameState) {
       log(s, `[전황] ${REGION_META[r].short}의 성 하나가 왜군에게 떨어졌다.`, 'war');
     }
   }
+}
+
+/** 호란이 닥쳤을 때 북방(평안·황해·경기·도성)이 버틸 힘과 각 전황의 확률 */
+export function northForecast(s: GameState): { avg: number; text: string } {
+  const north: RegionId[] = ['pyeongan', 'hwanghae', 'gyeonggi', 'hanseong'];
+  const avg = Math.round(north.reduce((a, r) => a + defenseScore(s, r), 0) / north.length);
+  const m = Math.round((avg - 35) / 8);
+  let held = 0;
+  let rout = 0;
+  for (let a = 1; a <= 6; a++) for (let b = 1; b <= 6; b++) {
+    const r = a + b + m;
+    if (r >= 11) held++;
+    else if (r <= 3) rout++;
+  }
+  const pc = (v: number) => `${Math.round((v / 36) * 100)}%`;
+  return { avg, text: `북방 방비 ${avg}. 호란이 나면 — 북방에서 막아냄 ${pc(held)} · 도성이 위태로움 ${pc(36 - held)}` };
 }

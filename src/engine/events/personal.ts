@@ -434,7 +434,7 @@ export const PERSONAL_EVENTS: Record<string, EventDef> = {
       return {
         title: '연행(燕行)',
         kind: 'court',
-        text: '명나라 황제의 생일을 하례하는 성절사(聖節使)로 당신이 거론된다. 북경까지 오가는 데 다섯 달이 걸리는 고된 길이지만, 사행은 큰 영예이고 무역으로 남는 것도 있다.',
+        text: `${yearOf(s.t) >= 1637 ? '청나라 황제' : '명나라 황제'}의 생일을 하례하는 ${yearOf(s.t) >= 1637 ? '사신(연행사)' : '성절사(聖節使)'}로 당신이 거론된다. ${yearOf(s.t) >= 1637 && yearOf(s.t) < 1645 ? '심양' : '북경'}까지 오가는 데 다섯 달이 걸리는 고된 길이지만, 사행은 큰 영예이고 무역으로 남는 것도 있다.`,
         choices: [
           {
             key: 'go',
@@ -457,9 +457,10 @@ export const PERSONAL_EVENTS: Record<string, EventDef> = {
       p.prestige = clamp(p.prestige + 2, 0, 100);
       p.wealth += 25;
       if (p.vigor <= 2 && chance(s, 0.35)) s.player.sick = true;
-      s.player.deeds.push(`${shortDate(s.t)} 성절사로 북경에 감`);
+      const dest = yearOf(s.t) >= 1637 && yearOf(s.t) < 1645 ? '심양' : '북경';
+      s.player.deeds.push(`${shortDate(s.t)} 사신으로 ${dest}에 감`);
       s.player.ap = Math.min(s.player.ap, 1);
-      return '압록강을 건너 북경으로 향했다. 다섯 달 뒤에 돌아온다.';
+      return `압록강을 건너 ${dest}으로 향했다. 다섯 달 뒤에 돌아온다.`;
     },
   },
 

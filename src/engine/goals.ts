@@ -81,7 +81,7 @@ export const GOALS: Record<GoalKind, GoalDef> = {
     progress: (s) => ({ text: `명망 ${Math.round(P(s).prestige)}/70`, done: P(s).prestige >= 70 }),
   },
   jojae: {
-    name: () => '동서를 조제보합한다',
+    name: () => '붕당을 조제보합한다',
     desc: '조제보합 상소를 두 번 가납받는다. 긴장도가 낮을수록 쉽다.',
     progress: (s, g) => {
       const n = s.player.stats.jojae - (g.base ?? 0);

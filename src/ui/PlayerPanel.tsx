@@ -15,6 +15,7 @@ import {
   joinFaction,
   leaveError,
   leaveFaction,
+  lawMemorialError,
   memorialError,
   monthlyError,
   runMonthly,
@@ -110,6 +111,16 @@ export function PlayerPanel() {
         )}
       </div>
       <div className="trait-row">
+        {p.eumseo && (
+          <span className="trait bad" title="선친의 음덕으로 벼슬길에 나섰다. 청요직(삼사·전랑)과 문형에 오르지 못하고 승진이 더디다. 식년시·별시에 급제하면 벗어난다.">
+            음서 출신
+          </span>
+        )}
+        {p.tags.includes('passed') && (
+          <span className="trait" title="과거에 급제했다">
+            급제
+          </span>
+        )}
         {p.traits.map((t) => (
           <span key={t} className="trait" title={TRAIT_META[t].desc}>
             {TRAIT_META[t].name}
@@ -266,8 +277,8 @@ export function PlayerPanel() {
               </select>
               <button
                 className="fbtn"
-                disabled={!!memorialError(s) || !LAW_MAP[lawPick]}
-                title={memorialError(s) ?? `${MEMORIAL_INFO.law.desc}\n\n${LAW_MAP[lawPick]?.desc ?? ''}\n효과: ${LAW_MAP[lawPick]?.effect ?? ''}`}
+                disabled={!!memorialError(s) || !LAW_MAP[lawPick] || !!lawMemorialError(s, lawPick)}
+                title={memorialError(s) ?? lawMemorialError(s, lawPick) ?? `${MEMORIAL_INFO.law.desc}\n\n${LAW_MAP[lawPick]?.desc ?? ''}\n효과: ${LAW_MAP[lawPick]?.effect ?? ''}`}
                 onClick={() => act((g) => startMemorial(g, 'law', { lawId: lawPick, abolish: !!g.laws[lawPick]?.on }))}
               >
                 변법 상소

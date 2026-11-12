@@ -9,7 +9,7 @@ import { fulfill } from './relations';
 import { powerShare } from './factions';
 import { genChar } from './generate';
 import { jadaePick } from './strife';
-import { shortDate } from './calendar';
+import { shortDate, yearOf } from './calendar';
 import { FACTION_META } from './data/meta';
 
 export function holderMap(s: GameState): Record<string, Character> {
@@ -125,8 +125,10 @@ export function eligible(s: GameState, c: Character, o: OfficeDef): boolean {
   if (o.rank > lowestOfficeFor(c.rank)) return false;
   if (cooldownLeft(s, c, o) > 0) return false;
   if (c.rank > minRankFor(o.rank)) return false;
-  if (c.rank > o.rank && s.t - c.promotedAt < PROMOTION_GAP) return false;
+  if (c.rank > o.rank && s.t - c.promotedAt < PROMOTION_GAP + (c.eumseo ? 18 : 0)) return false;
   if (age(s, c) < minAgeFor(o.rank)) return false;
+  // 음서 출신은 청요직(삼사·전랑)과 문형에 오르지 못한다
+  if (c.eumseo && (o.samsa || o.cheongyo || o.literary)) return false;
   if (isP(s, c)) {
     const d = s.flags[`declined_${o.id}`];
     if (typeof d === 'number' && d > s.t) return false;
@@ -146,7 +148,7 @@ export function appointParts(s: GameState, c: Character, o: OfficeDef, hm = hold
   parts.push({ label: '정치력', value: c.politics * 2 });
   parts.push({ label: '학식', value: c.learning * (o.literary ? 3 : o.samsa || o.cheongyo ? 2 : 1) });
   parts.push({ label: '명망', value: c.prestige / 12 });
-  parts.push({ label: '성심', value: c.favor / (o.rank === 1 ? 6 : 12) });
+  parts.push({ label: '성심', value: c.favor / (o.rank === 1 ? 10 : 15) });
   parts.push({ label: '경력', value: Math.min(3, c.tenure / 12) });
   const gap = Math.max(0, c.rank - o.rank);
   if (gap) parts.push({ label: '품계 차이', value: -gap * 1.2 });
@@ -174,6 +176,12 @@ export function appointParts(s: GameState, c: Character, o: OfficeDef, hm = hold
   }
   if ((s.recs[c.id] ?? -1) > s.t) parts.push({ label: '천거', value: 8 });
   if (c.traits.includes('recluse')) parts.push({ label: '은일', value: -5 });
+  if (c.eumseo) parts.push({ label: '음서 출신', value: o.rank <= 2 ? -6 : -3 });
+  // 갑술환국 뒤 정조가 채제공을 쓰기 전까지 남인은 요직에서 밀려났다
+  const y = yearOf(s.t);
+  if (c.faction === 'nam' && y >= 1694 && y < 1776) parts.push({ label: '남인 폐출', value: o.rank <= 3 ? -5 : -2 });
+  // 인조반정 뒤 한 세대 동안 서인이 조정을 쥐었다
+  if (topOf(c.faction) === 'seo' && y >= 1623 && y < 1674 && o.rank <= 3) parts.push({ label: '반정 공신의 당', value: 2 });
   if (c.home === 'jeolla' && s.regions.jeolla.tags.includes('banyeok')) parts.push({ label: '반역향 출신', value: -2 });
   for (const x of s.situations ?? []) {
     if (x.kind === 'scandal' && c.faction !== 'none' && x.data.faction === c.faction) parts.push({ label: '추문의 여파', value: -2 });

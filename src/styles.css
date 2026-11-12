@@ -2444,3 +2444,7 @@ button.mini:disabled {
   font-size: 13px;
   color: var(--gold2);
 }
+.trait.bad {
+  border-color: #b8432f;
+  color: #e07a5f;
+}

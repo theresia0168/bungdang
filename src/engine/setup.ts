@@ -45,6 +45,8 @@ function blankState(seed: number): GameState {
       seo: { id: 'seo', active: true, division: 0 },
       nam: { id: 'nam', active: false, division: 0 },
       buk: { id: 'buk', active: false, division: 0 },
+      noron: { id: 'noron', active: false, division: 0 },
+      soron: { id: 'soron', active: false, division: 0 },
       none: { id: 'none', active: true, division: 0 },
     },
     regions: Object.fromEntries(
@@ -195,6 +197,8 @@ export function upgrade(s: GameState): GameState {
     r.defense ??= initDefense(r.id);
     r.hidden ??= r.id === 'hanseong' ? 0 : 0.06;
   }
+  s.factions.noron ??= { id: 'noron', active: false, division: 0 };
+  s.factions.soron ??= { id: 'soron', active: false, division: 0 };
   s.realm ??= initRealm();
   s.realm.budget ??= { tax: 'normal', army: 'keep', royal: 'normal' };
   for (const r of Object.values(s.regions)) {

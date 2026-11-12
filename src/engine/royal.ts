@@ -93,6 +93,7 @@ function choosePicks(s: GameState) {
 
 /** 매달: 후궁과 왕자의 사랑이 오르내리고, 국본 논의가 일어난다 */
 export function tickRoyal(s: GameState) {
+  if (s.t >= tOf(1608, 2)) return;
   const r = s.royal;
   const gong = consortOf(s, 'gongbin');
   if (gong?.alive && s.t >= tOf(1577, 5)) {

@@ -4,7 +4,7 @@ import { OFFICE_MAP } from './data/offices';
 import { REGION_META } from './data/meta';
 import { chance, randInt } from './rng';
 import { addFlaw, alive, atSeat, clamp, collect, impeachEtiquette, inCourt, josa, log, monthsSince, notice, owe, P, pres, pushEvent, seat, seatName } from './state';
-import { LAW_MAP } from './laws';
+import { LAW_MAP, lawCooldown } from './laws';
 import { startOksa, tongmun, tongmunError } from './strife';
 import { exile } from './conflict';
 import { FACTION_META } from './data/meta';
@@ -69,7 +69,7 @@ export const mourningLeft = (s: GameState) => Math.max(0, Number(s.flags.mournUn
 export function apParts(s: GameState): { label: string; value: number }[] {
   const p = P(s);
   if (p.status === 'exiled') return [{ label: '유배 중 (서신만)', value: 1 }];
-  if (isAbroad(s)) return [{ label: '연행 중 (서신만)', value: 1 }];
+  if (isAbroad(s)) return [{ label: '사행 중 (서신만)', value: 1 }];
   const parts = [{ label: '기본', value: 3 }];
   if (p.politics >= 5) parts.push({ label: '정치력 5 이상', value: 1 });
   if (p.politics >= 7) parts.push({ label: '정치력 7 이상', value: 1 });
@@ -105,7 +105,7 @@ export function actionError(s: GameState, a: TargetAction, t: Character): string
   const err = a.check(s, t);
   if (err) return err;
   if (P(s).status === 'exiled' && !BY_LETTER.includes(a.id)) return '유배 중에는 서신만 보낼 수 있다';
-  if (isAbroad(s) && !BY_LETTER.includes(a.id)) return '연행 중에는 서신만 보낼 수 있다';
+  if (isAbroad(s) && !BY_LETTER.includes(a.id)) return '사행 중에는 서신만 보낼 수 있다';
   const cost = a.cost(s);
   if (cost === 'authority') return s.player.authorityUsed ? '이번 달 직권을 이미 썼다' : null;
   if (cost > s.player.ap) return `행동력이 부족하다 (필요 ${cost}, 남은 ${s.player.ap})`;
@@ -1108,7 +1108,7 @@ export const MONTHLY: MonthlyAction[] = [
     name: '업무 집중',
     cost: 2,
     desc: '맡은 일에 온 힘을 쏟는다. 성심 +2 (70까지)와 정치 경험 +3. 이번 달 왕의 눈에 띄어 독대·직무 사건이 잦아진다. 관찰사는 도의 민심과 조련이, 병조판서는 남쪽 방비가, 호조판서는 국고가 오른다. 석 달 넘게 손을 놓으면 성심이 조금씩 식는다.',
-    check: (s) => (P(s).status === 'active' && P(s).office ? (isAbroad(s) ? '연행 중이다' : null) : '관직에 있어야 한다'),
+    check: (s) => (P(s).status === 'active' && P(s).office ? (isAbroad(s) ? '사행 중이다' : null) : '관직에 있어야 한다'),
     run(s) {
       const p = P(s);
       const pl = s.player;
@@ -1154,6 +1154,7 @@ export const MONTHLY: MonthlyAction[] = [
       const v = p.traits.includes('scholar') ? 3 : 2;
       s.player.exp.learning += v;
       s.flags.studyAt = s.t;
+      s.player.examPrep = Math.min(12, (s.player.examPrep ?? 0) + 1);
       pres(p, 0.15);
       return `책을 펴고 학문을 닦았다. (학식 경험 +${v})`;
     },
@@ -1358,11 +1359,17 @@ export function memorialError(s: GameState): string | null {
 }
 
 export function startMemorial(s: GameState, topic: MemorialTopic, opt: { lawId?: string; abolish?: boolean; targetId?: string } = {}): string {
-  const err = memorialError(s);
+  const err = memorialError(s) ?? (topic === 'law' && opt.lawId ? lawMemorialError(s, opt.lawId) : null);
   if (err) return err;
   s.player.focus = { kind: 'memorial', topic, progress: 0, required: 2, cosigners: [], ...opt };
   const what = topic === 'law' && opt.lawId ? `${LAW_MAP[opt.lawId]?.name ?? ''} ${opt.abolish ? '폐지' : '시행'}을 청하는 상소` : TOPIC_LABEL[topic];
   return `${josa(what, '을/를')} 짓기 시작했다. 두 달 동안 연명을 모으자.`;
+}
+
+/** 막 바뀌었거나 부결된 법은 한동안 다시 올리지 못한다 */
+export function lawMemorialError(s: GameState, lawId: string): string | null {
+  const n = lawCooldown(s, lawId);
+  return n ? `최근에 다룬 법이라 ${n}개월 뒤에 다시 올릴 수 있다` : null;
 }
 
 export function dropMemorial(s: GameState): string {

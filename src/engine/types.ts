@@ -1,4 +1,4 @@
-export type FactionId = 'dong' | 'seo' | 'nam' | 'buk' | 'none';
+export type FactionId = 'dong' | 'seo' | 'nam' | 'buk' | 'noron' | 'soron' | 'none';
 
 export type RegionId =
   | 'hanseong'
@@ -91,6 +91,8 @@ export interface Character {
   teacher?: string;
   /** 살면서 당적을 바꾼 횟수 */
   switched?: number;
+  /** 과거를 거치지 않고 선친의 음덕으로 벼슬길에 나섰다 */
+  eumseo?: boolean;
   /** 지금 이 사람이 바라는 것. 들어주면 크게 고마워한다. */
   want?: Want;
   historical: boolean;
@@ -143,6 +145,8 @@ export interface Race {
 }
 
 export interface KingState {
+  /** 왕대마다 정해진 당별 마음의 바탕. 왕의 마음은 이리로 돌아온다 */
+  base?: Partial<Record<FactionId, number>>;
   /** 용안(龍顔). -100 진노 ~ 100 흡족 */
   mood: number;
   /** 붕당별 왕의 마음 -50 ~ 50. 한 당이 조정을 오래 쥐면 식고, 깊이 식으면 환국이 난다. */
@@ -296,6 +300,8 @@ export interface PlayerState {
   loans: { amount: number; due: number }[];
   /** 살면서 당적을 바꾼 횟수 */
   factionChanges: number;
+  /** 과거 준비 (학문 수양·강학을 할 때마다 쌓인다) */
+  examPrep?: number;
 }
 
 export interface RegionDefense {
@@ -422,7 +428,7 @@ export interface RegionState {
   inspectUntil?: number;
 }
 
-export type SituationKind = 'heir' | 'scandal' | 'omen' | 'illness' | 'inlaw';
+export type SituationKind = 'heir' | 'scandal' | 'omen' | 'illness' | 'inlaw' | 'gukbon';
 
 /** 몇 달 동안 조정의 분위기를 바꾸는 정국 상황 */
 export interface Situation {

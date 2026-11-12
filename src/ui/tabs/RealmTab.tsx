@@ -25,6 +25,7 @@ import {
   regionTax,
   suryeongSkimRate,
   warForecast,
+  northForecast,
   warOdds,
   warReadiness,
 } from '../../engine/realm';
@@ -49,6 +50,7 @@ export function RealmTab() {
   const perr = projectError(s, kind, r);
   const greed = traitForbids(p, 'greed');
   const preWar = s.t < tOf(1592, 4);
+  const preHoran = s.t >= tOf(1599, 1) && s.t < tOf(1636, 12);
   const est = TAX_REGIONS.reduce((a, x) => a + regionTax(s, x), 0);
   const hojo = p.status === 'active' && p.office === 'hojo';
   const fund = armyFunding(s);
@@ -234,7 +236,7 @@ export function RealmTab() {
           </div>
         </div>
         <p className="small">
-          {preWar ? `${warForecast(ready.score)}.` : ''} <span className="muted">{ready.parts.map((x) => `${x.label} ${x.value >= 0 ? '+' : ''}${x.value}`).join(' · ')}</span>
+          {preWar ? `${warForecast(ready.score)}.` : preHoran ? `${northForecast(s).text}.` : ''} <span className="muted">{ready.parts.map((x) => `${x.label} ${x.value >= 0 ? '+' : ''}${x.value}`).join(' · ')}</span>
         </p>
         <p className="small muted">
           {fund < 1 ? '군비가 유지비에 못 미쳐 조련이 풀리고 성곽·진보·판옥선이 하나씩 허물어진다. ' : fund >= 1.2 ? '군비가 넉넉해 조련이 조금씩 오른다. ' : ''}

@@ -26,6 +26,18 @@ export const FACTION_META: Record<FactionId, { name: string; short: string; colo
     color: '#8a8fb0',
     desc: '동인 가운데 강경파. 이산해·정인홍 등 남명·화담 문인이 중심이다.',
   },
+  noron: {
+    name: '노론',
+    short: '老',
+    color: '#d9c48a',
+    desc: '서인 가운데 송시열을 따르는 쪽. 의리와 명분을 앞세우고 남인에게 강경하다.',
+  },
+  soron: {
+    name: '소론',
+    short: '少',
+    color: '#7fb08a',
+    desc: '서인 가운데 윤증·남구만을 따르는 쪽. 남인에게 온건하고 실리를 따진다.',
+  },
   none: {
     name: '무당',
     short: '中',

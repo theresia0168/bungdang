@@ -18,6 +18,7 @@ import { endDebateByHistory, settleHeir } from '../royal';
 import { decideWarPath, defenseScore, raceForKing } from '../realm';
 import { kingMood } from '../king';
 import { setLaw } from '../laws';
+import { LATER_SCHEDULE } from '../later';
 
 const live = (s: GameState, id: string): Character | undefined => (alive(s.chars[id]) ? s.chars[id] : undefined);
 const pIs = (s: GameState, id: string) => s.player.charId === id;
@@ -529,6 +530,7 @@ export const SCHEDULE: Scheduled[] = [
     },
   },
   ...WAR_SCHEDULE,
+  ...LATER_SCHEDULE,
 ];
 
 /** 세자가 분조를 이끌고 강원으로 간다. 조정의 넷에 하나쯤이 따른다. */

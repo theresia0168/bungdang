@@ -4,12 +4,15 @@ import { OFFICE_MAP, salaryOf } from './data/offices';
 import { chance, d6, randInt } from './rng';
 import { alive, clamp, isP, josa, log, notice, P, pushEvent } from './state';
 import { decayMods } from './opinion';
-import { checkSplit, updateLeaders } from './factions';
+import { activeFactions, checkSplit, updateLeaders } from './factions';
 import { fillVacancies, holderOf, settleRaces, tickRaces, turnover } from './court';
 import { npcMonth, tickStats } from './npc';
 import { collectTaxes, tickRealm, tickWarFront, warReadiness } from './realm';
 import { tickAuthority } from './coup';
 import { tickStrife } from './strife';
+import { tickLater } from './later';
+import { rollExamCall } from './gwageo';
+import { tickGukbon } from './gukbon';
 import { rollBunjo, rollWarFront } from './events/war';
 import { kill } from './conflict';
 import { refreshAp, RETAINER_UPKEEP, tickFocus, tickScheme } from './actions';
@@ -46,6 +49,8 @@ function income(s: GameState) {
       notice(s, '떠나는 식객', `살림이 어려워 식객 하나가 떠났다. (식객 ${pl.retainers}명)`, 'personal');
     }
   }
+  // 큰 살림은 체면 유지에 돈이 든다
+  if (p.wealth > 300) p.wealth -= (p.wealth - 300) * 0.004;
   p.wealth = Math.round(p.wealth * 10) / 10;
   if (p.favor > 0) p.favor = Math.max(0, p.favor - 0.15);
 }
@@ -74,7 +79,7 @@ function warTick(s: GameState) {
   const p = P(s);
   const mil = s.flags.militia;
   if (typeof mil === 'number' && mil > s.t && alive(p)) {
-    if (chance(s, p.vigor >= 5 ? 0.008 : 0.015)) kill(s, p, '의병을 이끌고 싸우다 전사했다');
+    if (chance(s, p.vigor >= 5 ? 0.003 : 0.006)) kill(s, p, '의병을 이끌고 싸우다 전사했다');
   }
   if (!s.war.active) return;
   for (const c of Object.values(s.chars)) {
@@ -92,6 +97,11 @@ function exam(s: GameState) {
     const home = pickHome(s);
     let faction = regionFaction(s, home);
     if (yejo && yejo.faction !== 'none' && chance(s, 0.25)) faction = yejo.faction;
+    // 왕의 마음이 크게 기운 당의 선비가 더 뽑힌다
+    const favored = activeFactions(s).sort((a, b) => (s.king.lean[b] ?? 0) - (s.king.lean[a] ?? 0))[0];
+    if (favored && (s.king.lean[favored] ?? 0) >= 15 && chance(s, 0.3)) faction = favored;
+    // 갑술환국 뒤 정조 즉위 전까지 영남 남인은 벼슬길을 꺼리거나 막혔다
+    if (faction === 'nam' && y >= 1694 && y < 1776 && chance(s, 0.5)) faction = s.factions.noron.active ? (chance(s, 0.6) ? 'noron' : 'soron') : 'none';
     const bias = s.flags.examBias;
     if (typeof bias === 'string' && bias !== 'none' && chance(s, 0.4)) faction = bias as typeof faction;
     const c = genChar(s, { rank: i === 0 ? 6 : 9, age: randInt(s, 22, 38), status: 'active', office: 'nanggwan', faction, home });
@@ -119,16 +129,17 @@ function exam(s: GameState) {
       c.promotedAt = s.t;
       s.player.proteges = s.player.proteges.filter((x) => x !== id);
       pr.push(`· ${c.name} 급제! 낭관으로 조정에 나간다 (${roll})`);
-      log(s, `${josa(p.name, "이/가")} 거둔 제자 ${josa(c.name, '이/가')} 급제했다.`, 'player');
+      log(s, `${josa(p.name, "이/가")} 거둔 제자 ${josa(c.name, '이/가')} 급제했다.`, 'court');
     } else pr.push(`· ${c.name} 낙방 (${roll}, 10 이상 필요). 다음 식년시를 기약한다.`);
   }
   if (pr.length) notice(s, '제자의 과거', `${pr.join('\n')}\n\n급제한 제자는 맹약을 맺은 이처럼 당신이 걸린 공방에 저절로 나선다.`, 'personal');
-  const k = Math.min(2, s.player.disciples);
+  // 문과는 좁은 문이다: 한 식년시에 문인 하나만 응시해 볼 만하다
+  const k = Math.min(1, s.player.disciples);
   if (!k) return;
   const lines: string[] = [];
   for (let i = 0; i < k; i++) {
     const roll = d6(s) + randInt(s, 3, 5) + (yejo && yejo.faction === p.faction && p.faction !== 'none' ? 1 : 0) + (leak ? 3 : 0);
-    if (roll >= 8) {
+    if (roll >= 10) {
       const c = genChar(s, {
         rank: 9,
         age: randInt(s, 22, 32),
@@ -141,8 +152,8 @@ function exam(s: GameState) {
       });
       s.player.disciples--;
       lines.push(`· ${c.name} 급제 (${roll})`);
-      log(s, `${p.name}의 문인 ${josa(c.name, '이/가')} 급제했다.`, 'player');
-    } else lines.push(`· 낙방 (${roll}, 8 이상 필요)`);
+      log(s, `${p.name}의 문인 ${josa(c.name, '이/가')} 급제했다.`, 'court');
+    } else lines.push(`· 낙방 (${roll}, 10 이상 필요)`);
   }
   notice(s, '문인의 과거', `식년시에 문인 ${k}명이 응시했다.\n\n${lines.join('\n')}\n\n급제한 문인은 스승인 당신을 따른다.`, 'court');
 }
@@ -194,6 +205,7 @@ export function advanceMonth(s: GameState) {
   if (s.flags.mournUntil === s.t && alive(p) && p.status === 'retired')
     notice(s, '탈상(脫喪)', '상을 마쳤다. 이제 거취의 「상경」으로 한성에 올라가 다시 벼슬을 구할 수 있다.', 'personal');
   rollPersonal(s);
+  rollExamCall(s);
   rollAudience(s);
   rollDuty(s);
   rollLocal(s);
@@ -203,9 +215,11 @@ export function advanceMonth(s: GameState) {
   if (s.factions.dong.active && y >= 1589) s.factions.dong.division += 0.15;
   if (s.t >= tOf(1591, 6)) s.flags.splitReady = true;
   tickStrife(s);
+  tickLater(s);
+  tickGukbon(s);
   updateLeaders(s);
   checkSplit(s);
-  s.tension = clamp(s.tension - (0.3 + s.tension * 0.008), 10, 100);
+  s.tension = clamp(s.tension - (0.3 + s.tension * 0.012), 10, 100);
   // 명성은 잊힌다: 50을 넘는 몫이 다달이 2.5%씩 바랜다. 꾸준히 이름을 내야 높은 명망을 지킨다.
   for (const c of Object.values(s.chars)) if (c.prestige > 50) c.prestige -= (c.prestige - 50) * 0.025;
   if (p.status === 'active' && p.office) {

@@ -5,13 +5,13 @@ import { chance } from './rng';
 import { isP, josa, log, P, people, pushEvent } from './state';
 import { opinion } from './opinion';
 
-export const MAIN_FACTIONS: FactionId[] = ['dong', 'seo', 'nam', 'buk'];
+export const MAIN_FACTIONS: FactionId[] = ['dong', 'seo', 'nam', 'buk', 'noron', 'soron'];
 
 export const activeFactions = (s: GameState) => MAIN_FACTIONS.filter((f) => s.factions[f].active);
 export const members = (s: GameState, f: FactionId) => people(s).filter((c) => c.faction === f);
 
 export function officePower(s: GameState): Record<FactionId, number> {
-  const p: Record<FactionId, number> = { dong: 0, seo: 0, nam: 0, buk: 0, none: 0 };
+  const p: Record<FactionId, number> = { dong: 0, seo: 0, nam: 0, buk: 0, noron: 0, soron: 0, none: 0 };
   for (const c of people(s)) {
     if (c.status !== 'active' || !c.office) continue;
     const o = OFFICE_MAP[c.office];
@@ -23,7 +23,7 @@ export function officePower(s: GameState): Record<FactionId, number> {
 export function powerShare(s: GameState): Record<FactionId, number> {
   const p = officePower(s);
   const total = Object.values(p).reduce((a, b) => a + b, 0) || 1;
-  return { dong: p.dong / total, seo: p.seo / total, nam: p.nam / total, buk: p.buk / total, none: p.none / total };
+  return { dong: p.dong / total, seo: p.seo / total, nam: p.nam / total, buk: p.buk / total, noron: p.noron / total, soron: p.soron / total, none: p.none / total };
 }
 
 /** 당내 영향력. 가장 높은 인물이 영수가 된다. */

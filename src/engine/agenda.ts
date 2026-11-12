@@ -6,18 +6,19 @@ import { OFFICE_MAP } from './data/offices';
 import { tOf } from './calendar';
 import { chance, pick, rand } from './rng';
 import { monthsSince, alive, atSeat, clamp, inCourt, isP, josa, log, officeTitle, owe, P, people, pushEvent } from './state';
-import { sway, swayFaction } from './opinion';
+import { sway, swayFaction, topOf } from './opinion';
 import { activeFactions, influence, powerShare } from './factions';
+import { kingLean, kingMood } from './king';
 import { appoint, appointParts, eligible, holderOf, vacate } from './court';
 import { recall } from './conflict';
 import { isAbroad } from './actions';
 import { fulfillAgainst } from './relations';
-import { LAW_MAP, lawJosa, lawStance, setLaw } from './laws';
+import { LAW_MAP, lawJosa, lawResist, lawStance, setLaw } from './laws';
 
 type Stance = Partial<Record<FactionId, number>>;
 type Vote = 'yes' | 'no' | 'abstain';
 
-interface AgendaDef {
+export interface AgendaDef {
   id: string;
   /** 저절로 오르지 않고, 누군가 상소를 올려야 오르는 쟁점 */
   manual?: boolean;
@@ -68,7 +69,7 @@ export const AGENDAS: AgendaDef[] = [
   {
     id: 'jeonrang',
     from: [1575, 6],
-    to: [1600, 12],
+    to: [1821, 12],
     repeat: 12,
     weight: 2,
     prepare(s) {
@@ -233,7 +234,7 @@ export const AGENDAS: AgendaDef[] = [
   {
     id: 'tamhak',
     from: [1575, 8],
-    to: [1600, 10],
+    to: [1821, 12],
     repeat: 10,
     weight: 1.2,
     prepare(s) {
@@ -285,7 +286,7 @@ export const AGENDAS: AgendaDef[] = [
   {
     id: 'amnesty',
     from: [1576, 1],
-    to: [1600, 10],
+    to: [1821, 12],
     repeat: 18,
     prepare(s) {
       const ex = people(s).filter((c) => c.status === 'exiled' && !isP(s, c) && c.faction !== 'none');
@@ -344,7 +345,7 @@ export const AGENDAS: AgendaDef[] = [
   {
     id: 'jinhyul',
     from: [1576, 1],
-    to: [1600, 10],
+    to: [1821, 12],
     repeat: 30,
     weight: 0.7,
     prepare(s) {
@@ -371,12 +372,13 @@ export const AGENDAS: AgendaDef[] = [
     id: 'law_debate',
     manual: true,
     from: [1575, 1],
-    to: [1600, 12],
+    to: [1821, 12],
     title: '변법 논의',
     text(s, c) {
       const l = LAW_MAP[c.lawId];
       const by = s.chars[c.by];
-      return `${by ? `${FACTION_META[by.faction].name}의 ${josa(by.name, '이/가')} ` : ''}${lawJosa(l.name, '을/를')} ${c.abolish ? '없애자는' : '세우자는'} 상소를 올려 조정의 논의에 부쳐졌다.\n\n${l.desc}\n효과: ${l.effect}`;
+      const res = lawResist(l, !c.abolish);
+      return `${by ? `${FACTION_META[by.faction].name}의 ${josa(by.name, '이/가')} ` : ''}${lawJosa(l.name, '을/를')} ${c.abolish ? '없애자는' : '세우자는'} 상소를 올려 조정의 논의에 부쳐졌다.\n\n${l.desc}\n효과: ${l.effect}${res >= 0.25 ? `\n\n${c.abolish ? '이미 굳은 관행이라' : '이권이 걸린 이들이 많아'} 반발이 거세다.` : ''}`;
     },
     stance(s, c) {
       const l = LAW_MAP[c.lawId];
@@ -395,12 +397,19 @@ export const AGENDAS: AgendaDef[] = [
         for (const x of people(s)) if (x.traits.includes('greedy') && x.status === 'active' && !isP(s, x)) sway(s, x, P(s).id, -3, '이권을 막음', { decay: 0.1 });
       return `${lawJosa(l.name, '이/가')} ${c.abolish ? '폐지되었다' : '시행되었다'}.`;
     },
-    fail: (_s, c) => `${LAW_MAP[c.lawId].name} 논의는 부결되었다.`,
+    fail(s, c) {
+      s.flags[`lawFail_${c.lawId}`] = s.t;
+      return `${LAW_MAP[c.lawId].name} 논의는 부결되었다. 3년 동안은 다시 논하기 어렵다.`;
+    },
   },
 ];
 
-const AGENDA_MAP = Object.fromEntries(AGENDAS.map((a) => [a.id, a]));
+/** 나중에 붙는 쟁점도 찾을 수 있게 그때그때 찾는다 */
+const AGENDA_MAP: Record<string, AgendaDef> = new Proxy({} as Record<string, AgendaDef>, { get: (_t, id: string) => AGENDAS.find((a) => a.id === id) });
 
+
+/** 갈라져 나온 당은 뿌리 당의 입장을 따른다 */
+const stOf = (st: Stance, f: FactionId) => st[f] ?? st[topOf(f)];
 
 const STRENGTH = (v: number) => (Math.abs(v) >= 0.8 ? '강하게 ' : Math.abs(v) >= 0.4 ? '' : '다소 ');
 const sideWord = (v: number) => (v > 0 ? '찬성' : v < 0 ? '반대' : '관망');
@@ -409,8 +418,8 @@ export function stanceLines(s: GameState, def: AgendaDef, c: Record<string, any>
   const st = def.stance(s, c);
   const kingV = def.kingOf?.(s, c) ?? def.king;
   const lines = activeFactions(s)
-    .filter((f) => st[f] !== undefined)
-    .map((f) => `${FACTION_META[f].name} ${STRENGTH(st[f]!)}${sideWord(st[f]!)}`);
+    .filter((f) => stOf(st, f) !== undefined)
+    .map((f) => `${FACTION_META[f].name} ${STRENGTH(stOf(st, f)!)}${sideWord(stOf(st, f)!)}`);
   const k = kingV ? `왕은 ${STRENGTH(kingV)}${sideWord(kingV)}에 기울었다` : '왕은 뜻을 드러내지 않는다';
   return `${lines.join(' · ')}\n${k}`;
 }
@@ -420,8 +429,10 @@ function tally(s: GameState, def: AgendaDef, c: Record<string, any>, vote: Vote 
   const st = def.stance(s, c);
   const share = powerShare(s);
   let score = 0;
-  for (const f of activeFactions(s)) score += (share[f] ?? 0) * (st[f] ?? 0);
+  for (const f of activeFactions(s)) score += (share[f] ?? 0) * (stOf(st, f) ?? 0);
   score += (def.kingOf?.(s, c) ?? def.king) * (def.kingWeight ?? 0.35);
+  // 법을 바꾸는 일에는 기득권과 관행이 맞선다
+  if (def.id === 'law_debate' && LAW_MAP[c.lawId]) score -= lawResist(LAW_MAP[c.lawId], !c.abolish) * 0.5;
   if (vote && vote !== 'abstain') {
     const w = 0.08 + influence(s, P(s)) / 150;
     score += vote === 'yes' ? w : -w;
@@ -434,21 +445,21 @@ function applyVote(s: GameState, def: AgendaDef, c: Record<string, any>, vote: V
   const st = def.stance(s, c);
   const fx: string[] = [];
   if (vote === 'abstain') {
-    if (p.faction !== 'none' && !p.traits.includes('mediator') && Math.abs(st[p.faction] ?? 0) >= 0.5) {
+    if (p.faction !== 'none' && !p.traits.includes('mediator') && Math.abs(stOf(st, p.faction) ?? 0) >= 0.5) {
       fx.push(swayFaction(s, p.faction, p.id, -2, '미온적', 0.1));
     }
     return fx.filter(Boolean);
   }
   const sign = vote === 'yes' ? 1 : -1;
   for (const f of activeFactions(s)) {
-    const v = st[f] ?? 0;
+    const v = stOf(st, f) ?? 0;
     if (!v) continue;
     const own = f === p.faction;
     const agree = Math.sign(v) === sign;
     const mag = Math.round(3 * Math.abs(v)) + (own ? (agree ? 2 : 5) : 0);
     fx.push(swayFaction(s, f, p.id, agree ? mag : -mag, agree ? '쟁점에서 한편' : '쟁점에서 맞섬', 0.1));
   }
-  const ownSt = p.faction !== 'none' ? (st[p.faction] ?? 0) : 0;
+  const ownSt = p.faction !== 'none' ? (stOf(st, p.faction) ?? 0) : 0;
   if (ownSt && Math.sign(ownSt) !== sign) {
     const d = p.traits.includes('upright') ? 2 : 1;
     p.prestige = clamp(p.prestige + d, 0, 100);
@@ -540,4 +551,109 @@ export function openLawDebate(s: GameState, by: string, lawId: string, abolish: 
   const p = P(s);
   if (inCourt(p) && atSeat(s, p) && !isAbroad(s) && alive(p) && p.id !== by) pushEvent(s, 'agenda', ctx);
   else decide(s, AGENDA_MAP.law_debate, ctx, null);
+}
+
+/* ───────── 조선 후기의 큰 논쟁 (연표가 부른다) ───────── */
+const only = (id: string): Pick<AgendaDef, 'id' | 'manual' | 'from' | 'to'> => ({ id, manual: true, from: [1575, 1], to: [1821, 12] });
+
+AGENDAS.push(
+  {
+    ...only('pyemo'),
+    title: '폐모론(廢母論)',
+    text: () => '대북이 인목대비가 영창대군을 끼고 역모에 가담했다며 대비를 폐하자고 청한다. 어머니를 폐하는 것은 강상(綱常)을 무너뜨리는 일이라는 반발이 거세다.',
+    stance: () => ({ buk: 1, nam: -1, seo: -1, dong: 0.3 }),
+    king: 0.6,
+    gongron: 'no',
+    yes: () => '대비를 폐하자',
+    no: () => '자식이 어미를 폐할 수 없다',
+    pass(s) {
+      s.tension = clamp(s.tension + 10, 0, 100);
+      s.flags.pyemo = true;
+      return '인목대비가 서궁에 유폐되었다. 서인들이 이를 갈며 때를 기다린다.';
+    },
+    fail(s) {
+      s.tension = clamp(s.tension + 4, 0, 100);
+      return '폐모는 이루어지지 않았으나 대비의 처소를 옮겨 사실상 가두었다.';
+    },
+  },
+  {
+    ...only('jeokhwa'),
+    title: '척화와 주화',
+    text: () => '남한산성이 포위되었다. 김상헌은 "의리로 보아 오랑캐에게 무릎 꿇을 수 없다"며 척화를, 최명길은 "나라가 망하면 의리도 없다"며 주화를 주장한다.',
+    stance: () => ({ seo: 0.3, nam: 0.3 }),
+    king: -0.6,
+    kingWeight: 0.6,
+    gongron: 'yes',
+    yes: () => '끝까지 싸우자 (척화)',
+    no: () => '화친하여 사직을 보전하자 (주화)',
+    pass(s) {
+      for (const r of Object.values(s.regions)) r.minsim = clamp(r.minsim - 4, 0, 100);
+      s.realm.treasury -= 60;
+      return '척화론이 이겼으나 성 안의 군량이 떨어져 끝내 더 큰 굴욕 속에 항복했다.';
+    },
+    fail(s) {
+      kingMood(s, 4);
+      return '주화론에 따라 성을 나가 항복했다. 사림은 최명길을 두고두고 비난한다.';
+    },
+  },
+  {
+    ...only('bukbeol'),
+    title: '북벌(北伐)',
+    text: () => '효종이 청을 치기 위해 군사를 기르자고 한다. 송시열 등 산림은 명분에 찬동하면서도 먼저 임금의 마음을 닦아야 한다고 하고, 다른 이들은 나라 살림이 감당하지 못한다고 한다.',
+    stance: () => ({ seo: 0.5, nam: -0.2 }),
+    king: 1,
+    kingWeight: 0.7,
+    yes: () => '군사를 길러 치욕을 씻자',
+    no: () => '백성을 먼저 살려야 한다',
+    pass(s) {
+      s.realm.budget.army = 'expand';
+      for (const r of ['pyeongan', 'hwanghae', 'gyeonggi', 'hanseong'] as const) s.regions[r].defense.drill = Math.min(100, s.regions[r].defense.drill + 20);
+      for (const r of Object.values(s.regions)) r.minsim = clamp(r.minsim - 3, 0, 100);
+      return '어영청과 훈련도감의 군사를 늘렸다. 군비가 확충된다.';
+    },
+    fail: () => '북벌은 왕의 마음에만 남았다.',
+  },
+  {
+    ...only('yesong1'),
+    title: '기해예송(己亥禮訟)',
+    text: () => '효종이 승하하자 계모인 자의대비가 상복을 얼마나 입을지를 두고 논쟁이 일었다. 송시열 등 서인은 "효종은 차남이니 1년(기년)"이라 하고, 윤휴 등 남인은 "왕위를 이었으니 맏아들과 같이 3년"이라 한다. 왕통의 정통성이 걸린 문제다.',
+    stance: () => ({ seo: 1, nam: -1 }),
+    king: 0.2,
+    yes: () => '기년복(1년)이 옳다',
+    no: () => '삼년복이 옳다',
+    pass(s) {
+      kingLean(s, 'nam', -6);
+      return '기년설이 채택되었다. 서인이 조정을 지킨다.';
+    },
+    fail(s) {
+      kingLean(s, 'nam', 8);
+      return '삼년설이 채택되었다. 남인의 목소리가 커졌다.';
+    },
+  },
+  {
+    ...only('yesong2'),
+    title: '갑인예송(甲寅禮訟)',
+    text: () => '효종의 비 인선왕후가 세상을 떠났다. 자의대비의 상복을 두고 다시 논쟁이 붙었다. 서인은 9개월(대공), 남인은 1년(기년)을 주장한다. 이번에는 왕의 마음이 남인 쪽에 있다는 말이 돈다.',
+    stance: () => ({ seo: 1, nam: -1 }),
+    king: -0.7,
+    kingWeight: 0.8,
+    yes: () => '대공복(9개월)이 옳다',
+    no: () => '기년복(1년)이 옳다',
+    pass: () => '대공설이 채택되었다. 서인이 겨우 버텼다.',
+    fail(s) {
+      kingLean(s, 'nam', 15);
+      for (const f of ['seo', 'noron', 'soron'] as FactionId[]) if (s.factions[f].active) kingLean(s, f, -12);
+      return '기년설이 채택되었다. 남인이 조정을 쥐었다.';
+    },
+  },
+);
+
+/** 연표가 쟁점을 부른다. 플레이어가 조정에 있으면 표결에 참여한다. */
+export function raiseAgenda(s: GameState, id: string, ctx: Record<string, any>) {
+  const def = AGENDA_MAP[id];
+  if (!def) return;
+  const p = P(s);
+  const c = { ...ctx, agenda: id };
+  if (inCourt(p) && atSeat(s, p) && !isAbroad(s) && alive(p) && p.id !== ctx.by) pushEvent(s, 'agenda', c);
+  else decide(s, def, c, null);
 }

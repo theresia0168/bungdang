@@ -8,14 +8,14 @@ import { uid } from '../src/engine/state';
 import type { RegionId } from '../src/engine/types';
 
 type Row = Record<string, number>;
-const SEEDS = 6;
+const SEEDS = 3;
 function run(mode: 'idle' | 'defense' | 'crisis') {
   const rows: Record<number, Row[]> = {};
   const fin: string[] = [];
   for (let r = 0; r < SEEDS; r++) {
     const s = newGame({ kind: 'historical', id: 'yi_wonik' }, 1000 + r * 613);
     let coups = 0, wins = 0, lostFac = 0;
-    while (!s.over && s.t < 26 * 12) {
+    while (!s.over && s.t < (1821 - 1575) * 12) {
       while (s.pending.length) { const e = s.pending[0]; const v = viewEvent(s, e); const ok = v.choices.filter((c) => !c.disabled); const k = (ok.find((c) => c.key === 'silent') ?? ok[0] ?? v.choices[0]).key; resolveEvent(s, e.id, k); if (s.over) break; }
       if (s.over) break;
       if (mode === 'defense' && s.t % 4 === 0 && s.t < tOf(1592, 1)) {
@@ -32,7 +32,7 @@ function run(mode: 'idle' | 'defense' | 'crisis') {
       const afterFac = Object.values(s.regions).reduce((a, x) => a + x.defense.fort + x.defense.jin + x.defense.navy, 0);
       if (afterFac < beforeFac) lostFac += beforeFac - afterFac;
       if (hadCoup && !s.realm.coup) { coups++; if (s.log.some((e) => e.t === s.t && e.text.startsWith('[반정]'))) wins++; }
-      if (monthOf(s.t) === 11 && (yearOf(s.t) - 1575) % 4 === 0) {
+      if (monthOf(s.t) === 11 && (yearOf(s.t) - 1575) % 20 === 0) {
         const y = yearOf(s.t);
         (rows[y] ??= []).push({
           treasury: s.realm.treasury, rev: s.realm.ledger?.revenue ?? 0, spend: monthlySpend(s) * 12, milNeed: militaryNeed(s) * 12,
@@ -53,5 +53,4 @@ function run(mode: 'idle' | 'defense' | 'crisis') {
   console.log(fin.join('\n'));
 }
 run('idle');
-run('defense');
-run('crisis');
+

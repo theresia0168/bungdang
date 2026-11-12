@@ -66,7 +66,7 @@ export function StartScreen({ onStart, onResume }: { onStart: (c: StartChoice) =
         <div className="start-seal">黨</div>
         <div>
           <h1>붕당(朋黨)</h1>
-          <p className="start-sub">선조 8년 을해년(1575), 사림이 둘로 갈라지던 해부터 임진왜란을 지나 1600년까지</p>
+          <p className="start-sub">선조 8년 을해년(1575), 사림이 둘로 갈라지던 해부터 임진왜란과 호란, 예송과 환국, 탕평과 세도를 지나 순조 21년(1821)까지</p>
         </div>
       </header>
 
