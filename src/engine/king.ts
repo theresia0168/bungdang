@@ -3,7 +3,7 @@ import type { EventDef } from './events/types';
 import { OFFICE_MAP } from './data/offices';
 import { FACTION_META } from './data/meta';
 import { chance, d6, randInt } from './rng';
-import { monthsSince, alive, clamp, inCourt, isP, josa, log, notice, officeTitle, owe, P, people, uid } from './state';
+import { monthsSince, alive, atSeat, clamp, inCourt, isP, josa, log, notice, officeTitle, owe, P, people, uid } from './state';
 import { sway, swayFaction, topOf } from './opinion';
 import { activeFactions, powerShare } from './factions';
 import { vacate } from './court';
@@ -150,7 +150,7 @@ const HONGMUN = ['bujehak', 'gyori1', 'gyori2', 'eunggyo', 'daejehak'];
 
 export function audienceEligible(s: GameState): boolean {
   const p = P(s);
-  if (p.status !== 'active' || p.location !== 'hanseong' || !p.office) return false;
+  if (p.status !== 'active' || !atSeat(s, p) || !p.office) return false;
   const o = OFFICE_MAP[p.office];
   return !!o && (o.rank <= 3 || !!o.samsa || !!o.cheongyo);
 }

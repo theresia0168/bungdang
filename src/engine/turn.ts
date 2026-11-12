@@ -8,6 +8,9 @@ import { checkSplit, updateLeaders } from './factions';
 import { fillVacancies, holderOf, settleRaces, tickRaces, turnover } from './court';
 import { npcMonth, tickStats } from './npc';
 import { collectTaxes, tickRealm, tickWarFront } from './realm';
+import { tickAuthority } from './coup';
+import { tickStrife } from './strife';
+import { rollBunjo, rollWarFront } from './events/war';
 import { kill } from './conflict';
 import { refreshAp, RETAINER_UPKEEP, tickFocus, tickScheme } from './actions';
 import { rollAudience, tickKing } from './king';
@@ -174,8 +177,11 @@ export function advanceMonth(s: GameState) {
   tickRoyal(s);
   tickSituations(s);
   tickRealm(s);
+  tickAuthority(s);
   if (m === 10) collectTaxes(s);
   tickWarFront(s);
+  rollWarFront(s);
+  rollBunjo(s);
   if (m === 1) tickStats(s);
   destinyChecks(s);
   warTick(s);
@@ -196,10 +202,12 @@ export function advanceMonth(s: GameState) {
   checkGoal(s);
   if (s.factions.dong.active && y >= 1589) s.factions.dong.division += 0.15;
   if (s.t >= tOf(1591, 6)) s.flags.splitReady = true;
+  tickStrife(s);
   updateLeaders(s);
   checkSplit(s);
   s.tension = clamp(s.tension - (0.3 + s.tension * 0.008), 10, 100);
-  for (const c of Object.values(s.chars)) if (c.prestige > 55) c.prestige -= (c.prestige - 55) * 0.01;
+  // 명성은 잊힌다: 50을 넘는 몫이 다달이 2.5%씩 바랜다. 꾸준히 이름을 내야 높은 명망을 지킨다.
+  for (const c of Object.values(s.chars)) if (c.prestige > 50) c.prestige -= (c.prestige - 50) * 0.025;
   if (p.status === 'active' && p.office) {
     const o = OFFICE_MAP[p.office];
     if (o && o.rank < s.player.peakRank) {

@@ -1,20 +1,21 @@
 import type { Character, GameState, MemorialTopic } from './types';
 import { OFFICE_MAP } from './data/offices';
 import { chance, d6 } from './rng';
-import { addFlaw, alive, clamp, isP, josa, knownFlaws, log, owe } from './state';
+import { addFlaw, alive, chargeable, clamp, isP, josa, log, owe, seat } from './state';
 import { holderOf, vacate, exileSpot } from './court';
 import { opinion, sway, swayFaction, topOf } from './opinion';
 import { powerShare } from './factions';
 import { END_T, shortDate } from './calendar';
 import { fulfillAgainst, fulfillAll } from './relations';
 import { LAW_MAP, lawJosa, lawStance, setLaw } from './laws';
+import { controlsCheongyo, gongronOf } from './strife';
 
 export interface RollPart {
   label: string;
   value: number;
 }
 
-export type Outcome = 'severe_backfire' | 'backfire' | 'rejected' | 'dismiss' | 'strip' | 'exile' | 'spared' | 'wiri' | 'sasa';
+export type Outcome = 'severe_backfire' | 'backfire' | 'rejected' | 'shielded' | 'dismiss' | 'strip' | 'exile' | 'spared' | 'wiri' | 'sasa';
 
 export interface ImpeachReport {
   attacker: string;
@@ -33,6 +34,7 @@ export const OUTCOME_LABEL: Record<Outcome, string> = {
   severe_backfire: '무고죄로 역풍 (공격자 파직)',
   backfire: '무고로 판명 (공격자 흠결)',
   rejected: '불윤 (기각)',
+  shielded: '불윤 (왕이 감쌈)',
   dismiss: '파직',
   strip: '삭탈관작 (문외출송)',
   exile: '유배 (중도부처)',
@@ -90,7 +92,7 @@ export function exile(s: GameState, c: Character, byId?: string, quiet = false) 
 
 export function recall(s: GameState, c: Character) {
   c.status = 'idle';
-  c.location = 'hanseong';
+  c.location = seat(s);
   c.exilePlace = undefined;
   c.exileLevel = undefined;
   if (c.exiledBy && !c.grudges.includes(c.exiledBy) && alive(s.chars[c.exiledBy])) c.grudges.push(c.exiledBy);
@@ -107,16 +109,24 @@ export function impeach(
   s: GameState,
   atk: Character,
   tgt: Character,
-  opt: { bonus?: RollPart[]; defBonus?: RollPart[]; response?: 'explain' | 'endure'; quiet?: boolean } = {},
+  opt: { bonus?: RollPart[]; defBonus?: RollPart[]; response?: 'explain' | 'endure'; quiet?: boolean; hapgye?: number } = {},
 ): ImpeachReport {
   const aParts: RollPart[] = [{ label: '정치력', value: atk.politics }];
-  const flaws = knownFlaws(tgt, atk.id);
+  const flaws = chargeable(s, tgt, atk.id);
   if (flaws.length) aParts.push({ label: `흠결 ${flaws.length}개`, value: flaws.length });
-  if (atk.office && OFFICE_MAP[atk.office]?.samsa) aParts.push({ label: '삼사 언관', value: 1 });
+  const atkSamsa = !!(atk.office && OFFICE_MAP[atk.office]?.samsa);
+  if (atkSamsa) aParts.push({ label: '삼사 언관', value: 1 });
+  // 대간이 대신을 논하는 것은 공론의 몫이다
+  const tgtSamsa = !!(tgt.office && OFFICE_MAP[tgt.office]?.samsa);
+  if (atkSamsa && !tgtSamsa && tgt.rank <= 3) aParts.push({ label: tgt.rank <= 1 ? '대간이 정승을 논함' : '대간이 대신을 논함', value: tgt.rank <= 1 ? 2 : 1 });
   if (atk.traits.includes('upright') || atk.traits.includes('radical')) aParts.push({ label: '강경한 기질', value: 1 });
   if (atk.traits.includes('mild')) aParts.push({ label: '온건한 기질', value: -1 });
   if (atk.grudges.includes(tgt.id)) aParts.push({ label: '설욕', value: 2 });
   if ((powerShare(s)[atk.faction] ?? 0) > 0.55 && atk.faction !== 'none') aParts.push({ label: '당세 우위', value: 1 });
+  if (atk.faction !== 'none' && atk.faction !== tgt.faction && controlsCheongyo(s, atk.faction)) aParts.push({ label: '언로 장악', value: 1 });
+  const gr = gongronOf(s);
+  const gd = (gr[atk.faction] ?? 0) - (gr[tgt.faction] ?? 0);
+  if (atk.faction !== tgt.faction && gd >= 0.15) aParts.push({ label: '사림의 공론', value: 1 });
   if (isP(s, atk)) {
     // 2년에 두 번까지는 괜찮고, 그보다 잦으면 공격이 약해진다
     const n = recentImpeachments(s) - 2;
@@ -131,6 +141,7 @@ export function impeach(
   if (fv) dParts.push({ label: '성심', value: fv });
   if (tgt.traits.includes('clean')) dParts.push({ label: '청렴', value: 1 });
   if (opt.response === 'explain') dParts.push({ label: '해명 상소', value: 1 });
+  if (atk.faction !== tgt.faction && gd <= -0.15) dParts.push({ label: '사림의 공론', value: 1 });
   for (const b of opt.defBonus ?? []) if (b.value) dParts.push(b);
 
   const aRoll = d6(s);
@@ -144,6 +155,12 @@ export function impeach(
     if (outcome === 'exile') outcome = 'strip';
     else if (outcome === 'strip') outcome = 'dismiss';
   }
+  // 왕이 아끼는 신하는 탄핵이 이겨도 끝내 윤허하지 않기도 한다. 삼사가 합계하면 버티지 못한다.
+  if (SUCCESS.includes(outcome) && (opt.hapgye ?? 0) < 3) {
+    const lean = tgt.faction !== 'none' ? (s.king?.lean[tgt.faction] ?? 0) : 0;
+    const shield = (tgt.favor - 45) / 100 + Math.max(0, lean) / 200 - (opt.hapgye === 2 ? 0.15 : 0);
+    if (shield > 0 && chance(s, shield)) outcome = 'shielded';
+  }
 
   const success = SUCCESS.includes(outcome);
   const fakes = flaws.filter((f) => f.fake);
@@ -154,7 +171,12 @@ export function impeach(
     addFlaw(s, atk, '혐의 날조', true);
     atk.favor = clamp(atk.favor - 10, -100, 100);
   }
-  for (const f of flaws) f.public = true;
+  for (const f of flaws) {
+    f.public = true;
+    f.usedAt = s.t;
+    // 벌을 받았으면 그 허물은 갚은 셈이다
+    if (success) f.settled = true;
+  }
   const sameTop = topOf(atk.faction) === topOf(tgt.faction) && atk.faction !== 'none';
 
   switch (outcome) {
@@ -169,6 +191,10 @@ export function impeach(
       break;
     case 'rejected':
       atk.favor = clamp(atk.favor - 3, -100, 100);
+      break;
+    case 'shielded':
+      atk.favor = clamp(atk.favor - 2, -100, 100);
+      s.tension = clamp(s.tension + 2, 0, 100);
       break;
     case 'dismiss':
       vacate(s, tgt);

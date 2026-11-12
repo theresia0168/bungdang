@@ -25,6 +25,54 @@ type Duty = Omit<Scene, 'when'> & { when(s: GameState, office: string): boolean 
 
 const DUTIES: Duty[] = [
   {
+    id: 'byeongjo_deploy',
+    when: (s, o) => o === 'byeongjo' && s.war.active,
+    title: '병력의 배분',
+    text: () => '팔도에서 올라온 근왕병과 각 진의 군사를 어디에 둘지 정해야 한다. 남쪽 전선은 밀리고, 행재소는 허술하며, 의병들은 관군의 지휘를 받지 않으려 한다.',
+    opts: () => [
+      {
+        key: 'south',
+        label: '남쪽 전선에 몰아준다',
+        fx: { say: '군사를 남쪽 전선으로 내려보냈다.', prep: 2, note: '경상·충청·전라 조련 +12, 행재소가 허술해진다', run: (s) => deploy(s, ['gyeongsang', 'chungcheong', 'jeolla'], 12) },
+      },
+      {
+        key: 'court',
+        label: '도성과 행재소를 지킨다',
+        fx: { say: '어가 곁을 굳게 지켰다. 왕이 흡족해했다.', favor: 3, note: '도성·경기·평안 조련 +12', run: (s) => deploy(s, ['hanseong', 'gyeonggi', 'pyeongan'], 12) },
+      },
+      {
+        key: 'unite',
+        label: '의병과 관군을 한 지휘 아래 묶는다',
+        roll: {
+          stat: 'politics',
+          need: 8,
+          ok: { say: '의병장들이 관군의 절제를 받기로 했다.', prep: 6, prestige: 3, note: '전장 조련 +8', run: (s) => deploy(s, s.war.zones, 8) },
+          fail: { say: '의병장들이 반발해 흩어졌다.', prep: -2, prestige: -2 },
+        },
+      },
+    ],
+  },
+  {
+    id: 'hojo_war',
+    when: (s, o) => o === 'hojo' && s.war.active,
+    title: '군량이 떨어진다',
+    text: (s) => `관군과 명군을 먹일 군량이 바닥났다. 국고는 ${Math.round(s.realm.treasury)}. 어디서든 곡식을 끌어와야 한다.`,
+    opts: () => [
+      { key: 'napsok', label: '곡식을 바치면 벼슬과 면천을 준다 (납속)', fx: { say: '납속을 받아 군량을 채웠다. 천인이 양인이 되고 서얼이 벼슬을 얻었다.', prestige: -1, note: '국고 +70, 왕실 권위 -1', run: (s) => void ((s.realm.treasury += 70), (s.realm.authority = Math.max(0, s.realm.authority - 1))) } },
+      { key: 'levy', label: '고을마다 군량을 더 거둔다', fx: { say: '고을마다 마지막 곡식까지 거두었다.', favor: 2, minsimAll: -3, note: '국고 +90', run: (s) => void (s.realm.treasury += 90) } },
+      {
+        key: 'ming',
+        label: '명에 군량 원조를 청한다',
+        roll: {
+          stat: 'politics',
+          need: 8,
+          ok: { say: '명이 요동의 곡식을 보내 주기로 했다.', favor: 3, note: '국고 +110', run: (s) => void (s.realm.treasury += 110) },
+          fail: { say: '명은 "속국이 제 군량도 못 대느냐"며 거절했다.', favor: -2, mood: -4 },
+        },
+      },
+    ],
+  },
+  {
     id: 'gamsa_famine',
     when: (s, o) => isGamsa(o) && harvestOf(s, region(s)) < 0,
     title: '흉년의 장계',
@@ -244,6 +292,11 @@ const DUTIES: Duty[] = [
     ],
   },
 ];
+
+/** 전란 중 병력을 몇 도에 몰아준다 */
+function deploy(s: GameState, regions: RegionId[], v: number) {
+  for (const r of regions) s.regions[r].defense.drill = Math.min(100, s.regions[r].defense.drill + v);
+}
 
 /** 가장 미운 현직자에게 가짜 흠결을 씌운다 */
 function frame(s: GameState): string {

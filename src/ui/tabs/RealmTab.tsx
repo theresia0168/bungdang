@@ -6,8 +6,15 @@ import { holderOf } from '../../engine/court';
 import { P } from '../../engine/state';
 import { tOf } from '../../engine/calendar';
 import {
+  ARMY_NAME,
+  BUDGET_DESC,
   COASTAL,
   POWERS,
+  ROYAL_NAME,
+  TAX_NAME,
+  armyFunding,
+  militaryNeed,
+  setBudget,
   PROJECT_DEFS,
   TAX_REGIONS,
   approvalChance,
@@ -27,6 +34,7 @@ import {
 import { LAWS, lawOpen } from '../../engine/laws';
 import { traitForbids } from '../../engine/actions';
 import { CharLink } from '../common';
+import { COUP_LINE, coupRisk } from '../../engine/coup';
 
 const KINDS = Object.keys(PROJECT_DEFS) as RealmProjectKind[];
 
@@ -46,6 +54,14 @@ export function RealmTab() {
   const powers = POWERS.filter((w) => p.status === 'active' && p.office && w.office(p.office));
   const preWar = s.t < tOf(1592, 4);
   const est = TAX_REGIONS.reduce((a, x) => a + regionTax(s, x), 0);
+  const hojo = p.status === 'active' && p.office === 'hojo';
+  const fund = armyFunding(s);
+  const b = realm.budget;
+  const levers: { key: 'tax' | 'army' | 'royal'; name: string; opts: Record<string, string> }[] = [
+    { key: 'tax', name: '전세', opts: TAX_NAME },
+    { key: 'army', name: '군비', opts: ARMY_NAME },
+    { key: 'royal', name: '왕실 경비', opts: ROYAL_NAME },
+  ];
 
   return (
     <div className="realm">
@@ -79,11 +95,44 @@ export function RealmTab() {
               <b>{Math.round(x.value * 10) / 10}</b>
             </li>
           ))}
-          <li className="muted small">
-            <span>왕실 경비 수준</span>
-            <b>{Math.round(realm.royal * 100)}%</b>
-          </li>
         </ul>
+        <h4>
+          올해 예산 <span className="muted small">{hojo ? '호조판서로서 한 달에 한 항목씩 고친다 (직권)' : '호조판서가 해마다 10월에 짠다'}</span>
+        </h4>
+        <div className="budget">
+          {levers.map((l) => (
+            <div key={l.key} className="budget-row" title={BUDGET_DESC[l.key]}>
+              <span>{l.name}</span>
+              <div className="seg">
+                {Object.entries(l.opts).map(([k, name]) => (
+                  <button
+                    key={k}
+                    className={b[l.key] === k ? 'on' : ''}
+                    disabled={!hojo || b[l.key] === k || s.player.authorityUsed}
+                    onClick={() => act((g) => setBudget(g, l.key, k))}
+                  >
+                    {name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="realm-head">
+          <div className={`realm-big ${realm.authority < COUP_LINE ? 'bad-text' : ''}`}>
+            {Math.round(realm.authority)}
+            <small>왕실 권위</small>
+          </div>
+          {coupRisk(s) > 0 && (
+            <div className="realm-big bad-text">
+              {(coupRisk(s) * 100).toFixed(1)}%
+              <small>달마다 반정이 꾸며질 확률</small>
+            </div>
+          )}
+        </div>
+        <p className="small muted">
+          국고가 바닥나고 공명첩을 팔고 어가가 욕을 보면 왕실의 권위가 떨어진다. {COUP_LINE} 아래로 떨어지면 왕의 마음을 잃은 당이 반정을 꾸민다. 살림이 넉넉하면 천천히 회복한다.
+        </p>
         {realm.ledger && (
           <table className="realm-table">
             <thead>
@@ -93,6 +142,7 @@ export function RealmTab() {
                 <th>관찰사 착복</th>
                 <th>수령 착복</th>
                 <th>국고에 든 것</th>
+                <th>경작지</th>
                 <th>은결</th>
               </tr>
             </thead>
@@ -109,6 +159,7 @@ export function RealmTab() {
                     <td>
                       <b>{x.got}</b>
                     </td>
+                    <td>{Math.round(s.regions[id].arable * 100)}%</td>
                     <td>{Math.round(s.regions[id].hidden * 100)}%</td>
                   </tr>
                 );
@@ -197,15 +248,20 @@ export function RealmTab() {
             <small>비변사의 대비</small>
           </div>
           <div className="realm-big">
-            {militaryUpkeep(s)}
-            <small>다달이 군비</small>
+            {militaryUpkeep(s)} / {militaryNeed(s)}
+            <small>다달이 군비 / 유지비</small>
+          </div>
+          <div className={`realm-big ${fund < 1 ? 'bad-text' : fund >= 1.2 ? 'good-text' : ''}`}>
+            {Math.round(fund * 100)}%
+            <small>유지비 대비 군비</small>
           </div>
         </div>
         <p className="small">
           {preWar ? `${warForecast(ready.score)}.` : ''} <span className="muted">{ready.parts.map((x) => `${x.label} ${x.value >= 0 ? '+' : ''}${x.value}`).join(' · ')}</span>
         </p>
         <p className="small muted">
-          왜군이 쳐들어오면 주사위 둘에 대비 점수의 보정((대비-35)/8)을 더해 전황을 정한다. 11 이상이면 남쪽에서 막아내고, 3 이하면 남쪽이 무너진다. 도성이 떨어지면 몽진과 왜군의 진군이 주사위로 속도를 겨루고, 왜군이 빠르면 어가가 사로잡힌다 (경기·황해·도성의 방비가 진군을 늦춘다). 조련은 내버려 두면 다달이 풀린다.
+          {fund < 1 ? '군비가 유지비에 못 미쳐 조련이 풀리고 성곽·진보·판옥선이 하나씩 허물어진다. ' : fund >= 1.2 ? '군비가 넉넉해 조련이 조금씩 오른다. ' : ''}
+          왜군이 쳐들어오면 주사위 둘에 대비 점수의 보정((대비-35)/8)을 더해 전황을 정한다. 11 이상이면 남쪽에서 막아내고, 3 이하면 남쪽이 무너진다. 도성이 떨어지면 몽진과 왜군의 진군이 주사위로 속도를 겨루고, 왜군이 빠르면 어가가 사로잡힌다 (경기·황해·도성의 방비가 진군을 늦춘다). 군비가 유지비만큼이면 조련은 아주 천천히 풀린다.
         </p>
         <table className="realm-table">
           <thead>

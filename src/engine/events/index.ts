@@ -15,12 +15,22 @@ import { ROYAL_EVENTS } from '../royal';
 import { SITUATION_EVENTS } from '../situations';
 import { SUCCESSION_EVENTS } from '../succession';
 import { SALLIM_EVENTS } from './sallim';
-import { WAR_EVENTS } from './war';
+import { BUNJO_EVENTS, WAR_EVENTS, WAR_EXTRA_EVENTS } from './war';
+import { CASE_EVENTS } from '../cases';
+import { STRIFE_EVENTS } from '../strife';
+import { COUP_EVENTS } from '../coup';
+import { BOKSANG_EVENTS } from '../court';
 
 export const EVENTS: Record<string, EventDef> = {
   ...SUCCESSION_EVENTS,
   ...SALLIM_EVENTS,
   ...WAR_EVENTS,
+  ...WAR_EXTRA_EVENTS,
+  ...BUNJO_EVENTS,
+  ...CASE_EVENTS,
+  ...STRIFE_EVENTS,
+  ...COUP_EVENTS,
+  ...BOKSANG_EVENTS,
   ...GENERIC_EVENTS,
   ...HISTORY_EVENTS,
   ...PERSONAL_EVENTS,

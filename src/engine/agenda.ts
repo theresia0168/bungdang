@@ -4,7 +4,7 @@ import { FACTION_META, REGION_META } from './data/meta';
 import { OFFICE_MAP } from './data/offices';
 import { tOf } from './calendar';
 import { chance, pick, rand } from './rng';
-import { monthsSince, alive, clamp, inCourt, isP, josa, log, officeTitle, owe, P, people, pushEvent } from './state';
+import { monthsSince, alive, atSeat, clamp, inCourt, isP, josa, log, officeTitle, owe, P, people, pushEvent } from './state';
 import { sway, swayFaction } from './opinion';
 import { activeFactions, influence, powerShare } from './factions';
 import { appoint, appointParts, eligible, holderOf, vacate } from './court';
@@ -577,7 +577,7 @@ export function rollAgenda(s: GameState) {
   s.flags.lastAgenda = s.t;
   s.flags[`ag_${def.id}`] = s.t;
   const p = P(s);
-  if (inCourt(p) && p.location === 'hanseong' && !isAbroad(s) && alive(p)) pushEvent(s, 'agenda', { ...ctx, agenda: def.id });
+  if (inCourt(p) && atSeat(s, p) && !isAbroad(s) && alive(p)) pushEvent(s, 'agenda', { ...ctx, agenda: def.id });
   else decide(s, def, ctx, null);
 }
 

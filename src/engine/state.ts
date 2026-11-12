@@ -1,4 +1,4 @@
-import type { Character, Flaw, GameState, LogKind } from './types';
+import type { Character, Flaw, GameState, LogKind, RegionId } from './types';
 import { OFFICE_MAP, rankLabel } from './data/offices';
 import { REGION_META } from './data/meta';
 import { yearOf } from './calendar';
@@ -73,6 +73,21 @@ export function collect(s: GameState, id: string): boolean {
 }
 
 export const knownFlaws = (c: Character, viewer: string) => c.flaws.filter((f) => f.public || f.knownBy.includes(viewer));
+
+/** 탄핵거리로 쓸 수 있는 흠결: 이미 벌을 받았거나 3년 안에 탄핵에 쓰인 일은 빠진다 */
+export const chargeable = (s: GameState, c: Character, viewer: string) =>
+  knownFlaws(c, viewer).filter((f) => !f.settled && (f.usedAt === undefined || s.t - f.usedAt >= 36));
+
+/** 조정이 있는 곳. 몽진 중에는 행재소(평안도)다. */
+export const seat = (s: GameState): RegionId => (typeof s.flags.courtSeat === 'string' ? (s.flags.courtSeat as RegionId) : 'hanseong');
+export const atSeat = (s: GameState, c: Character) => c.location === seat(s) || (typeof s.flags.bunjoSeat === 'string' && c.location === s.flags.bunjoSeat);
+export const seatName = (s: GameState) => (seat(s) === 'hanseong' ? '한성의 조정' : '행재소');
+
+/** 당상관(3품 이상)이 언관도 아니면서 당하관을 탄핵하는 것은 체모에 어긋난다 */
+export function impeachEtiquette(atk: Character, tgt: Character, samsa: boolean): string | null {
+  if (atk.rank <= 3 && !samsa && tgt.rank >= 4) return '당상관이 당하관을 탄핵하는 것은 체모에 어긋난다 (삼사 언관만 할 수 있다)';
+  return null;
+}
 export const hiddenFlaws = (c: Character) => c.flaws.filter((f) => !f.public);
 
 export function officeTitle(c: Character): string {

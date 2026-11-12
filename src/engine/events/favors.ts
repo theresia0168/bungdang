@@ -6,7 +6,7 @@ import { chance, pick } from '../rng';
 import { addFlaw, alive, clamp, hiddenFlaws, inCourt, josa, knownFlaws, officeTitle, owe, P, people } from '../state';
 import { inLaws, sway } from '../opinion';
 import { CASE_MONTHS, caseById, joinCase, nextLevelLabel, sideOf, withdraw } from '../cases';
-import { marry } from '../actions';
+import { TARGET_ACTIONS, actionError, marry, runTargetAction } from '../actions';
 import { GOALS, goalKey, goalOptions, setGoal } from '../goals';
 import { fulfill } from '../relations';
 
@@ -33,6 +33,12 @@ export const FAVOR_EVENTS: Record<string, EventDef> = {
           { key: 'explain', label: '해명 상소를 올린다', hint: '방어 +1' },
           { key: 'endure', label: '대죄(待罪)하며 버틴다', hint: '보정 없음. 막아내면 명망 +3' },
           { key: 'resign', label: '사직하고 물러난다', hint: '논핵이 끝난다. 관직을 잃고 낙향한다. 명망 +1, 성심 -3, 반년 동안 서용되지 않는다.' },
+          {
+            key: 'counter',
+            label: `${josa(a.name, '을/를')} 맞받아 논핵한다`,
+            hint: '그를 겨눈 논핵을 새로 연다 (탄핵과 같은 조건·쿨다운). 해명은 하지 못한다.',
+            disabled: actionError(s, TARGET_ACTIONS.find((x) => x.id === 'impeach')!, a) ?? undefined,
+          },
         ],
       };
     },
@@ -42,6 +48,11 @@ export const FAVOR_EVENTS: Record<string, EventDef> = {
       if (key === 'resign') {
         withdraw(s, cs);
         return '사직하고 고향으로 내려갔다.';
+      }
+      if (key === 'counter') {
+        cs.response = 'endure';
+        const msg = runTargetAction(s, 'impeach', cs.attacker);
+        return `${msg} 공방이 둘로 번졌다.`;
       }
       cs.response = key === 'explain' ? 'explain' : 'endure';
       return key === 'explain' ? '해명 상소를 올렸다. 이제 구원해 줄 사람을 모으라.' : '대죄하며 처분을 기다린다. 구원해 줄 사람을 모으라.';

@@ -45,6 +45,9 @@ export function updateLeaders(s: GameState) {
       st.leader = undefined;
       continue;
     }
+    // 후계 다툼에서 이긴 영수는 정해진 동안 자리를 지킨다
+    const cur = st.leader ? s.chars[st.leader] : undefined;
+    if ((st.lockUntil ?? 0) > s.t && cur && cur.status !== 'dead' && cur.status !== 'exiled' && cur.faction === f) continue;
     let best: Character | undefined;
     let bv = -1;
     for (const c of members(s, f)) {

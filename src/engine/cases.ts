@@ -1,6 +1,9 @@
 import type { Case, Character, GameState } from './types';
 import { chance, d6 } from './rng';
-import { alive, clamp, collect, inCourt, isP, josa, log, notice, officeTitle, owe, P, people, pushEvent, uid } from './state';
+import { alive, atSeat, clamp, collect, impeachEtiquette, inCourt, isP, josa, log, notice, officeTitle, owe, P, people, pushEvent, seatName, uid } from './state';
+import { activeFactions, members } from './factions';
+import { FACTION_META } from './data/meta';
+import type { EventDef } from './events/types';
 import { addMod, opinion, sway, swayFaction, topOf } from './opinion';
 import { impeach, kill, OUTCOME_LABEL, SUCCESS, type ImpeachReport, type RollPart } from './conflict';
 import { vacate } from './court';
@@ -53,6 +56,7 @@ export function openCase(
     byMemorial: opt.byMemorial,
   };
   s.cases.push(cs);
+  s.flags[`caseOn_${tgt.id}`] = s.t;
   const mine = isP(s, atk) || isP(s, tgt);
   if (kind === 'impeach') {
     log(s, `${josa(atk.name, '이/가')} ${officeTitle(tgt)} ${josa(tgt.name, '을/를')} 논핵하기 시작했다.`, mine ? 'player' : 'court');
@@ -84,7 +88,7 @@ function recruit(s: GameState, cs: Case) {
   const atk = s.chars[cs.attacker];
   const tgt = s.chars[cs.target];
   for (const c of people(s)) {
-    if (isP(s, c) || sideOf(cs, c.id) || !inCourt(c) || c.location !== 'hanseong') continue;
+    if (isP(s, c) || sideOf(cs, c.id) || !inCourt(c) || !atSeat(s, c)) continue;
     const l = lean(s, c, atk, tgt);
     if (!l || !chance(s, 0.15)) continue;
     if (l > 0 && cs.pros.length < 6) cs.pros.push(c.id);
@@ -120,16 +124,28 @@ function recruit(s: GameState, cs: Case) {
 
 const sidePart = (label: string, n: number): RollPart => ({ label: `${label} ${n}인`, value: Math.min(SIDE_CAP, n) });
 
+/** 거물을 칠수록 연명의 무게가 커진다: 정승 1.5씩 6까지, 당상관 1.25씩 4.5까지, 그 아래 1씩 3까지 */
+export function prosWeight(tgt: Character): { per: number; cap: number } {
+  return tgt.rank <= 1 ? { per: 1.5, cap: 6 } : tgt.rank <= 3 ? { per: 1.25, cap: 4.5 } : { per: 1, cap: SIDE_CAP };
+}
+const prosPart = (n: number, tgt: Character): RollPart => {
+  const w = prosWeight(tgt);
+  return { label: `동조 ${n}인${w.per > 1 ? ' (거물 탄핵)' : ''}`, value: Math.round(Math.min(w.cap, n * w.per) * 2) / 2 };
+};
+
 function resolveImpeach(s: GameState, cs: Case) {
   const atk = s.chars[cs.attacker];
   const tgt = s.chars[cs.target];
   const bonus: RollPart[] = [];
-  if (cs.pros.length) bonus.push(sidePart('동조', cs.pros.length));
+  if (cs.pros.length) bonus.push(prosPart(cs.pros.length, tgt));
   if (cs.bonus) bonus.push({ label: '정국', value: cs.bonus });
   if (cs.byMemorial) bonus.push({ label: '상소로 탄핵', value: -1 });
+  const hap = hapgyeOf(s, cs);
+  if (hap) bonus.push({ label: hap >= 3 ? '삼사 합계' : '양사 합계', value: hap >= 3 ? 3 : 1 });
   const defBonus = cs.cons.length ? [sidePart('구원', cs.cons.length)] : [];
-  const rep = impeach(s, atk, tgt, { bonus, defBonus, response: cs.response });
+  const rep = impeach(s, atk, tgt, { bonus, defBonus, response: cs.response, hapgye: hap });
   const success = SUCCESS.includes(rep.outcome);
+  if (rep.outcome === 'rejected' || rep.outcome === 'shielded') pihyeom(s, cs, rep);
   const p = P(s);
   if (isP(s, tgt) && !success && cs.response === 'endure') p.prestige = clamp(p.prestige + 3, 0, 100);
   for (const id of cs.pros) {
@@ -193,9 +209,12 @@ export function tickCases(s: GameState) {
       closeCase(s, cs);
       continue;
     }
+    npcCounter(s, cs);
+    rally(s, cs);
     recruit(s, cs);
     if (s.t < cs.due) continue;
     closeCase(s, cs);
+    if (stepDown(s, cs)) continue;
     const rep = cs.kind === 'impeach' ? resolveImpeach(s, cs) : resolveAggravate(s, cs);
     const side = sideOf(cs, s.player.charId);
     const won = SUCCESS.includes(rep.outcome) || rep.outcome === 'wiri' || rep.outcome === 'sasa';
@@ -208,7 +227,7 @@ export function joinError(s: GameState, cs: Case, side: 'pro' | 'con'): string |
   const p = P(s);
   if (sideOf(cs, p.id)) return '이미 이 공방에 얽혀 있다';
   if (p.status === 'exiled') return side === 'con' ? null : '유배 중이다';
-  if (!inCourt(p) || p.location !== 'hanseong') return '한성의 조정에 있어야 한다';
+  if (!inCourt(p) || !atSeat(s, p)) return `${seatName(s)}에 있어야 한다`;
   if (s.player.ap < 1) return '행동력이 부족하다';
   return null;
 }
@@ -254,3 +273,189 @@ export function withdraw(s: GameState, cs: Case) {
   s.player.deeds.push(`${shortDate(s.t)} 탄핵을 받고 사직`);
   log(s, `${josa(p.name, '이/가')} ${s.chars[cs.attacker].name}의 논핵을 받고 스스로 물러났다.`, 'player');
 }
+
+/* ───────── 삼사 합계 ───────── */
+
+/** 언관이 어느 관청 사람인가: 사헌부 / 사간원 / 홍문관 */
+export function samsaHouse(c: Character | undefined): 'heon' | 'gan' | 'hong' | null {
+  const o = c?.status === 'active' ? c.office : undefined;
+  if (!o) return null;
+  if (o === 'daesaheon' || o.startsWith('jangnyeong') || o.startsWith('jipyeong')) return 'heon';
+  if (o === 'daesagan' || o.startsWith('jeongeon')) return 'gan';
+  if (o === 'bujehak' || o === 'eunggyo' || o.startsWith('gyori') || o === 'daejehak') return 'hong';
+  return null;
+}
+
+/** 공격 편에 선 언관들의 관청 수. 둘이면 양사 합계, 셋이면 삼사 합계 */
+export function hapgyeOf(s: GameState, cs: Case): number {
+  const houses = new Set<string>();
+  for (const id of [cs.attacker, ...cs.pros]) {
+    const h = samsaHouse(s.chars[id]);
+    if (h) houses.add(h);
+  }
+  return houses.size >= 2 ? houses.size : 0;
+}
+
+/* ───────── 당론 결집 ───────── */
+
+/** 당의 영수가 같은 당 사람들을 공방에 불러낸다. 플레이어가 그 당 사람이면 부름을 받는다. */
+function rally(s: GameState, cs: Case) {
+  if (cs.rallied) return;
+  cs.rallied = true;
+  const atk = s.chars[cs.attacker];
+  const tgt = s.chars[cs.target];
+  const p = P(s);
+  // 당상관이 걸린 큰 공방에서만 영수가 나선다
+  if (Math.min(atk.rank, tgt.rank) > 3 && !isP(s, atk) && !isP(s, tgt)) return;
+  for (const f of activeFactions(s)) {
+    if (f === 'none') continue;
+    const side: 'pros' | 'cons' | null = tgt.faction === f && atk.faction !== f ? 'cons' : atk.faction === f && tgt.faction !== f ? 'pros' : null;
+    if (!side) continue;
+    const lead = s.chars[s.factions[f]?.leader ?? ''];
+    if (!alive(lead) || isP(s, lead) || !inCourt(lead)) continue;
+    if (!chance(s, s.tension >= 50 ? 0.35 : 0.15)) continue;
+    const called = members(s, f)
+      .filter((c) => !isP(s, c) && !sideOf(cs, c.id) && inCourt(c) && atSeat(s, c))
+      .sort((a, b) => b.politics - a.politics)
+      .slice(0, 3);
+    for (const c of called) cs[side].push(c.id);
+    if (!sideOf(cs, lead.id) && atSeat(s, lead)) cs[side].push(lead.id);
+    const mine = isP(s, atk) || isP(s, tgt);
+    log(s, `[당론] ${FACTION_META[f].name}의 영수 ${josa(lead.name, '이/가')} 당론을 모아 ${tgt.name} ${side === 'pros' ? '논핵에 힘을 실었다' : '구원에 나섰다'}.`, mine ? 'player' : 'court');
+    if (p.faction === f && !sideOf(cs, p.id) && inCourt(p) && atSeat(s, p) && !s.pending.some((e) => e.def === 'party_rally'))
+      pushEvent(s, 'party_rally', { caseId: cs.id, side, leader: lead.id });
+  }
+}
+
+/* ───────── 맞탄핵 ───────── */
+
+/** 정치력 높은 NPC는 자기를 친 이를 되받아친다 */
+function npcCounter(s: GameState, cs: Case) {
+  if (cs.countered || cs.counter || cs.kind !== 'impeach') return;
+  cs.countered = true;
+  const atk = s.chars[cs.attacker];
+  const tgt = s.chars[cs.target];
+  if (isP(s, tgt) || atk.status !== 'active' || !atk.office || caseOn(s, atk.id)) return;
+  const samsa = !!samsaHouse(tgt);
+  if (impeachEtiquette(tgt, atk, samsa) || tgt.politics < 4) return;
+  if (!chance(s, tgt.traits.includes('radical') || tgt.traits.includes('schemer') ? 0.35 : 0.15)) return;
+  const c2 = openCase(s, tgt, atk, { byMemorial: !samsa });
+  if (c2) {
+    c2.counter = true;
+    log(s, `${josa(tgt.name, '이/가')} 물러서지 않고 ${josa(atk.name, '을/를')} 맞받아 논핵했다.`, isP(s, atk) ? 'player' : 'court');
+  }
+}
+
+/* ───────── 인피 사직과 피혐 ───────── */
+
+/** 판정을 앞두고 형세가 크게 기울면 NPC 대신은 스스로 물러난다(인피) */
+function stepDown(s: GameState, cs: Case): boolean {
+  const tgt = s.chars[cs.target];
+  if (isP(s, tgt) || tgt.rank > 3 || cs.kind !== 'impeach') return false;
+  const atk = s.chars[cs.attacker];
+  const edge = atk.politics + prosPart(cs.pros.length, tgt).value - (tgt.politics + Math.min(SIDE_CAP, cs.cons.length) + (tgt.favor >= 50 ? 2 : 0));
+  if (edge < 3 || !chance(s, tgt.traits.includes('upright') || tgt.traits.includes('mild') ? 0.6 : 0.35)) return false;
+  vacate(s, tgt);
+  tgt.prestige = clamp(tgt.prestige + 1, 0, 100);
+  log(s, `${officeTitle(tgt)}였던 ${josa(tgt.name, '이/가')} 논핵의 형세를 보고 스스로 사직하고 물러났다(인피).`, sideOf(cs, P(s).id) ? 'player' : 'court');
+  if (sideOf(cs, P(s).id)) notice(s, '인피 사직', `${josa(tgt.name, '이/가')} 판정을 기다리지 않고 스스로 물러났다. 논핵은 그것으로 끝났다.`, 'court');
+  return true;
+}
+
+/** 탄핵이 막히면 언관들이 피혐(避嫌)하며 줄사퇴한다. 둘 이상 물러나면 왕이 결국 뜻을 굽히기도 한다. */
+function pihyeom(s: GameState, cs: Case, rep: ImpeachReport) {
+  const tgt = s.chars[cs.target];
+  const p = P(s);
+  const samsas = [cs.attacker, ...cs.pros].map((id) => s.chars[id]).filter((c) => alive(c) && samsaHouse(c));
+  const quit: Character[] = [];
+  for (const c of samsas) {
+    if (isP(s, c)) {
+      pushEvent(s, 'pihyeom', { caseId: cs.id, target: tgt.id, others: samsas.filter((x) => !isP(s, x)).map((x) => x.id) });
+      continue;
+    }
+    if (chance(s, c.traits.includes('upright') || c.traits.includes('radical') ? 0.6 : 0.35)) quit.push(c);
+  }
+  for (const c of quit) vacate(s, c);
+  if (!quit.length) return;
+  const mine = !!sideOf(cs, p.id);
+  log(s, `[피혐] ${quit.map((c) => c.name).join('·')} 등 언관들이 ${tgt.name} 논핵이 막히자 피혐하며 물러났다.`, mine ? 'player' : 'court');
+  if (quit.length >= 2 && alive(tgt) && tgt.status === 'active' && chance(s, 0.4)) {
+    vacate(s, tgt);
+    rep.text += ` 언관들이 줄지어 물러나자 왕이 결국 ${josa(tgt.name, '을/를')} 체직했다.`;
+    log(s, `[피혐] 언관들이 줄지어 물러나자 왕이 결국 ${josa(tgt.name, '을/를')} 체직했다.`, mine ? 'player' : 'court');
+  }
+}
+
+export const CASE_EVENTS: Record<string, EventDef> = {
+  party_rally: {
+    build(s, c) {
+      const cs = caseById(s, c.caseId);
+      const lead = s.chars[c.leader];
+      if (!cs) return { title: '당론의 부름', text: '논핵은 이미 끝났다.', choices: [{ key: 'no', label: '확인' }] };
+      const tgt = s.chars[cs.target];
+      const atk = s.chars[cs.attacker];
+      return {
+        title: '당론의 부름',
+        kind: 'court',
+        text: `당의 영수 ${josa(lead.name, '이/가')} 사람을 보내 왔다. ${c.side === 'pros' ? `${atk.name}이 일으킨 ${tgt.name} 논핵에 함께 이름을 올리라는 것이다.` : `논핵을 당한 동지 ${josa(tgt.name, '을/를')} 구원하라는 것이다.`} 당론이 정해진 일이다.`,
+        choices: [
+          { key: 'yes', label: '당론을 따른다', hint: `행동력 없이 ${c.side === 'pros' ? '동조' : '구원'} 편에 선다. 같은 당 호감 +3. 상대의 원한을 산다.` },
+          { key: 'no', label: '이번에는 빠진다', hint: '같은 당 호감 -5' },
+        ],
+      };
+    },
+    resolve(s, c, key) {
+      const cs = caseById(s, c.caseId);
+      const p = P(s);
+      if (!cs) return '';
+      if (key === 'no') return swayFaction(s, p.faction, p.id, -5, '당론을 외면', 0.1) || '빠지기로 했다.';
+      if (sideOf(cs, p.id)) return '';
+      const tgt = s.chars[cs.target];
+      const atk = s.chars[cs.attacker];
+      const fx: string[] = [swayFaction(s, p.faction, p.id, 3, '당론을 따름', 0.1)];
+      if (c.side === 'pros') {
+        cs.pros.push(p.id);
+        fx.push(...sway(s, tgt, p.id, -12, '논핵 동조', { clan: 0.3, decay: 0.15 }));
+      } else {
+        cs.cons.push(p.id);
+        owe(s, tgt.id);
+        fx.push(...sway(s, atk, p.id, -8, '구원 상소', { decay: 0.2 }));
+      }
+      return `당론을 따라 ${c.side === 'pros' ? '논핵에 이름을 올렸다' : '구원 상소에 이름을 올렸다'}. (${fx.filter(Boolean).join(', ')})`;
+    },
+  },
+  pihyeom: {
+    build(s, c) {
+      const tgt = s.chars[c.target];
+      return {
+        title: '피혐(避嫌)',
+        kind: 'court',
+        text: `${tgt?.name ?? ''} 논핵이 막혔다. 언관으로서 말이 받아들여지지 않았으니 물러나 피혐하는 것이 법도다. 함께한 언관들이 줄지어 물러나면 왕도 끝내 버티기 어렵다.`,
+        choices: [
+          { key: 'quit', label: '피혐하고 물러난다', hint: '관직을 내려놓는다. 명망 +3. 다른 언관과 함께 둘 이상 물러나면 40% 확률로 왕이 상대를 체직한다.' },
+          { key: 'stay', label: '자리를 지킨다', hint: '명망 -2. 공론에서 말을 바꾼 이로 보인다.' },
+        ],
+      };
+    },
+    resolve(s, c, key) {
+      const p = P(s);
+      const tgt = s.chars[c.target];
+      if (key === 'stay') {
+        p.prestige = clamp(p.prestige - 2, 0, 100);
+        return '자리를 지켰다. 언관이 말을 굽혔다는 뒷말이 돈다. (명망 -2)';
+      }
+      if (p.status === 'active' && p.office) vacate(s, p);
+      p.prestige = clamp(p.prestige + 3, 0, 100);
+      const others = (c.others as string[]).map((id) => s.chars[id]).filter((x) => alive(x) && x.status === 'active' && samsaHouse(x));
+      const joiners = others.filter(() => chance(s, 0.45));
+      for (const x of joiners) vacate(s, x);
+      let extra = '';
+      if (joiners.length >= 1 && alive(tgt) && tgt.status === 'active' && chance(s, 0.4)) {
+        vacate(s, tgt);
+        extra = ` 언관들이 줄지어 물러나자 왕이 결국 ${josa(tgt.name, '을/를')} 체직했다!`;
+        log(s, `[피혐] ${josa(p.name, '이/가')} 앞장선 언관들의 피혐에 왕이 뜻을 굽혀 ${josa(tgt.name, '을/를')} 체직했다.`, 'player');
+      }
+      return `피혐하며 물러났다.${joiners.length ? ` ${joiners.map((x) => x.name).join('·')}도 함께 물러났다.` : ''}${extra} (명망 +3)`;
+    },
+  },
+};

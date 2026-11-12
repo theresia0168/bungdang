@@ -2,8 +2,10 @@ import type { Character, FactionId, GameState, MemorialTopic, ProjectKind, Trait
 import { OFFICE_MAP } from './data/offices';
 import { REGION_META } from './data/meta';
 import { chance, randInt } from './rng';
-import { addFlaw, alive, clamp, collect, inCourt, josa, log, monthsSince, notice, owe, P, pres, pushEvent } from './state';
+import { addFlaw, alive, atSeat, clamp, collect, impeachEtiquette, inCourt, josa, log, monthsSince, notice, owe, P, pres, pushEvent, seat, seatName } from './state';
 import { LAW_MAP } from './laws';
+import { startOksa, tongmun, tongmunError } from './strife';
+import { exile } from './conflict';
 import { FACTION_META } from './data/meta';
 import { powerShare, standing } from './factions';
 import { lawStance } from './laws';
@@ -35,7 +37,11 @@ export type TargetActionId =
   | 'hush'
   | 'sponsor'
   | 'bribe'
-  | 'recruit';
+  | 'recruit'
+  | 'persuade'
+  | 'disinfo'
+  | 'alienate'
+  | 'placard';
 
 /** 행동력 수치, 또는 관직의 권한으로 한 달에 한 번 하는 '직권' */
 export type ActionCost = number | 'authority';
@@ -350,8 +356,10 @@ export const TARGET_ACTIONS: TargetAction[] = [
       const p = P(s);
       if (basic(s, t)) return basic(s, t);
       if (t.status !== 'active' || !t.office) return '관직에 있지 않다';
-      if (!inCourt(p) || p.location !== 'hanseong') return '한성에 있어야 한다';
+      if (!inCourt(p) || !atSeat(s, p)) return `${seatName(s)}에 있어야 한다`;
       if (!isSamsa(p) && p.politics < 3) return '삼사 언관이 아니면 정치력 3 이상이 필요하다';
+      const etq = impeachEtiquette(p, t, isSamsa(p));
+      if (etq) return etq;
       if (caseOn(s, t.id)) return '이미 논핵이 벌어지고 있다. 조정 공방에서 동조할 수 있다';
       if (myAttack(s)) return '이미 다른 논핵을 이끌고 있다';
       return cdMsg(s, 'impeach');
@@ -751,6 +759,137 @@ export const TARGET_ACTIONS: TargetAction[] = [
   },
 ];
 
+/** 나를 겨눈 논핵의 동조자를 회유해 빠지게 한다 */
+TARGET_ACTIONS.push({
+  id: 'persuade',
+  name: '회유',
+  cost: () => 1,
+  desc: '나를 논핵하는 데 이름을 올린 이에게 재산 15를 들여 사람을 보내 빠지게 한다. 탐욕스러운 이는 쉽게 넘어오고, 강직한 이는 오히려 노한다.',
+  check(s, t) {
+    const p = P(s);
+    if (basic(s, t)) return basic(s, t);
+    const cs = caseOn(s, p.id);
+    if (!cs || !cs.pros.includes(t.id)) return '나를 겨눈 논핵에 동조한 사람이 아니다';
+    if (p.wealth < 15) return '재산이 15 이상 있어야 한다';
+    return cdMsg(s, `persuade:${t.id}`);
+  },
+  run(s, t) {
+    const p = P(s);
+    const cs = caseOn(s, p.id)!;
+    p.wealth -= 15;
+    setCd(s, `persuade:${t.id}`, 12);
+    const ch = clamp((t.traits.includes('greedy') ? 0.85 : t.traits.includes('upright') ? 0.1 : 0.45) + opinion(s, t, p) / 150, 0.05, 0.95);
+    if (collect(s, t.id) || chance(s, ch)) {
+      cs.pros = cs.pros.filter((id) => id !== t.id);
+      return `${josa(t.name, '이/가')} 슬그머니 연명에서 이름을 뺐다. (동조 ${cs.pros.length}인)`;
+    }
+    if (t.traits.includes('upright') && chance(s, 0.5)) {
+      cs.bonus += 1;
+      return `${josa(t.name, '이/가')} 회유하러 온 사람을 내쫓고 그 일을 조정에 알렸다. 논핵의 기세가 오히려 거세졌다. (공격 +1)`;
+    }
+    return `${josa(t.name, '은/는')} 뜻을 굽히지 않았다. (확률 ${Math.round(ch * 100)}%)`;
+  },
+});
+
+/* ───────── 정치 공작 ───────── */
+
+TARGET_ACTIONS.push(
+  {
+    id: 'disinfo',
+    name: '역정보',
+    cost: () => 1,
+    desc: '재산 10으로 겸인을 시켜, 다른 당 사람이 몰래 우리 쪽과 내통한다는 말을 그의 당에 흘린다. 그의 당내 입지가 흔들린다. 들키면 흠결이 생긴다.',
+    check(s, t) {
+      const p = P(s);
+      if (basic(s, t)) return basic(s, t);
+      if (p.faction === 'none' || t.faction === 'none' || topOf(t.faction) === topOf(p.faction)) return '다른 당 사람이어야 한다';
+      if (p.wealth < 10) return '재산이 10 이상 있어야 한다';
+      return traitForbids(p, 'deceit') ?? cdMsg(s, `disinfo:${t.id}`);
+    },
+    run(s, t) {
+      const p = P(s);
+      p.wealth -= 10;
+      setCd(s, `disinfo:${t.id}`, 12);
+      const ch = clamp(0.5 + (p.politics - t.politics) * 0.06 + (schemer(p) ? 0.15 : 0) + s.player.retainers * 0.03, 0.1, 0.9);
+      if (chance(s, ch)) {
+        const fx = swayFaction(s, t.faction, t.id, -10, '내통한다는 소문', 0.06);
+        if (s.factions[t.faction]?.leader === t.id) s.factions[t.faction].division += 3;
+        return `${t.name}이 우리 쪽과 통한다는 말이 그의 당에 퍼졌다. (${fx})`;
+      }
+      if (chance(s, 0.4)) {
+        addFlaw(s, p, '역정보 유포', false, [t.id]);
+        const fx = sway(s, t, p.id, -15, '거짓 소문을 퍼뜨림', { clan: 0.3, decay: 0.1 });
+        return `소문의 출처가 당신이라는 것이 그에게 알려졌다.${joined(fx)}`;
+      }
+      return `소문이 퍼지지 않았다. (확률 ${Math.round(ch * 100)}%)`;
+    },
+  },
+  {
+    id: 'alienate',
+    name: '이간',
+    cost: () => 1,
+    desc: '나를 믿는 사람(호감 20 이상이거나 사돈)에게 그가 가장 가까이하는 동료의 험담을 흘려 둘 사이를 벌린다. 둘의 호감이 크게 떨어진다.',
+    check(s, t) {
+      const p = P(s);
+      if (basic(s, t)) return basic(s, t);
+      if (opinion(s, t, p) < 20 && !inLaws(s, p.clan, t.clan)) return '호감 20 이상이거나 사돈이어야 한다';
+      if (!closestAlly(s, t)) return '그와 가까운 동료가 없다';
+      return traitForbids(p, 'deceit') ?? cdMsg(s, `alienate:${t.id}`);
+    },
+    run(s, t) {
+      const p = P(s);
+      setCd(s, `alienate:${t.id}`, 12);
+      const a = closestAlly(s, t)!;
+      const ch = clamp(0.45 + (p.politics - a.politics) * 0.05 + (schemer(p) ? 0.15 : 0), 0.1, 0.85);
+      if (chance(s, ch)) {
+        sway(s, t, a.id, -20, '험담을 전해 들음', { decay: 0.06 });
+        sway(s, a, t.id, -12, '사이가 벌어짐', { decay: 0.06 });
+        return `${josa(t.name, '과/와')} ${a.name} 사이가 벌어졌다.`;
+      }
+      const fx = sway(s, t, p.id, -10, '이간질', { decay: 0.1 });
+      return `${josa(t.name, '은/는')} 당신의 말을 믿지 않았다.${joined(fx)}`;
+    },
+  },
+  {
+    id: 'placard',
+    name: '괘서',
+    cost: () => 2,
+    desc: '재산 20을 들여 그가 역모를 꾀한다는 익명서를 도성에 붙인다. 통하면 국청이 열려 그와 그의 당이 쑥대밭이 된다. 위관이 진위를 캐거나 운이 나쁘면 무고가 드러나 당신이 위리안치된다. 가장 위험한 공작이다.',
+    check(s, t) {
+      const p = P(s);
+      if (basic(s, t)) return basic(s, t);
+      if (s.oksa) return '이미 국청이 열려 있다';
+      if (t.faction === 'none' || topOf(t.faction) === topOf(p.faction)) return '다른 당 사람이어야 한다';
+      if (p.wealth < 20) return '재산이 20 이상 있어야 한다';
+      if (!inCourt(p)) return '조정에 있어야 한다';
+      return traitForbids(p, 'deceit') ?? traitForbids(p, 'cruel') ?? cdMsg(s, 'placard');
+    },
+    run(s, t) {
+      const p = P(s);
+      p.wealth -= 20;
+      setCd(s, 'placard', 24);
+      const ch = clamp(0.4 + p.politics * 0.03 + (schemer(p) ? 0.15 : 0) - t.favor / 300, 0.1, 0.8);
+      if (chance(s, ch)) {
+        startOksa(s, t, p.id, true);
+        return `도성 곳곳에 붙은 괘서가 왕에게 들어갔다. ${t.name}을 두고 국청이 열린다.`;
+      }
+      if (chance(s, 0.35)) {
+        addFlaw(s, p, '괘서 무고', true);
+        exile(s, p);
+        return '괘서를 붙이다 겸인이 붙잡혔다. 배후가 드러나 당신이 유배되었다.';
+      }
+      return `괘서가 금세 뜯겨 나갔다. 아무 일도 일어나지 않았다. (확률 ${Math.round(ch * 100)}%)`;
+    },
+  },
+);
+
+/** 그가 가장 가까이하는 같은 당 동료 */
+function closestAlly(s: GameState, t: Character): Character | undefined {
+  return Object.values(s.chars)
+    .filter((c) => alive(c) && c.status !== 'royal' && c.id !== t.id && c.id !== s.player.charId && c.faction === t.faction && c.faction !== 'none')
+    .sort((a, b) => opinion(s, t, b) - opinion(s, t, a))[0];
+}
+
 /* ───────── 당적(黨籍) ───────── */
 
 export function joinError(s: GameState, f: FactionId): string | null {
@@ -832,8 +971,12 @@ export function runTargetAction(s: GameState, id: TargetActionId, targetId: stri
   const cost = a.cost(s);
   if (cost === 'authority') s.player.authorityUsed = true;
   else s.player.ap -= cost;
+  // 사람을 움직이는 일은 처세를 익히는 일이다
+  if (POLITICKING.includes(id)) s.player.exp.politics += 1;
   return a.run(s, t);
 }
+
+const POLITICKING: TargetActionId[] = ['impeach', 'cosign', 'plead', 'pact', 'secret', 'recommend', 'ask_recommend', 'bribe', 'blackmail', 'recruit', 'reconcile', 'hush'];
 
 export const PROJECTS: Record<ProjectKind, { months: number; cost: number }> = {
   seowon: { months: 8, cost: 10 },
@@ -918,11 +1061,11 @@ export const MONTHLY: MonthlyAction[] = [
     id: 'study',
     name: '학문 수양',
     cost: 1,
-    desc: '경전을 읽고 글을 다듬는다. 학식 경험 +3 (학자 +4), 명망 조금. 오래 손을 놓으면 학식이 녹슨다.',
+    desc: '경전을 읽고 글을 다듬는다. 학식 경험 +2 (학자 +3), 명망 조금. 오래 손을 놓으면 학식이 녹슨다.',
     check: () => null,
     run(s) {
       const p = P(s);
-      const v = p.traits.includes('scholar') ? 4 : 3;
+      const v = p.traits.includes('scholar') ? 3 : 2;
       s.player.exp.learning += v;
       s.flags.studyAt = s.t;
       pres(p, 0.15);
@@ -1142,8 +1285,8 @@ export function dropMemorial(s: GameState): string {
   return '쓰던 상소를 거두었다.';
 }
 
-/** 정치력·학식 경험이 이만큼 차야 오른다. 오를수록 어렵다. */
-export const expNeed = (v: number) => 30 + v * 10;
+/** 정치력·학식 경험이 이만큼 차야 오른다. 오를수록 어렵고, 6을 넘어서면 더 가파르다. */
+export const expNeed = (v: number) => 30 + v * 12 + Math.max(0, v - 5) * 25;
 
 function levelUp(s: GameState) {
   const p = P(s);
@@ -1266,7 +1409,7 @@ export function tickFocus(s: GameState) {
   levelUp(s);
 }
 
-export type SelfActionId = 'hire' | 'resign' | 'capital' | 'doctor' | 'humble' | 'distance' | 'retain' | 'dismiss' | 'donate';
+export type SelfActionId = 'hire' | 'resign' | 'capital' | 'doctor' | 'humble' | 'distance' | 'retain' | 'dismiss' | 'donate' | 'tongmun';
 
 export const RETAINER_UPKEEP = 3;
 export const MAX_RETAINERS = 3;
@@ -1323,7 +1466,7 @@ export const SELF_ACTIONS: { id: SelfActionId; name: string; desc: string; check
     run(s) {
       const p = P(s);
       p.status = 'idle';
-      p.location = 'hanseong';
+      p.location = seat(s);
       p.wealth = Math.max(0, p.wealth - 5);
       const ban = (p.banUntil ?? 0) - s.t;
       return ban > 0 ? `한성으로 올라왔다. 다만 서용되지 못하는 처분이 ${ban}개월 더 남아 있다.` : '한성으로 올라왔다. 이제 관직에 임용될 수 있다.';
@@ -1439,6 +1582,14 @@ export const SELF_ACTIONS: { id: SelfActionId; name: string; desc: string; check
     },
   },
 ];
+
+SELF_ACTIONS.push({
+  id: 'tongmun',
+  name: '통문 돌리기',
+  desc: '얽혀 있는 공방에서 서원과 향교에 통문을 돌려 사림의 공론을 모은다. 행동력 1. 내 편 +1. 서원이 있거나 문인이 셋 이상이거나 명망 60 이상이어야 한다. 공방마다 한 번.',
+  check: (s) => tongmunError(s),
+  run: (s) => tongmun(s),
+});
 
 export function runSelfAction(s: GameState, id: SelfActionId): string {
   const a = SELF_ACTIONS.find((x) => x.id === id)!;

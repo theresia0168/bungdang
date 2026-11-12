@@ -2,7 +2,7 @@ import type { Character, FactionId, GameState } from './types';
 import { OFFICE_MAP } from './data/offices';
 import { FLAW_POOL } from './data/meta';
 import { chance, pick, weighted } from './rng';
-import { addFlaw, alive, clamp, hiddenFlaws, inCourt, isP, josa, knownFlaws, log, monthsSince, notice, P, people, pushEvent } from './state';
+import { addFlaw, alive, atSeat, chargeable, clamp, hiddenFlaws, impeachEtiquette, inCourt, isP, josa, log, monthsSince, notice, P, people, pushEvent, seat } from './state';
 import { yearOf } from './calendar';
 import { LAW_MAP, lawJosa, lawToPush } from './laws';
 import { FACTION_META } from './data/meta';
@@ -18,7 +18,7 @@ const samsa = (c: Character) => !!(c.office && OFFICE_MAP[c.office]?.samsa);
 
 function pickAttacker(s: GameState, f: FactionId): Character | undefined {
   const pool = members(s, f).filter(
-    (c) => (c.status === 'active' || c.status === 'idle') && c.location === 'hanseong' && c.politics >= 2 && !isP(s, c),
+    (c) => (c.status === 'active' || c.status === 'idle') && atSeat(s, c) && c.politics >= 2 && !isP(s, c),
   );
   return weighted(
     s,
@@ -30,6 +30,7 @@ function pickTarget(s: GameState, atk: Character, sameFaction: boolean): Charact
   const p = P(s);
   const pool = people(s).filter((c) => {
     if (c.status !== 'active' || !c.office || !OFFICE_MAP[c.office] || c.id === atk.id) return false;
+    if (impeachEtiquette(atk, c, samsa(atk))) return false;
     if (c.id === p.id && (bondWith(s, atk.id) || s.plots.some((x) => x.by === atk.id))) return false;
     if (sameFaction) return c.faction === atk.faction && c.lean !== atk.lean;
     return c.faction !== atk.faction && !(topOf(c.faction) === topOf(atk.faction) && s.factions.dong.active);
@@ -39,8 +40,10 @@ function pickTarget(s: GameState, atk: Character, sameFaction: boolean): Charact
     pool
       .filter((c) => !caseOn(s, c.id))
       .map((c) => {
-        const known = knownFlaws(c, atk.id).length;
+        const known = chargeable(s, c, atk.id).length;
         let w = OFFICE_MAP[c.office!].weight + known * 3;
+        // 얼마 전에 논핵을 치른 사람은 한동안 건드리지 않는다
+        if (monthsSince(s, `caseOn_${c.id}`) < 12) w *= 0.3;
         if (atk.grudges.includes(c.id)) w += 8;
         const op = opinion(s, atk, c);
         if (op < -30) w += 3;
@@ -88,7 +91,7 @@ function npcAggravate(s: GameState) {
     if (lv >= 2 && s.tension < 50) continue;
     if (!chance(s, lv >= 2 ? 0.12 : 0.3)) continue;
     const foes = people(s)
-      .filter((x) => !isP(s, x) && inCourt(x) && x.location === 'hanseong' && x.politics >= 3 && topOf(x.faction) !== topOf(c.faction))
+      .filter((x) => !isP(s, x) && inCourt(x) && atSeat(s, x) && x.politics >= 3 && topOf(x.faction) !== topOf(c.faction))
       .map((x) => [x, opinion(s, x, c)] as const)
       .filter(([, v]) => v <= -40)
       .sort((a, b) => a[1] - b[1]);
@@ -172,7 +175,7 @@ function npcLawMemorials(s: GameState) {
   if (!f) return;
   const push = lawToPush(s, f);
   if (!push || monthsSince(s, `lawPush_${push.lawId}`) < 18) return;
-  const pool = members(s, f).filter((c) => !isP(s, c) && c.status === 'active' && c.location === 'hanseong' && c.politics >= 3);
+  const pool = members(s, f).filter((c) => !isP(s, c) && c.status === 'active' && atSeat(s, c) && c.politics >= 3);
   const init = pool.sort((a, b) => b.politics + b.learning - (a.politics + a.learning))[0];
   if (!init) return;
   s.flags[`lawPush_${push.lawId}`] = s.t;
@@ -192,7 +195,7 @@ function npcRecallPetitions(s: GameState) {
   const exiled = people(s).filter((c) => c.status === 'exiled' && !isP(s, c) && c.faction !== 'none');
   const tgt = exiled.length ? pick(s, exiled) : undefined;
   if (!tgt) return;
-  const allies = members(s, tgt.faction).filter((c) => c.status === 'active' && c.location === 'hanseong' && !isP(s, c));
+  const allies = members(s, tgt.faction).filter((c) => c.status === 'active' && atSeat(s, c) && !isP(s, c));
   const init = allies.length ? pick(s, allies) : undefined;
   if (!init) return;
   const ds = holderOf(s, 'doseungji');
@@ -221,7 +224,7 @@ function npcMovement(s: GameState) {
       const p = c.traits.includes('recluse') ? 0.004 : 0.02;
       if (chance(s, p)) {
         c.status = 'idle';
-        c.location = 'hanseong';
+        c.location = seat(s);
       }
     } else if (c.status === 'idle' && c.rank <= 5 && chance(s, 0.006)) {
       c.status = 'retired';
@@ -239,7 +242,7 @@ function npcRequests(s: GameState) {
     people(s).filter((c) => !isP(s, c) && inCourt(c) && c.status !== 'exiled' && opinion(s, c, p) >= min);
   const options: [string, Record<string, any>, number][] = [];
 
-  if (inCourt(p) && p.location === 'hanseong') {
+  if (inCourt(p) && atSeat(s, p)) {
     const cs = s.cases.find(
       (x) => x.kind === 'impeach' && !sideOf(x, p.id) && s.t - x.opened <= 1 && !isP(s, s.chars[x.target]) && opinion(s, s.chars[x.target], p) >= 15,
     );

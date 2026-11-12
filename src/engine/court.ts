@@ -2,11 +2,13 @@ import type { Character, GameState, RegionId, Status } from './types';
 import { OFFICES, OFFICE_MAP, type OfficeDef } from './data/offices';
 import { REGION_META } from './data/meta';
 import { chance, rand, randInt, weighted } from './rng';
-import { age, alive, fav, isP, josa, log, notice, owe, P, people, pushEvent } from './state';
-import { opinion, sway } from './opinion';
+import { age, alive, fav, isP, josa, log, notice, owe, P, people, pushEvent, seat } from './state';
+import { opinion, sway, topOf } from './opinion';
+import type { EventDef } from './events/types';
 import { fulfill } from './relations';
 import { powerShare } from './factions';
 import { genChar } from './generate';
+import { jadaePick } from './strife';
 import { shortDate } from './calendar';
 import { FACTION_META } from './data/meta';
 
@@ -28,11 +30,15 @@ function noteLeft(s: GameState, c: Character) {
 }
 
 export function vacate(s: GameState, c: Character, to: Status = 'idle') {
+  if (c.office === 'jeonrang' && c.status === 'active' && to !== 'exiled') {
+    const pick = jadaePick(s, c);
+    if (pick) s.flags.jadae = pick;
+  }
   noteLeft(s, c);
   c.office = undefined;
   c.tenure = 0;
   c.status = to;
-  if (to === 'idle') c.location = 'hanseong';
+  if (to === 'idle') c.location = seat(s);
   if (to === 'retired') c.location = c.home;
 }
 
@@ -60,7 +66,7 @@ export function appoint(s: GameState, c: Character, officeId: string, quiet = fa
     c.rank = o.rank;
     c.promotedAt = s.t;
   }
-  c.location = o.region ?? 'hanseong';
+  c.location = o.region ?? seat(s);
   c.exilePlace = undefined;
   notePeak(s, c, o.rank, o.name);
   if (c.want?.kind === 'office' && (s.player.cooldowns[`backed:${c.id}`] ?? 0) > s.t) fulfill(s, c, 'office');
@@ -74,7 +80,7 @@ export function appointGeneric(s: GameState, c: Character, kind: 'nanggwan' | 's
   c.office = kind;
   c.status = 'active';
   c.tenure = 0;
-  c.location = kind === 'suryeong' ? (region ?? 'gyeonggi') : 'hanseong';
+  c.location = kind === 'suryeong' ? (region ?? 'gyeonggi') : seat(s);
   if (kind === 'nanggwan') c.rank = Math.min(c.rank, 9);
   if (kind === 'suryeong') c.rank = Math.min(c.rank, 6);
   if (isP(s, c)) {
@@ -200,14 +206,35 @@ export function fillVacancies(s: GameState, max = 6) {
     const race = raceFor(s, o.id);
     const nom = race?.nominee ? s.chars[race.nominee] : undefined;
     const pool = nom && eligible(s, nom, o) ? [nom] : race ? race.candidates.map((id) => s.chars[id]).filter((c) => c && eligible(s, c, o)) : [];
-    for (const c of pool.length ? pool : people(s)) {
-      if (!eligible(s, c, o)) continue;
-      const sc = appointScore(s, c, o, hm);
-      if (sc > bs) {
-        bs = sc;
-        best = c;
+    // 자대제: 물러난 전랑이 고른 후임이 오른다
+    if (o.id === 'jeonrang' && typeof s.flags.jadae === 'string') {
+      const j = s.chars[s.flags.jadae];
+      delete s.flags.jadae;
+      if (j && eligible(s, j, o) && chance(s, 0.8)) {
+        best = j;
+        if (o.rank <= 5) log(s, `[인사] 자대(自代)의 관례에 따라 물러난 전랑이 ${josa(j.name, '을/를')} 후임으로 천거했다.`, 'court');
       }
     }
+    if (!best && (!nom || !pool.length)) {
+      // 정승은 대신들이 복상(卜相)하고, 그 밖의 자리는 이조가 의망한다
+      if (o.rank === 1) {
+        const r = boksang(s, o, hm);
+        if (r === 'pending') {
+          filled++;
+          continue;
+        }
+        if (r) best = r;
+      } else best = npcNominate(s, o, hm, pool.length ? pool : people(s));
+    }
+    if (!best)
+      for (const c of pool.length ? pool : people(s)) {
+        if (!eligible(s, c, o)) continue;
+        const sc = appointScore(s, c, o, hm);
+        if (sc > bs) {
+          bs = sc;
+          best = c;
+        }
+      }
     if (!best) best = fallbackFor(s, o);
     if (isP(s, best)) {
       s.flags[`reserve_${o.id}`] = true;
@@ -475,3 +502,123 @@ export function nominate(s: GameState, officeId: string, candId: string): string
   }
   return `왕이 ${josa(cand.name, '을/를')} 물리쳤다. (낙점 확률 ${Math.round(ch * 100)}%, 성심 -3)`;
 }
+
+/* ───────── NPC 이조의 의망 ───────── */
+
+/** NPC 이조판서(삼사·청요직은 전랑)가 사람을 골라 올린다. 왕이 물리치면 undefined */
+function npcNominate(s: GameState, o: OfficeDef, hm: Record<string, Character>, pool: Character[]): Character | undefined {
+  const jr = hm['jeonrang'];
+  const who = (o.samsa || o.cheongyo) && jr && !isP(s, jr) ? jr : hm['ijo'];
+  if (!who || isP(s, who)) return undefined;
+  let best: Character | undefined;
+  let bs = -Infinity;
+  for (const c of pool) {
+    if (c.id === who.id || !eligible(s, c, o)) continue;
+    const sc = appointScore(s, c, o, hm) + (c.faction !== 'none' && c.faction === who.faction ? 3 : 0) + opinion(s, who, c) / 10;
+    if (sc > bs) {
+      bs = sc;
+      best = c;
+    }
+  }
+  if (!best) return undefined;
+  let ch = 0.7 + who.favor / 200 + (s.king?.mood ?? 0) / 400 - best.flaws.filter((f) => f.public).length * 0.1;
+  if (best.faction !== 'none' && best.faction === who.faction && (powerShare(s)[best.faction] ?? 0) > 0.5) ch -= 0.15;
+  const title = OFFICE_MAP[who.office ?? '']?.name ?? '이조';
+  if (!chance(s, Math.max(0.1, Math.min(0.95, ch)))) {
+    if (o.rank <= 2) log(s, `[인사] ${title} ${josa(who.name, '이/가')} ${o.name}에 ${josa(best.name, '을/를')} 의망했으나 왕이 물리쳤다.`, 'court');
+    return undefined;
+  }
+  if (isP(s, best)) notice(s, '이조의 의망', `${title} ${josa(who.name, '이/가')} 당신을 ${o.name}에 의망했다.`, 'court');
+  return best;
+}
+
+/* ───────── 복상(卜相) ─────────
+ * 정승 자리가 비면 현직·원임 대신들이 후보 명단을 올리고 왕이 낙점한다.
+ */
+
+function boksangVoters(s: GameState, o: OfficeDef): Character[] {
+  return people(s).filter((c) => c.rank === 1 && inCourtNow(c) && c.office !== o.id && (c.status === 'idle' || (!!c.office && OFFICE_MAP[c.office]?.rank === 1)));
+}
+
+function boksangCands(s: GameState, o: OfficeDef, hm: Record<string, Character>): Character[] {
+  return people(s)
+    .filter((c) => eligible(s, c, o))
+    .map((c) => [c, appointParts(s, c, o, hm).reduce((a, x) => a + x.value, 0)] as const)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 4)
+    .map(([c]) => c);
+}
+
+const leanTo = (s: GameState, v: Character, c: Character) => opinion(s, v, c) + (c.faction !== 'none' && topOf(c.faction) === topOf(v.faction) ? 20 : 0);
+
+function boksang(s: GameState, o: OfficeDef, hm: Record<string, Character>): Character | 'pending' | undefined {
+  const cands = boksangCands(s, o, hm);
+  if (cands.length < 2) return undefined;
+  const voters = boksangVoters(s, o).filter((v) => !cands.some((c) => c.id === v.id));
+  if (!voters.length) return undefined;
+  const votes: Record<string, number> = {};
+  for (const v of voters) {
+    if (isP(s, v)) continue;
+    const pick = [...cands].sort((a, b) => leanTo(s, v, b) - leanTo(s, v, a))[0];
+    votes[pick.id] = (votes[pick.id] ?? 0) + 1;
+  }
+  const p = P(s);
+  if (voters.some((v) => isP(s, v)) && p.status !== 'exiled' && !s.pending.some((e) => e.def === 'boksang')) {
+    s.flags[`reserve_${o.id}`] = true;
+    pushEvent(s, 'boksang', { office: o.id, cands: cands.map((c) => c.id), votes });
+    return 'pending';
+  }
+  return finishBoksang(s, o, cands, votes);
+}
+
+function finishBoksang(s: GameState, o: OfficeDef, cands: Character[], votes: Record<string, number>, mine?: string): Character | undefined {
+  const hm = holderMap(s);
+  const live = cands.filter((c) => eligible(s, c, o));
+  if (!live.length) return undefined;
+  const val = (c: Character) => appointScore(s, c, o, hm) + (votes[c.id] ?? 0) * 3;
+  const w = [...live].sort((a, b) => val(b) - val(a))[0];
+  log(s, `[복상] 대신들이 ${live.map((c) => c.name).join('·')}을 ${o.name} 후보로 올렸고, 왕이 ${josa(w.name, '을/를')} 낙점했다.`, mine ? 'player' : 'court');
+  if (mine) {
+    if (w.id === mine) {
+      owe(s, w.id);
+      sway(s, w, P(s).id, 12, '복상의 은혜', { clan: 0.3, decay: 0.1 });
+    } else sway(s, w, P(s).id, -5, '복상에서 다른 이를 밂', { decay: 0.2 });
+  }
+  return w;
+}
+
+export const BOKSANG_EVENTS: Record<string, EventDef> = {
+  boksang: {
+    build(s, c) {
+      const o = OFFICE_MAP[c.office];
+      const cands = (c.cands as string[]).map((id) => s.chars[id]).filter(Boolean);
+      const lines = cands.map(
+        (x) =>
+          `· ${x.name} (${FACTION_META[x.faction].name}, 정치력 ${x.politics} · 학식 ${x.learning} · 명망 ${Math.round(x.prestige)})${c.votes[x.id] ? ` — 다른 대신 ${c.votes[x.id]}명이 민다` : ''}`,
+      );
+      return {
+        title: `복상(卜相) — ${o.name}`,
+        kind: 'court',
+        text: `${o.name} 자리가 비었다. 대신으로서 후보 명단에 올릴 사람의 이름 위에 점을 찍어야 한다. 왕은 명단과 대신들의 뜻을 보고 낙점한다.\n\n${lines.join('\n')}`,
+        choices: cands.map((x) => ({ key: x.id, label: `${josa(x.name, '을/를')} 민다`, hint: '그가 오르면 신세를 진다. 다른 후보가 오르면 그가 섭섭해한다.' })),
+      };
+    },
+    resolve(s, c, key) {
+      const o = OFFICE_MAP[c.office];
+      delete s.flags[`reserve_${o.id}`];
+      if (holderOf(s, o.id)) return '이미 다른 이가 그 자리에 앉았다.';
+      const votes = { ...(c.votes as Record<string, number>) };
+      votes[key] = (votes[key] ?? 0) + 2;
+      const cands = (c.cands as string[]).map((id) => s.chars[id]).filter((x) => x && alive(x));
+      const w = finishBoksang(s, o, cands, votes, key);
+      if (!w) return '명단에 오른 이들이 모두 자리에 오를 수 없게 되었다. 다시 의논한다.';
+      if (isP(s, w)) {
+        s.flags[`reserve_${o.id}`] = true;
+        pushEvent(s, 'appointment_offer', { office: o.id });
+        return `왕이 당신을 ${o.name}에 낙점했다.`;
+      }
+      appoint(s, w, o.id);
+      return `${josa(w.name, '이/가')} ${o.name}에 낙점되었다.${w.id === key ? ' 그가 당신에게 신세를 졌다.' : ''}`;
+    },
+  },
+};

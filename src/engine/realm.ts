@@ -1,4 +1,4 @@
-import type { Character, GameState, RealmProject, RealmProjectKind, RegionDefense, RegionId } from './types';
+import type { ArmyLevel, Character, GameState, RealmProject, RealmProjectKind, RegionDefense, RegionId, RoyalLevel, TaxLevel } from './types';
 import { OFFICE_MAP } from './data/offices';
 import { REGION_META } from './data/meta';
 import { monthOf, tOf } from './calendar';
@@ -16,7 +16,7 @@ import { opinion, sway } from './opinion';
  * 국방: 도마다 성곽·진보·조련·수군이 있고, 임진년의 전황이 이것으로 갈린다.
  */
 
-export const TAX_SCALE = 6;
+export const TAX_SCALE = 5.6;
 export const COASTAL: RegionId[] = ['gyeongsang', 'jeolla', 'chungcheong', 'gyeonggi', 'hwanghae'];
 export const TAX_REGIONS = (Object.keys(REGION_ECON) as RegionId[]).filter((r) => REGION_ECON[r].yield > 0);
 
@@ -28,8 +28,22 @@ export const initDefense = (r: RegionId): RegionDefense => ({
 });
 
 export function initRealm(): GameState['realm'] {
-  return { treasury: 300, ledger: null, spent: [], royal: 1, projects: [], broke: 0 };
+  return { treasury: 300, ledger: null, spent: [], royal: 1, projects: [], broke: 0, budget: { tax: 'normal', army: 'keep', royal: 'normal' }, authority: 60 };
 }
+
+/* ───────── 예산의 결 ───────── */
+
+export const TAX_RATE: Record<TaxLevel, number> = { low: 0.85, normal: 1, high: 1.15 };
+export const ARMY_RATE: Record<ArmyLevel, number> = { cut: 0.7, keep: 1, expand: 1.3 };
+export const ROYAL_RATE: Record<RoyalLevel, number> = { cut: 0.75, normal: 1, lavish: 1.3 };
+export const TAX_NAME: Record<TaxLevel, string> = { low: '경감', normal: '정액', high: '가렴' };
+export const ARMY_NAME: Record<ArmyLevel, string> = { cut: '감군', keep: '유지', expand: '확충' };
+export const ROYAL_NAME: Record<RoyalLevel, string> = { cut: '절감', normal: '관례', lavish: '넉넉히' };
+export const BUDGET_DESC = {
+  tax: '전세(田稅)를 얼마나 거둘지. 경감하면 세입 -15%에 민심이 오르고, 가렴하면 세입 +15%에 민심이 깎이며 은결이 는다.',
+  army: '군비를 얼마나 댈지. 성곽·진보·수군의 유지비에 견주어 감군 70% · 유지 100% · 확충 130%를 댄다. 모자라면 조련이 풀리고 시설이 허물어지며, 넉넉하면 조련이 오른다.',
+  royal: '내수사와 궁방의 씀씀이. 절감하면 용안이 어두워지고 왕실 권위가 깎이며, 넉넉하면 그 반대다.',
+};
 
 /* ───────── 세입 ───────── */
 
@@ -46,7 +60,7 @@ export function taxMult(s: GameState): number {
 /** 이 도에서 장부대로라면 거둘 세 */
 export function regionTax(s: GameState, r: RegionId): number {
   const hide = s.regions[r].hidden * (lawOn(s, 'daedong') ? 0.5 : 1);
-  return Math.round(regionYield(s, r) * TAX_SCALE * taxMult(s) * (1 - hide));
+  return Math.round(regionYield(s, r) * TAX_SCALE * taxMult(s) * TAX_RATE[s.realm.budget.tax] * s.regions[r].arable * (1 - hide));
 }
 
 /** 관찰사가 빼돌리는 비율 */
@@ -86,18 +100,74 @@ export function collectTaxes(s: GameState) {
     if (g && !isP(s, g) && gamsa > 0 && g.traits.includes('greedy') && chance(s, 0.25) && !g.flaws.some((f) => f.label === '공납 착복')) addFlaw(s, g, '공납 착복');
   }
   delete s.flags.tributeChoice;
-  realm.treasury = Math.round(realm.treasury + total);
+  // 가을에 6할이 들고, 나머지는 봄에 조운선이 싣고 올라온다
+  const now = Math.round(total * 0.6);
+  realm.treasury = Math.round(realm.treasury + now);
+  s.flags.taxLater = total - now;
   realm.ledger = { t: s.t, revenue: total, byRegion };
   const lost = Object.values(byRegion).reduce((a, x) => a + (x?.gamsa ?? 0) + (x?.suryeong ?? 0), 0);
-  log(s, `[국고] 올해 팔도의 세 ${total}이 국고에 들었다. 중간에 새어 나간 것이 ${lost}쯤 된다는 말이 있다. (국고 ${realm.treasury})`, 'court');
-  if (p.status === 'active' && p.office === 'hojo') notice(s, '세입', `올해 세입은 ${total}이다. 지방관들의 손을 타고 ${lost}이 새어 나갔다. 국고는 ${realm.treasury}.`, 'court');
+  log(s, `[국고] 올해 팔도의 세는 ${total}이다. 6할이 먼저 국고에 들고 나머지는 봄에 조운선으로 올라온다. 중간에 새어 나간 것이 ${lost}쯤 된다는 말이 있다. (국고 ${realm.treasury})`, 'court');
+  if (p.status === 'active' && p.office === 'hojo')
+    notice(s, '세입과 예산', `올해 세입은 ${total}이다. 지방관들의 손을 타고 ${lost}이 새어 나갔다. 국고는 ${realm.treasury}.\n\n「국정」 탭에서 다음 한 해의 예산(전세·군비·왕실 경비)을 짤 수 있다. 한 달에 한 항목씩, 직권으로 고친다.`, 'court');
+  else npcBudget(s);
+}
+
+/** NPC 호조판서가 성향과 형편을 따라 예산을 짠다 */
+export function npcBudget(s: GameState) {
+  const b = s.realm.budget;
+  const hj = holderOf(s, 'hojo');
+  const t = s.realm.treasury;
+  const need = monthlySpend(s) * 12;
+  // 조정은 왜란을 경고받기 전까지 태평하다
+  const threat = !!s.flags.warned || s.war.active;
+  b.tax = t < 0 ? 'high' : t > need ? 'low' : 'normal';
+  b.army = t < -100 ? 'cut' : threat && t > need * 0.6 && !s.war.active ? 'expand' : 'keep';
+  b.royal = t < 0 ? 'cut' : 'normal';
+  if (hj?.traits.includes('greedy')) {
+    b.tax = 'high';
+    if (t > 0) b.royal = 'lavish';
+  }
+  if (hj?.traits.includes('clean') && b.tax === 'high' && t > -100) b.tax = 'normal';
+  log(s, `[국고] 호조가 올해 예산을 짰다. 전세 ${TAX_NAME[b.tax]} · 군비 ${ARMY_NAME[b.army]} · 왕실 경비 ${ROYAL_NAME[b.royal]}.`, 'court');
+}
+
+/** 호조판서가 예산 한 항목을 고친다 (직권) */
+export function setBudget(s: GameState, key: 'tax' | 'army' | 'royal', v: string): string {
+  const p = P(s);
+  if (p.status !== 'active' || p.office !== 'hojo') return '호조판서만 예산을 짤 수 있다';
+  if (s.player.authorityUsed) return '이번 달 직권을 이미 썼다';
+  const b = s.realm.budget;
+  if (b[key] === v) return '이미 그렇게 짜여 있다';
+  s.player.authorityUsed = true;
+  (b as unknown as Record<string, string>)[key] = v;
+  const fx: string[] = [];
+  if (key === 'royal' && v === 'cut') {
+    kingMood(s, -8);
+    fav(p, -3);
+    pres(p, 2);
+    fx.push('용안이 어두워짐, 성심 -3, 명망 +2');
+  } else if (key === 'royal' && v === 'lavish') {
+    kingMood(s, 6);
+    fav(p, 2);
+    fx.push('용안이 밝아짐, 성심 +2');
+  } else if (key === 'tax' && v === 'high') {
+    fav(p, 1);
+    fx.push('성심 +1');
+  } else if (key === 'tax' && v === 'low') {
+    pres(p, 2);
+    fx.push('명망 +2');
+  }
+  const name = key === 'tax' ? `전세를 ${TAX_NAME[v as TaxLevel]}` : key === 'army' ? `군비를 ${ARMY_NAME[v as ArmyLevel]}` : `왕실 경비를 ${ROYAL_NAME[v as RoyalLevel]}`;
+  log(s, `[국고] 호조판서 ${josa(p.name, '이/가')} ${name}으로 정했다.`, 'player');
+  return `${name}으로 정했다.${fx.length ? ` (${fx.join(', ')})` : ''}`;
 }
 
 /* ───────── 세출 ───────── */
 
-export function militaryUpkeep(s: GameState): number {
-  let v = 3;
-  for (const r of Object.values(s.regions)) v += r.defense.jin * 0.8 + r.defense.drill / 40 + r.defense.navy * 0.6;
+/** 성곽·진보·수군을 지키는 데 다달이 드는 돈. 예산이 이만큼 대 주어야 허물어지지 않는다. */
+export function militaryNeed(s: GameState): number {
+  let v = 2;
+  for (const r of Object.values(s.regions)) v += r.defense.fort * 0.2 + r.defense.jin * 0.6 + r.defense.navy * 0.6;
   if (lawOn(s, 'jeseung')) v -= 2;
   if (lawOn(s, 'jingwan')) v += 3;
   if (lawOn(s, 'yangbyeong')) v += 6;
@@ -106,10 +176,16 @@ export function militaryUpkeep(s: GameState): number {
   return Math.max(0, Math.round(v * 10) / 10);
 }
 
+/** 예산에 따라 실제로 나가는 군비 */
+export const militaryUpkeep = (s: GameState) => Math.round(militaryNeed(s) * ARMY_RATE[s.realm.budget.army] * 10) / 10;
+
+/** 군비가 유지비를 얼마나 대 주는가. 국고가 바닥나면 반만 간다. */
+export const armyFunding = (s: GameState) => ARMY_RATE[s.realm.budget.army] * (s.realm.treasury < 0 ? 0.5 : 1);
+
 export function monthlyBudget(s: GameState): { label: string; value: number }[] {
   const out = [
     { label: '녹봉', value: s.realm.treasury < 0 ? 8 : 16 },
-    { label: '왕실 경비', value: Math.round(10 * s.realm.royal * 10) / 10 },
+    { label: '왕실 경비', value: Math.round(10 * ROYAL_RATE[s.realm.budget.royal] * 10) / 10 },
     { label: '군비', value: militaryUpkeep(s) },
   ];
   const proj = s.realm.projects.reduce((a, x) => a + x.cost * (x.skim ? 1.3 : 1), 0);
@@ -245,13 +321,14 @@ export const PROJECT_DEFS: Record<RealmProjectKind, ProjectDef> = {
     months: 5,
     cost: 6,
     regional: true,
-    desc: '저수지와 보를 쌓는다. 그 도의 흉년이 덜 들고 민심 +5.',
+    desc: '저수지와 보를 쌓는다. 그 도의 흉년이 덜 들고 경작지 +5%, 민심 +5.',
     ok: (s, r) => (r && s.regions[r].tags.includes('dyke') ? '이미 제언을 쌓았다' : r === 'hanseong' ? '도성에는 쌓을 곳이 없다' : null),
     done(s, x) {
       const reg = s.regions[x.region!];
       if (!reg.tags.includes('dyke')) reg.tags.push('dyke');
       reg.minsim = clamp(reg.minsim + 5, 0, 100);
-      return '흉년이 덜 든다';
+      reg.arable = Math.min(1.5, reg.arable + 0.05);
+      return '흉년이 덜 들고 경작지 +5%';
     },
   },
   survey: {
@@ -259,12 +336,14 @@ export const PROJECT_DEFS: Record<RealmProjectKind, ProjectDef> = {
     months: 6,
     cost: 5,
     regional: true,
-    desc: '토지를 다시 재어 장부에서 빠진 은결을 찾아낸다. 그 도의 세가 늘지만 땅 가진 권세가들이 반발한다.',
+    desc: '토지를 다시 재어 장부에서 빠진 은결을 찾아낸다. 그 도의 세가 늘지만 땅 가진 권세가들이 반발한다. 늘어날 세로 비용을 갚으므로 국고가 바닥나도 벌일 수 있다.',
     ok: (s, r) => (r === 'hanseong' ? '도성에는 잴 땅이 없다' : r && s.regions[r].hidden < 0.04 ? '빠진 땅이 거의 없다' : null),
     done(s, x) {
       const r = x.region!;
       const was = s.regions[r].hidden;
       s.regions[r].hidden = 0;
+      // 숨어 있던 땅의 절반쯤은 새로 일군 땅까지 함께 장부에 오른다
+      s.regions[r].arable = Math.min(1.5, s.regions[r].arable + was * 0.5);
       s.regions[r].minsim = clamp(s.regions[r].minsim - 3, 0, 100);
       for (const c of people(s)) if (c.traits.includes('greedy') && c.rank <= 3 && x.by && s.chars[x.by]) sway(s, c, x.by, -6, '양전으로 땅을 들춤', { decay: 0.1 });
       const p = P(s);
@@ -344,7 +423,8 @@ export function approvalChance(s: GameState, kind: RealmProjectKind): number {
   const total = d.cost * d.months;
   const t = s.realm.treasury;
   let v = 0.55 + p.favor / 200 + s.king.mood / 300;
-  if (t < total) v -= 0.35;
+  if (kind === 'survey') v += t < 0 ? 0.15 : 0;
+  else if (t < total) v -= 0.35;
   else if (t < total * 2) v -= 0.1;
   else if (t > 500) v += 0.1;
   if (kind === 'palace') v += 0.25;
@@ -382,11 +462,14 @@ export function tickRealm(s: GameState) {
   const spend = monthlyBudget(s);
   realm.spent = spend;
   const broke = realm.treasury < 0;
-  const total = spend.reduce((a, x) => a + (broke && x.label === '나라 사업' ? 0 : x.value), 0);
+  const surveyCost = realm.projects.filter((x) => x.kind === 'survey').reduce((a, x) => a + x.cost, 0);
+  const total = spend.reduce((a, x) => a + (broke && x.label === '나라 사업' ? surveyCost : x.value), 0);
   realm.treasury = Math.round((realm.treasury - total) * 10) / 10;
 
-  if (!broke) {
+  {
     for (const x of [...realm.projects]) {
+      // 국고가 바닥나면 양전 말고는 멈춘다
+      if (broke && x.kind !== 'survey') continue;
       x.left--;
       const mgr = s.chars[x.by];
       if (x.skim && mgr) {
@@ -414,10 +497,20 @@ export function tickRealm(s: GameState) {
     }
   }
 
-  // 조련은 내버려 두면 풀린다
+  // 군비가 모자라면 조련이 풀리고 시설이 허물어진다. 넉넉하면 조련이 오른다.
+  const fund = armyFunding(s);
+  const lost: string[] = [];
   for (const r of Object.values(s.regions)) {
     const d = r.defense;
-    let drift = -0.4 - (broke ? 1 : 0);
+    let drift = fund >= 1.2 ? 0.5 : fund >= 1 ? -0.2 : -(0.5 + (1 - fund) * 4);
+    if (fund < 1 && chance(s, (1 - fund) * 0.025)) {
+      const opts = (['fort', 'jin', 'navy'] as const).filter((k) => d[k] > 0 && (k !== 'fort' || d.fort > 1 || r.id !== 'hanseong'));
+      const k = opts.length ? pick(s, opts) : undefined;
+      if (k) {
+        d[k]--;
+        lost.push(`${REGION_META[r.id].short} ${k === 'fort' ? '성곽' : k === 'jin' ? '진보' : '판옥선'}`);
+      }
+    }
     if (lawOn(s, 'hopae')) drift += 0.3;
     if (lawOn(s, 'yangbyeong')) drift += 0.8;
     if (lawOn(s, 'nobi')) drift += 0.2;
@@ -425,6 +518,16 @@ export function tickRealm(s: GameState) {
     if (lawOn(s, 'hullyeon') && (r.id === 'gyeonggi' || r.id === 'hanseong')) drift += 1.5;
     d.drill = clamp(d.drill + drift, 0, 100);
   }
+  if (lost.length) {
+    log(s, `[국방] 군량과 군포가 끊겨 ${lost.join(', ')}이 허물어지고 군사가 흩어졌다.`, 'court');
+    const bj = holderOf(s, 'byeongjo');
+    if (bj && isP(s, bj)) notice(s, '허물어지는 방비', `군비가 모자라 ${lost.join(', ')}이 허물어졌다. 호조에 군비를 늘려 달라고 해야 한다.`, 'danger');
+  }
+  // 예산의 결이 민심과 용안에 미친다
+  const b = realm.budget;
+  if (b.tax !== 'normal') for (const r of Object.values(s.regions)) r.minsim = clamp(r.minsim + (b.tax === 'low' ? 0.15 : -0.2), 0, 100);
+  if (b.royal === 'cut') kingMood(s, -0.4);
+  else if (b.royal === 'lavish') kingMood(s, 0.3);
   // 법이 민심에 미치는 결
   let mood = 0;
   if (lawOn(s, 'bumin')) mood -= 0.08;
@@ -451,26 +554,54 @@ export function tickRealm(s: GameState) {
       vacate(s, hj);
       log(s, `[국고] 나라 살림을 그르친 책임을 물어 호조판서 ${josa(hj.name, '을/를')} 갈았다.`, 'court');
     }
-    // 급한 불: 공명첩을 팔고 납속을 받는다
-    if (realm.treasury < -150 && monthsSince(s, 'gongmyeongAt') >= 6) {
-      s.flags.gongmyeongAt = s.t;
-      realm.treasury += 150;
-      for (const r of Object.values(s.regions)) r.minsim = clamp(r.minsim - 1, 0, 100);
-      log(s, '[국고] 바닥난 국고를 메우려 공명첩(空名帖)을 팔고 납속(納粟)을 받았다. 벼슬을 돈으로 산다는 말이 돈다.', 'court');
+    // NPC 호조판서는 급하면 공명첩을 판다
+    // 세곡이 곧 올라올 철(1·2월, 8·9월)에는 기다린다
+    const soon = [1, 2, 8, 9].includes(monthOf(s.t));
+    if (hj && !isP(s, hj) && realm.treasury < -150 && !soon && monthsSince(s, 'gongmyeongAt') >= 6) sellTitles(s);
+    // 오래 바닥나 있으면 NPC 호조가 군비와 왕실 경비부터 줄인다
+    if (hj && !isP(s, hj) && realm.broke % 6 === 0) {
+      if (realm.budget.royal !== 'cut') realm.budget.royal = 'cut';
+      else if (realm.budget.army !== 'cut') realm.budget.army = 'cut';
+      realm.budget.tax = 'high';
     }
-    // 오래 바닥나 있으면 왕실도 허리띠를 졸라맨다
-    if (realm.broke % 6 === 0 && realm.royal > 0.7) realm.royal = Math.round((realm.royal - 0.1) * 10) / 10;
   } else realm.broke = 0;
 
-  // 은결은 권세가의 탐욕을 따라 조금씩 는다
-  if (monthOf(s.t) === 1) {
-    for (const r of TAX_REGIONS) {
-      const reg = s.regions[r];
-      const greedy = people(s).filter((c) => c.home === r && c.traits.includes('greedy') && c.rank <= 4).length;
-      reg.hidden = clamp(reg.hidden + 0.01 + greedy * 0.006, 0, 0.5);
-    }
+  if (monthOf(s.t) === 1) yearlyLand(s);
+  if (monthOf(s.t) === 3 && typeof s.flags.taxLater === 'number') {
+    realm.treasury = Math.round(realm.treasury + s.flags.taxLater);
+    log(s, `[국고] 조운선이 남은 세곡 ${s.flags.taxLater}을 싣고 올라왔다. (국고 ${realm.treasury})`, 'court');
+    delete s.flags.taxLater;
   }
   npcProjects(s);
+}
+
+/** 정월: 경작지가 늘고 줄며, 은결이 그 원인을 따라 늘고 준다 */
+export function yearlyLand(s: GameState) {
+  for (const r of TAX_REGIONS) {
+    const reg = s.regions[r];
+    const war = s.war.active && s.war.zones.includes(r);
+    // 개간: 민심이 좋고 난리가 없으면 진전(陳田)이 다시 일구어진다
+    if (war) reg.arable = Math.max(0.6, reg.arable - 0.04);
+    else if (reg.minsim >= 45) reg.arable = Math.min(1.5, reg.arable + 0.004 + (reg.minsim - 45) / 5000);
+    // 은결: 고을에 뿌리박은 탐욕스러운 권세가, 수령 고소를 막는 법, 가렴주구가 키우고 감찰이 줄인다
+    const greedy = people(s).filter((c) => c.home === r && c.traits.includes('greedy') && c.rank <= 4).length;
+    let dh = 0.002 + Math.min(3, greedy) * 0.005;
+    if (lawOn(s, 'bumin')) dh += 0.003;
+    if (s.realm.budget.tax === 'high') dh += 0.005;
+    if ((reg.inspectUntil ?? 0) > s.t - 12) dh -= 0.01;
+    reg.hidden = clamp(reg.hidden + dh, 0, 0.3);
+  }
+}
+
+/** 공명첩을 팔고 납속을 받는다 */
+export function sellTitles(s: GameState): number {
+  s.flags.gongmyeongAt = s.t;
+  s.realm.treasury += 120;
+  // 전란 중의 납속은 나라를 구하는 일로 여겨 체통이 덜 깎인다
+  s.realm.authority = clamp(s.realm.authority - (s.war.active ? 1 : 3), 0, 100);
+  for (const r of Object.values(s.regions)) r.minsim = clamp(r.minsim - 0.5, 0, 100);
+  log(s, '[국고] 바닥난 국고를 메우려 공명첩(空名帖)을 팔고 납속(納粟)을 받았다. 벼슬을 돈으로 산다는 말에 조정의 체통이 깎였다.', 'court');
+  return 120;
 }
 
 /** 조정의 대신들도 사업을 아뢴다 */
@@ -510,7 +641,7 @@ function npcProjects(s: GameState) {
 
 /* ───────── 직무의 권한 ───────── */
 
-export type PowerId = 'hojo_press' | 'hojo_royal' | 'byeongjo_review' | 'gamsa_inspect' | 'gamsa_drill' | 'gongjo_hurry';
+export type PowerId = 'hojo_press' | 'hojo_titles' | 'hojo_hwangok' | 'byeongjo_review' | 'gamsa_inspect' | 'gamsa_drill' | 'gongjo_hurry';
 
 export interface OfficePower {
   id: PowerId;
@@ -538,18 +669,31 @@ export const POWERS: OfficePower[] = [
     },
   },
   {
-    id: 'hojo_royal',
-    name: '왕실 경비 절감 건의',
-    desc: '내수사와 궁방의 씀씀이를 줄이자고 아뢴다. 왕실 경비 -20%. 용안이 어두워지고 성심 -3, 명망 +3.',
+    id: 'hojo_titles',
+    name: '공명첩 발매',
+    desc: '이름만 있는 벼슬 첩지를 팔고 곡식을 바치게 한다. 국고 +120. 왕실 권위 -3 (전란 중에는 -1), 명망 -2, 팔도 민심 조금 하락. 반년에 한 번.',
     office: (o) => o === 'hojo',
-    check: (s) => (s.realm.royal <= 0.6 ? '이미 줄일 만큼 줄였다' : null),
+    check: (s) => (monthsSince(s, 'gongmyeongAt') < 6 ? '반년에 한 번만 팔 수 있다' : null),
     run(s) {
-      const p = P(s);
-      s.realm.royal = Math.max(0.6, Math.round((s.realm.royal - 0.2) * 10) / 10);
-      kingMood(s, -10);
-      fav(p, -3);
-      pres(p, 3);
-      return `궁궐의 씀씀이를 줄이자고 아뢰었다. 왕이 마지못해 따랐다. (왕실 경비 ${Math.round(s.realm.royal * 100)}%, 성심 -3, 명망 +3)`;
+      sellTitles(s);
+      pres(P(s), -2);
+      return '공명첩을 팔아 국고를 메웠다. (국고 +120, 왕실 권위 -3, 명망 -2)';
+    },
+  },
+  {
+    id: 'hojo_hwangok',
+    name: '환곡 전용',
+    desc: '고을마다 흉년에 대비해 쌓아 둔 환곡을 끌어다 쓴다. 국고 +80. 비축한 환곡이 사라지고 팔도 민심 -2. 1년에 한 번.',
+    office: (o) => o === 'hojo',
+    check: (s) => (monthsSince(s, 'hwangokAt') < 12 ? '1년에 한 번만 끌어다 쓸 수 있다' : null),
+    run(s) {
+      s.flags.hwangokAt = s.t;
+      s.realm.treasury += 80;
+      for (const r of Object.values(s.regions)) {
+        r.tags = r.tags.filter((x) => x !== 'reserve');
+        r.minsim = clamp(r.minsim - 2, 0, 100);
+      }
+      return '고을의 환곡을 끌어다 국고를 메웠다. 다음 흉년이 걱정이다. (국고 +80, 팔도 민심 -2)';
     },
   },
   {

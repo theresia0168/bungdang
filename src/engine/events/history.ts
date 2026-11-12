@@ -370,6 +370,7 @@ export const SCHEDULE: Scheduled[] = [
         return;
       }
       log(s, '한성이 함락되었다. 왕은 평양으로 몽진했다. 성난 백성들이 궁궐에 불을 질렀다.', 'war');
+      moveCourt(s, 'pyeongan');
     },
   },
   {
@@ -387,6 +388,7 @@ export const SCHEDULE: Scheduled[] = [
         s.flags.kingCaptive = true;
         kingMood(s, -40);
         log(s, `평양으로 가던 어가가 임진강가에서 왜군 선봉에 따라잡혔다. 왕이 사로잡혔다! 세자 광해군이 분조를 이끌고 나라를 지탱한다. (${race.text})`, 'war');
+        splitCourt(s);
         for (const r of ['pyeongan', 'hwanghae'] as RegionId[]) s.regions[r].minsim = clamp(s.regions[r].minsim - 15, 0, 100);
         const p = P(s);
         if (inCourt(p) && p.status !== 'exiled' && chance(s, 0.25) && p.office) {
@@ -396,6 +398,7 @@ export const SCHEDULE: Scheduled[] = [
         return;
       }
       log(s, `평양이 함락되었다. 어가는 왜군보다 한발 앞서 의주로 향했다. 세자 광해군은 분조(分朝)를 이끌고 각지를 돌며 의병을 독려했다. (${race.text})`, 'war');
+      splitCourt(s);
     },
   },
   { id: 'w3', at: [1592, 7], run: warLog('이순신이 한산도 앞바다에서 왜 수군을 크게 무찔렀다.') },
@@ -414,6 +417,7 @@ export const SCHEDULE: Scheduled[] = [
     at: [1593, 1],
     run(s) {
       if (s.realm.warPath === 'held') return log(s, '명나라 원군과 함께 남해안의 왜성을 에워쌌다.', 'war');
+      mergeCourt(s);
       if (s.flags.kingCaptive) {
         delete s.flags.kingCaptive;
         kingMood(s, 20);
@@ -438,6 +442,7 @@ export const SCHEDULE: Scheduled[] = [
     at: [1593, 10],
     cond: (s) => s.realm.warPath !== 'held',
     run: warLog('왕이 한성으로 돌아왔다. 궁궐이 모두 불타 월산대군의 옛집을 행궁으로 삼았다.', (s) => {
+      moveCourt(s, 'hanseong');
       const p = P(s);
       if (s.flags.hojong && inCourt(p)) p.location = 'hanseong';
     }),
@@ -513,8 +518,56 @@ export const SCHEDULE: Scheduled[] = [
     run: warLogless('북인 안에서 이산해를 따르는 대북과 남이공을 따르는 소북이 갈라설 조짐을 보인다.'),
   },
   { id: 'queen', at: [1600, 6], run: warLogless('의인왕후 박씨가 승하했다. 왕은 새 왕비를 맞으려 한다.') },
+  {
+    id: 'nokhun',
+    at: [1599, 3],
+    run(s) {
+      log(s, '전란의 공신을 가리는 녹훈 논의가 시작되었다. 이순신·권율·원균 등이 선무공신에, 어가를 호종한 이항복·이원익 등이 호성공신에 오를 것이라 한다.', 'history');
+      const p = P(s);
+      if (alive(p) && p.status !== 'exiled') pushEvent(s, 'war_merit', {});
+    },
+  },
   ...WAR_SCHEDULE,
 ];
+
+/** 세자가 분조를 이끌고 강원으로 간다. 조정의 넷에 하나쯤이 따른다. */
+function splitCourt(s: GameState) {
+  const gh = s.heir ? s.chars[s.heir] : undefined;
+  if (!alive(gh)) return;
+  s.flags.bunjoSeat = 'gangwon';
+  const from = typeof s.flags.courtSeat === 'string' ? (s.flags.courtSeat as RegionId) : 'hanseong';
+  for (const c of people(s)) {
+    if (isP(s, c) || c.location !== from || c.status !== 'active') continue;
+    if (c.office === 'suryeong' || c.office?.startsWith('gamsa_')) continue;
+    if (chance(s, 0.25)) c.location = 'gangwon';
+  }
+}
+
+/** 분조가 행재소와 합친다 */
+function mergeCourt(s: GameState) {
+  const b = s.flags.bunjoSeat;
+  if (typeof b !== 'string') return;
+  delete s.flags.bunjoSeat;
+  const to = typeof s.flags.courtSeat === 'string' ? (s.flags.courtSeat as RegionId) : 'hanseong';
+  for (const c of people(s)) if (c.location === b && (c.status === 'active' || c.status === 'idle') && c.office !== 'suryeong' && !c.office?.startsWith('gamsa_')) c.location = to;
+  log(s, '분조가 행재소와 합쳤다.', 'war');
+}
+
+/** 조정이 옮겨 간다. 조정에 있던 이들이 함께 움직인다. */
+function moveCourt(s: GameState, to: RegionId) {
+  const from = typeof s.flags.courtSeat === 'string' ? (s.flags.courtSeat as RegionId) : 'hanseong';
+  if (to === 'hanseong') delete s.flags.courtSeat;
+  else s.flags.courtSeat = to;
+  for (const c of people(s)) {
+    if (c.location !== from || !(c.status === 'active' || c.status === 'idle')) continue;
+    if (c.office === 'suryeong' || c.office?.startsWith('gamsa_')) continue;
+    // 플레이어는 스스로 고른 길을 간다 (호종했으면 이미 행재소에 있다)
+    if (isP(s, c)) continue;
+    c.location = to;
+  }
+  const p = P(s);
+  if (to === 'hanseong' && p.location === from && inCourt(p)) p.location = 'hanseong';
+}
 
 function warLogless(text: string) {
   return (s: GameState) => log(s, text, 'history');
@@ -1111,6 +1164,7 @@ export const HISTORY_EVENTS: Record<string, EventDef> = {
           }
           p.prestige = clamp(p.prestige + (p.status === 'exiled' ? 8 : 12), 0, 100);
           s.flags.militia = s.t + 12;
+          s.flags.warMerit = Number(s.flags.warMerit ?? 0) + 2;
           s.player.deeds.push(`${shortDate(s.t)} 의병 창의`);
           log(s, `${josa(p.name, '이/가')} 의병을 일으켰다.`, 'player');
           return '의병을 일으켰다.';

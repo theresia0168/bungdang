@@ -2,7 +2,7 @@ import type { Character, GameState, Plot } from './types';
 import { FACTION_META } from './data/meta';
 import { OFFICE_MAP } from './data/offices';
 import { chance, randInt } from './rng';
-import { alive, clamp, inCourt, isP, josa, knownFlaws, notice, officeTitle, P, people, uid } from './state';
+import { alive, atSeat, chargeable, clamp, impeachEtiquette, inCourt, isP, josa, knownFlaws, notice, officeTitle, P, people, uid } from './state';
 import { opinion } from './opinion';
 import { bondWith } from './relations';
 import { caseOn, openCase } from './cases';
@@ -42,10 +42,10 @@ function grudgePlots(s: GameState) {
   const p = P(s);
   if (p.status !== 'active' || !p.office || s.plots.length >= 2 || !chance(s, 0.09)) return;
   const foe = people(s)
-    .filter((c) => !isP(s, c) && inCourt(c) && c.location === 'hanseong' && c.politics >= 2 && !bondWith(s, c.id) && !s.plots.some((x) => x.by === c.id) && !caseOn(s, c.id))
+    .filter((c) => !isP(s, c) && inCourt(c) && atSeat(s, c) && c.politics >= 2 && !bondWith(s, c.id) && !s.plots.some((x) => x.by === c.id) && !caseOn(s, c.id) && !impeachEtiquette(c, p, !!(c.office && OFFICE_MAP[c.office]?.samsa)))
     .filter((c) => {
       const samsa = c.office && OFFICE_MAP[c.office]?.samsa ? 1 : 0;
-      const edge = c.politics + knownFlaws(p, c.id).length + samsa - p.politics - Math.floor(p.prestige / 25) - (p.favor >= 20 ? 1 : 0);
+      const edge = c.politics + chargeable(s, p, c.id).length + samsa - p.politics - Math.floor(p.prestige / 25) - (p.favor >= 20 ? 1 : 0);
       return edge >= -2;
     })
     .map((c) => [c, opinion(s, c, p) - (c.grudges.includes(p.id) ? 20 : 0)] as const)
@@ -63,7 +63,7 @@ export function tickPlots(s: GameState) {
       s.plots = s.plots.filter((x) => x !== pl);
       if (why && pl.known) notice(s, '음모가 꺾이다', why, 'court');
     };
-    if (!alive(by) || !inCourt(by) || by.location !== 'hanseong') {
+    if (!alive(by) || !inCourt(by) || !atSeat(s, by)) {
       drop(by ? `${josa(by.name, '이/가')} 조정을 떠나 당신을 노리던 계획도 흐지부지되었다.` : undefined);
       continue;
     }

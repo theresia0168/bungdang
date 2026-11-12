@@ -34,7 +34,7 @@ export const BACKGROUNDS: Record<CustomSpec['background'], { name: string; desc:
 
 function blankState(seed: number): GameState {
   return {
-    version: 4,
+    version: 5,
     rng: seed | 0,
     t: 0,
     chars: {},
@@ -48,7 +48,7 @@ function blankState(seed: number): GameState {
       none: { id: 'none', active: true, division: 0 },
     },
     regions: Object.fromEntries(
-      REGIONS.map((r) => [r.id, { id: r.id, influence: { ...r.influence }, minsim: 60, tags: [], defense: initDefense(r.id), hidden: r.id === 'hanseong' ? 0 : 0.06 }]),
+      REGIONS.map((r) => [r.id, { id: r.id, influence: { ...r.influence }, minsim: 60, tags: [], defense: initDefense(r.id), arable: 1, hidden: r.id === 'hanseong' ? 0 : 0.06 }]),
     ) as unknown as GameState['regions'],
     player: {
       charId: '',
@@ -182,7 +182,7 @@ export const PLAYABLE = ROSTER.filter((r) => r.playable);
 
 /** 예전 저장본에 새로 생긴 항목을 채운다 */
 export function upgrade(s: GameState): GameState {
-  if (s.version >= 4) return s;
+  if (s.version >= 5) return s;
   const pl = s.player;
   pl.done ??= [];
   pl.teach ??= 0;
@@ -196,8 +196,14 @@ export function upgrade(s: GameState): GameState {
     r.hidden ??= r.id === 'hanseong' ? 0 : 0.06;
   }
   s.realm ??= initRealm();
+  s.realm.budget ??= { tax: 'normal', army: 'keep', royal: 'normal' };
+  s.realm.authority ??= 60;
+  for (const r of Object.values(s.regions)) {
+    r.arable ??= 1;
+    r.hidden = Math.min(r.hidden, 0.3);
+  }
   s.laws ??= initLaws();
   if (s.flags.seoeolOpen) s.laws.seoeol = { on: true, since: s.t };
-  s.version = 4;
+  s.version = 5;
   return s;
 }
