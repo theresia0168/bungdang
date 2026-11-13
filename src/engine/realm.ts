@@ -91,6 +91,8 @@ export function suryeongSkimRate(s: GameState, r: RegionId): number {
   if (lawOn(s, 'bumin')) v += 0.04;
   if (lawOn(s, 'sinmungo')) v -= 0.02;
   if ((s.regions[r].inspectUntil ?? 0) > s.t) v -= 0.05;
+  // 세도 아래 삼정이 문란해 수령의 수탈이 심하다
+  if (s.flags.kingStyle === 'sedo') v += 0.03;
   return Math.max(0.01, v);
 }
 
@@ -571,6 +573,8 @@ export function tickRealm(s: GameState) {
   if (lawOn(s, 'sangpyeong')) mood += 0.04;
   if (lawOn(s, 'seowon')) mood += 0.04;
   if (lawOn(s, 'sinmungo')) mood += 0.06;
+  // 삼정의 문란: 전정·군정·환곡이 어지러워 민심이 서서히 무너진다
+  if (s.flags.kingStyle === 'sedo') mood -= 0.12;
   if (mood) for (const r of Object.values(s.regions)) r.minsim = clamp(r.minsim + mood * 0.5, 0, 100);
   // 민심은 오래 두면 60쯤으로 돌아온다: 좋은 법과 선정은 그 바탕을 조금 끌어올릴 뿐이다
   for (const r of Object.values(s.regions)) r.minsim += (60 - r.minsim) * 0.02;
@@ -645,6 +649,7 @@ export function yearlyLand(s: GameState) {
     if (lawOn(s, 'ogajak')) dh -= 0.002;
     if (lawOn(s, 'hopo')) dh -= 0.002;
     if (s.realm.budget.tax === 'high') dh += 0.005;
+    if (s.flags.kingStyle === 'sedo') dh += 0.002;
     if ((reg.inspectUntil ?? 0) > s.t - 12) dh -= 0.01;
     reg.hidden = clamp(reg.hidden + dh, 0, 0.3);
   }

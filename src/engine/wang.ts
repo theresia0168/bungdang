@@ -1,5 +1,5 @@
 import type { Character, FactionId, GameState } from './types';
-import { kingProfile, vsText } from './kingstat';
+import { kingProfile, rulerName, vsText } from './kingstat';
 import type { EventDef } from './events/types';
 import { FACTION_META } from './data/meta';
 import { OFFICE_MAP } from './data/offices';
@@ -18,7 +18,7 @@ import { gukbonSit, TOPICS as GUKBON_TOPICS } from './gukbon';
  * 임금도 밀지를 내리고, 하사하고, 꾸짖고, 몸소 책문을 내고, 사람됨을 묻는다.
  */
 
-const kingName = (s: GameState) => s.chars[String(s.flags.kingId ?? 'seonjo')]?.name ?? '왕';
+const kingName = (s: GameState) => rulerName(s);
 
 export interface KingAct {
   id: 'cheongdae' | 'jingang' | 'munan' | 'jinheon';

@@ -1,6 +1,6 @@
 import type { Character, FactionId, GameState, RegionId, TraitId } from './types';
 import type { EventDef } from './events/types';
-import { FACTION_META } from './data/meta';
+import { FACTION_META, REGION_META } from './data/meta';
 import { OFFICE_MAP } from './data/offices';
 import { tOf, yearOf } from './calendar';
 import { chance, d6, pick } from './rng';
@@ -455,7 +455,27 @@ export const LATER_SCHEDULE: Scheduled[] = [
       s.realm.treasury -= 100;
     }),
   },
-  { id: 'l_sunjo', at: at(1800, 7), run: (s) => crown(s, '순조') },
+  {
+    id: 'l_sunjo',
+    at: at(1800, 7),
+    run(s) {
+      crown(s, '순조');
+      s.flags.suryeomUntil = tOf(1804, 1);
+      log(s, '[수렴청정] 어린 임금을 대신해 대왕대비 정순왕후가 발을 드리우고 정사를 듣는다. 대비를 따르는 벽파가 조정을 쥔다.', 'history');
+      if (s.factions.noron.active) kingLean(s, 'noron', 8);
+      if (s.factions.nam.active) kingLean(s, 'nam', -10);
+    },
+  },
+  {
+    id: 'l_chinjeong',
+    at: at(1804, 1),
+    run(s) {
+      log(s, '[친정] 대왕대비가 발을 거두고 순조가 친정(親政)을 시작했다.', 'history');
+      kingMood(s, 6);
+      const p = P(s);
+      if (alive(p) && inCourt(p)) notice(s, '친정(親政)', '대왕대비가 수렴을 거두었다. 이제 임금이 몸소 정사를 본다. 다만 임금의 장인 김조순의 집안이 그 곁을 지킨다.', 'history');
+    },
+  },
   {
     id: 'l_sinyu',
     at: at(1801, 2),
@@ -634,11 +654,80 @@ LATER_SCHEDULE.push(
   { id: 'l_bb_1802', at: at(1802, 11), run: (s) => bibyeonJump(s, 15, '척신들이 비변사 당상 자리를 차지하고 서로를 천거해 요직과 인사를 독점한다. 왕은 비변사가 정한 일을 따를 뿐이다.') },
 );
 
+/* ───────── 법전과 역법, 대기근, 문체반정 ───────── */
+LATER_SCHEDULE.push(
+  { id: 'l_siheon', at: at(1653, 1), run: L('서양 역법을 받아들인 시헌력(時憲曆)을 쓰기 시작했다.') },
+  { id: 'l_eulbyeong', at: at(1695, 8), run: L('을병대기근: 해마다 흉년과 역병이 겹쳐 여러 해 동안 백성이 수없이 죽었다.', (s) => {
+    for (const r of Object.values(s.regions)) r.minsim = clamp(r.minsim - 15, 0, 100);
+    s.realm.treasury -= 80;
+  }) },
+  { id: 'l_soktaejeon', at: at(1746, 4), run: L('『경국대전』 이후의 법령을 모아 『속대전(續大典)』을 펴냈다.', (s) => (s.tension = clamp(s.tension - 3, 0, 100))) },
+  { id: 'l_cheonui', at: at(1755, 11), run: L('영조가 신임옥사의 시비를 가린 『천의소감(闡義昭鑑)』을 펴내 노론의 의리를 인정했다.', (s) => {
+    if (s.factions.noron.active) kingLean(s, 'noron', 5);
+    if (s.factions.soron.active) kingLean(s, 'soron', -5);
+  }) },
+  { id: 'l_daejeon', at: at(1785, 9), run: L('『경국대전』과 『속대전』을 하나로 묶은 『대전통편(大典通編)』을 펴냈다.') },
+  playerAt('later_munche', 1792, 10, (s) => inCourt(P(s)) && P(s).rank >= 3, '문체반정: 정조가 패관소품의 가벼운 문체를 금하고 순정한 고문(古文)으로 돌아가라 명했다.'),
+);
+
+/* ───────── 세도: 김조순의 비변사, 세도가의 인사 청탁 ───────── */
+LATER_SCHEDULE.push({
+  id: 'l_josun_bb',
+  at: at(1802, 12),
+  run(s) {
+    const kj = figure(s, 'kim_josun');
+    if (!kj) return;
+    const k = (s.kyeom ??= {});
+    const prev = k.bibyeon_je7 ? s.chars[k.bibyeon_je7.who] : undefined;
+    k.bibyeon_je7 = { who: kj.id, since: s.t };
+    s.flags.kyeomLife_bibyeon_je7 = kj.id;
+    log(s, `[세도] 국구 ${josa(kj.name, '이/가')} 벼슬 없이도 비변사 제조를 겸해 국정을 쥔다. 그는 죽을 때까지 이 자리를 내놓지 않을 것이다.`, 'history');
+    if (prev && isP(s, prev)) notice(s, '비변사에서 밀려남', `${josa(kj.name, '이/가')} 당신이 겸하던 비변사 제조 자리를 차지했다.`, 'danger');
+  },
+});
+
+/** 세도기에 인사를 맡은 플레이어에게 세도가의 청탁이 들어온다 */
+function rollSedoAsk(s: GameState) {
+  if (yearOf(s.t) < 1803 || s.flags.kingStyle !== 'sedo') return;
+  const p = P(s);
+  if (!alive(p) || p.status !== 'active' || !['ijo', 'champan_ijo', 'jeonrang'].includes(p.office ?? '')) return;
+  if (s.pending.length >= 2 || s.t - Number(s.flags.sedoAskAt ?? -999) < 18 || !chance(s, 0.06)) return;
+  const pool = people(s).filter((c) => !isP(s, c) && inCourt(c) && c.faction === 'noron' && c.rank >= 3);
+  if (!pool.length) return;
+  const cand = pool.find((c) => c.clan.startsWith('안동 김')) ?? pick(s, pool);
+  s.flags.sedoAskAt = s.t;
+  pushEvent(s, 'later_sedo_ask', { who: cand.id });
+}
+
+/* ───────── 삼정의 문란: 관찰사에게 닥치는 환곡의 일 ───────── */
+function rollHwangok(s: GameState) {
+  if (s.flags.kingStyle !== 'sedo') return;
+  const p = P(s);
+  if (!alive(p) || p.status !== 'active' || !p.office?.startsWith('gamsa_')) return;
+  if (s.pending.length >= 2 || s.t - Number(s.flags.hwangokAt ?? -999) < 12 || !chance(s, 0.08)) return;
+  s.flags.hwangokAt = s.t;
+  pushEvent(s, 'later_hwangok', { region: p.office.slice(6) });
+}
+
+/* ───────── 암행어사: 당하관이 왕명을 받아 몰래 고을을 살핀다 ───────── */
+function rollAmhaeng(s: GameState) {
+  if (yearOf(s.t) < 1700) return;
+  const p = P(s);
+  if (!alive(p) || p.status !== 'active' || p.rank < 4 || p.rank > 7 || s.player.abroadUntil > s.t) return;
+  if (s.pending.length >= 2 || s.t - Number(s.flags.amhaengAt ?? -999) < 36 || !chance(s, 0.02)) return;
+  s.flags.amhaengAt = s.t;
+  const worst = Object.values(s.regions).filter((r) => r.id !== 'hanseong').sort((a, b) => a.minsim - b.minsim)[0];
+  pushEvent(s, 'later_amhaeng', { region: worst.id });
+}
+
 /** 매달: 인물 등장, 전란 종료, 늘그막의 처리 */
 export function tickLater(s: GameState) {
   if (yearOf(s.t) < 1601) return;
   spawnFigures(s);
   tickLaterWar(s);
+  rollSedoAsk(s);
+  rollHwangok(s);
+  rollAmhaeng(s);
 }
 
 /* ───────── 사건 ───────── */
@@ -860,6 +949,180 @@ export const LATER_EVENTS: Record<string, EventDef> = {
       kingLean(s, 'noron', -2);
       log(s, `${josa(p.name, '이/가')} 세도가의 매관매직을 탄핵하는 상소를 올렸다.`, 'player');
       return '세도가의 매관매직을 들춰냈다. 선비들이 박수를 치지만 세도가는 당신의 이름을 잊지 않을 것이다. (명망 +6, 성심 -10)';
+    },
+  },
+  later_munche: {
+    build: (s) => {
+      const p = P(s);
+      return {
+        title: '문체반정(文體反正)',
+        kind: 'court',
+        text: `정조가 "근래 선비들의 글이 패관소품(稗官小品)에 물들어 경박하다"며 순정한 고문으로 돌아가라 명했다. 박지원의 『열하일기』 같은 글이 화살을 맞고, 이름난 문신들에게 반성문을 지어 바치라는 명이 내렸다. 당신의 글도 도마에 올랐다.${p.traits.includes('writer') ? '\n\n문장가로 이름난 당신의 글은 특히 눈에 띈다.' : ''}`,
+        choices: [
+          { key: 'repent', label: '반성문을 지어 바친다', hint: '성심 +4, 명망 -2' },
+          { key: 'gomun', label: '순정한 고문으로 글을 지어 올린다', hint: `주사위 + (내 학식 ${p.learning} - 임금 학식 9) ≥ 0. 되면 성심 +6, 명망 +2. 안 되면 성심 -3` },
+          { key: 'defend', label: '글은 시대를 따라 변하는 것이라 아뢴다', hint: '명망 +4, 성심 -8' },
+        ],
+      };
+    },
+    resolve(s, _c, key) {
+      const p = P(s);
+      log(s, '문체반정: 정조가 패관소품의 가벼운 문체를 금하고 순정한 고문(古文)으로 돌아가라 명했다.', 'history');
+      if (key === 'repent') {
+        fav(p, 4);
+        pres(p, -2);
+        return '반성문을 지어 바쳤다. 임금이 "이제야 바른 길로 돌아왔다" 했다. (성심 +4, 명망 -2)';
+      }
+      if (key === 'gomun') {
+        const r = d6(s) + p.learning - 9;
+        if (r >= 0) {
+          fav(p, 6);
+          pres(p, 2);
+          return `고문의 법도에 맞춘 글을 올리자 임금이 친히 비점을 찍었다. (판정 ${r}, 성심 +6, 명망 +2)`;
+        }
+        fav(p, -3);
+        return `글을 올렸으나 임금이 "흉내만 냈을 뿐이다" 하고 물렸다. (판정 ${r} < 0, 성심 -3)`;
+      }
+      pres(p, 4);
+      fav(p, -8);
+      log(s, `${josa(p.name, '이/가')} 문체반정에 맞서 글은 시대를 따라 변한다고 아뢰었다.`, 'player');
+      return '물러서지 않았다. 젊은 문인들이 당신을 우러르지만 임금의 낯빛이 차갑다. (명망 +4, 성심 -8)';
+    },
+  },
+  later_sedo_ask: {
+    build: (s, c) => {
+      const who = s.chars[c.who];
+      const kj = figure(s, 'kim_josun');
+      return {
+        title: '세도가의 청탁',
+        kind: 'danger',
+        text: `${kj ? `${kj.name}의 집` : '세도가'}에서 사람이 왔다. "이번 정사(政事)에 ${who.name} 대감을 좋은 자리에 올려 주시면, 대감의 앞길도 평탄할 것입니다."\n\n인사를 맡은 자리에 앉았으니 피할 수 없는 일이다. 거절하면 세도가의 눈 밖에 나고, 들어주면 이름에 흠이 남는다.`,
+        choices: [
+          { key: 'accept', label: `${josa(who.name, '을/를')} 의망에 올린다`, hint: `${who.name} 임용 점수 +8 (6달). 성심 +3, 명망 -2. 50% 확률로 숨은 흠결 「세도가의 청탁」` },
+          { key: 'refuse', label: '공도(公道)를 들어 거절한다', hint: '명망 +2. 절반의 확률로 세도가가 보복한다 (성심 -6, 파직될 수 있다)' },
+          { key: 'expose', label: '세도가의 인사 청탁을 들춰 상소한다', hint: '명망 +5, 성심 -8. 40% 확률로 세도가의 역공에 파직된다', disabled: inCourt(P(s)) ? undefined : '조정에 있어야 한다' },
+        ],
+      };
+    },
+    resolve(s, c, key) {
+      const p = P(s);
+      const who = s.chars[c.who];
+      if (key === 'accept') {
+        if (alive(who)) s.recs[who.id] = s.t + 6;
+        fav(p, 3);
+        pres(p, -2);
+        if (s.factions.noron.active) kingLean(s, 'noron', 2);
+        if (chance(s, 0.5)) addFlaw(s, p, '세도가의 청탁', false);
+        return `${josa(who.name, '을/를')} 의망에 올렸다. 세도가에서 흡족해한다는 말이 들린다. (성심 +3, 명망 -2)`;
+      }
+      if (key === 'refuse') {
+        pres(p, 2);
+        if (chance(s, 0.5)) {
+          fav(p, -6);
+          if (p.office && chance(s, 0.25)) {
+            vacate(s, p);
+            return '청탁을 거절했다. 얼마 뒤 사소한 허물을 잡혀 자리에서 밀려났다. 세도가의 보복이다. (명망 +2, 성심 -6)';
+          }
+          return '청탁을 거절했다. 세도가에서 당신을 두고 「눈치 없는 자」라 한다는 말이 들린다. (명망 +2, 성심 -6)';
+        }
+        return '청탁을 거절했다. 다행히 별일은 없었다. (명망 +2)';
+      }
+      pres(p, 5);
+      fav(p, -8);
+      if (s.factions.noron.active) kingLean(s, 'noron', -3);
+      log(s, `${josa(p.name, '이/가')} 세도가의 인사 청탁을 들춰 상소했다.`, 'player');
+      if (p.office && chance(s, 0.4)) {
+        vacate(s, p);
+        return '상소를 올렸으나 세도가의 역공에 오히려 자리에서 밀려났다. 사림은 당신을 의기 있는 선비라 부른다. (명망 +5, 성심 -8)';
+      }
+      return '세도가의 청탁을 들춰냈다. 조정이 술렁였지만 세도가는 끄떡없다. (명망 +5, 성심 -8)';
+    },
+  },
+  later_hwangok: {
+    build: (s, c) => {
+      const r = s.regions[c.region as RegionId];
+      return {
+        title: '환곡(還穀)의 문란',
+        kind: 'danger',
+        text: `${REGION_META[c.region as RegionId].short}의 고을을 돌아보니 환곡 장부가 엉망이다. 수령과 아전들이 곡식을 빌려주지도 않고 이자만 거두는 백징(白徵), 겨와 모래를 섞어 빌려주는 분석(分石)이 판을 친다. 굶주린 백성들이 감영 앞에 모여 있다. (민심 ${Math.round(r.minsim)})\n\n수령들 가운데 몇은 세도가에 줄이 닿아 있다.`,
+        choices: [
+          { key: 'purge', label: '장부를 뒤져 탐관오리를 파직한다', hint: '이 도 민심 +8, 명망 +4. 세도가의 눈 밖에 난다 (성심 -5)' },
+          { key: 'relief', label: '감영 곡식을 풀어 백성부터 구한다', hint: '이 도 민심 +5, 국고 -20' },
+          { key: 'cover', label: '조정에는 무사하다고 보고한다', hint: '성심 +2. 이 도 민심 -6. 30% 확률로 숨은 흠결 「환곡 문란 은폐」' },
+        ],
+      };
+    },
+    resolve(s, c, key) {
+      const p = P(s);
+      const r = s.regions[c.region as RegionId];
+      if (key === 'purge') {
+        r.minsim = clamp(r.minsim + 8, 0, 100);
+        pres(p, 4);
+        fav(p, -5);
+        r.inspectUntil = s.t + 12;
+        log(s, `${josa(p.name, '이/가')} ${REGION_META[c.region as RegionId].short}의 환곡을 농간한 수령들을 파직했다.`, 'player');
+        return '탐관오리들을 파직하고 장부를 바로잡았다. 백성들이 감영 앞에서 절을 한다. 세도가에서는 불쾌해한다. (민심 +8, 명망 +4, 성심 -5)';
+      }
+      if (key === 'relief') {
+        r.minsim = clamp(r.minsim + 5, 0, 100);
+        s.realm.treasury -= 20;
+        return '감영의 곡식을 풀어 굶주린 백성을 먹였다. (민심 +5, 국고 -20)';
+      }
+      r.minsim = clamp(r.minsim - 6, 0, 100);
+      fav(p, 2);
+      if (chance(s, 0.3)) addFlaw(s, p, '환곡 문란 은폐', false);
+      return '조정에 무사하다고 보고했다. 백성의 원망이 깊어 간다. (민심 -6, 성심 +2)';
+    },
+  },
+  later_amhaeng: {
+    build: (s, c) => {
+      const r = s.regions[c.region as RegionId];
+      const p = P(s);
+      return {
+        title: '암행어사(暗行御史)',
+        kind: 'personal',
+        text: `밤중에 승지가 봉서(封書) 한 통과 마패를 건넨다. 성 밖에 나가서야 열어 보라는 왕명이다. 봉서를 뜯으니 「${REGION_META[c.region as RegionId].short}로 가서 수령들의 잘잘못을 살피라」 하였다. (민심 ${Math.round(r.minsim)})\n\n해어진 도포에 패랭이를 쓰고 길을 나서야 한다. 석 달 동안 조정을 비운다.`,
+        choices: [
+          { key: 'go', label: '봉서를 받들어 길을 떠난다', hint: `주사위 + 정치력 ${p.politics} ≥ 7. 되면 탐관을 봉고파직해 이 도 민심 +6, 은결 -3%p, 명망 +5, 성심 +4. 안 되면 명망 +1. 석 달 동안 조정을 비운다` },
+          { key: 'bribe', label: '길을 떠나되 수령들의 뇌물을 받는다', hint: '재산 +40. 이 도 민심 -3. 숨은 흠결 「어사의 수뢰」. 석 달 동안 조정을 비운다' },
+          { key: 'decline', label: '병을 핑계로 사양한다', hint: '성심 -3' },
+        ],
+      };
+    },
+    resolve(s, c, key) {
+      const p = P(s);
+      const rid = c.region as RegionId;
+      const r = s.regions[rid];
+      const where = REGION_META[rid].short;
+      if (key === 'decline') {
+        fav(p, -3);
+        return '병을 핑계로 봉서를 돌려보냈다. 임금이 실망했다. (성심 -3)';
+      }
+      s.player.abroadUntil = s.t + 3;
+      if (key === 'bribe') {
+        p.wealth += 40;
+        r.minsim = clamp(r.minsim - 3, 0, 100);
+        addFlaw(s, p, '어사의 수뢰', false);
+        return `${where}의 수령들이 바치는 것을 받고 눈감아 주었다. 백성의 원망은 그대로다. (재산 +40, 숨은 흠결)`;
+      }
+      const roll = d6(s) + p.politics;
+      if (roll >= 7) {
+        r.minsim = clamp(r.minsim + 6, 0, 100);
+        r.hidden = Math.max(0, r.hidden - 0.03);
+        r.inspectUntil = s.t + 12;
+        pres(p, 5);
+        fav(p, 4);
+        s.player.deeds.push(`${yearOf(s.t)} 암행어사로 ${where}에 출도`);
+        log(s, `암행어사 ${josa(p.name, '이/가')} ${where}에 출도해 탐관오리를 봉고파직했다.`, 'player');
+        // 세도가에 줄이 닿은 수령을 친 뒤에는 뒤탈이 있다
+        if (s.flags.kingStyle === 'sedo' && chance(s, 0.25)) {
+          fav(p, -6);
+          return `"암행어사 출도야!" 역졸들의 외침에 수령이 달아났다. 창고를 봉하고 탐관을 파직했다. 그런데 그 수령은 세도가의 사람이었다. 돌아오자 찬바람이 분다. (판정 ${roll}, 민심 +6, 명망 +5, 성심 -2)`;
+        }
+        return `"암행어사 출도야!" 역졸들의 외침에 수령이 달아났다. 창고를 봉하고 탐관을 파직했다. 백성들이 길에 나와 절한다. (판정 ${roll}, 민심 +6, 명망 +5, 성심 +4)`;
+      }
+      pres(p, 1);
+      return `석 달을 돌았으나 수령들이 낌새를 채고 장부를 감추었다. 큰 허물은 잡지 못했다. (판정 ${roll} < 7, 명망 +1)`;
     },
   },
   later_imo: {

@@ -165,6 +165,15 @@ const TOPICS: Topic[] = [
   { id: 'later_tang', title: '탕평', ask: '"노론과 소론을 고루 쓰려 한다. 경은 탕평이 옳다고 보는가, 의리를 흐린다고 보는가?"', risk: 1, from: [1725, 1], to: [1800, 6] },
   { id: 'later_seohak', title: '서학(西學)', ask: '"천주학이 선비들 사이에 번진다 한다. 엄금해야 하는가, 학문으로 다스려야 하는가?"', risk: 2, from: [1785, 1], to: [1821, 12] },
   { id: 'later_sedo', title: '외척의 세도', ask: '"과인의 장인 집안을 두고 말이 많다. 경은 어찌 생각하는가?"', risk: 3, from: [1803, 1], to: [1821, 12] },
+  { id: 'later_restore', title: '전후의 복구', ask: '"전란으로 땅은 묵고 호적은 흩어졌다. 무엇부터 바로잡아야 하는가?"', risk: 0, from: [1599, 1], to: [1610, 12] },
+  { id: 'later_gongsin', title: '반정 공신', ask: '"반정에 공을 세운 이들이 권세를 부린다는 말이 들린다. 과인이 그들을 어찌 대해야 하는가?"', risk: 2, from: [1623, 6], to: [1640, 12] },
+  { id: 'later_daedong', title: '대동법의 확대', ask: '"대동법을 온 나라에 넓히자는 말과, 지주들이 견디지 못한다는 말이 함께 들린다. 경의 생각은?"', risk: 1, from: [1623, 1], to: [1708, 12] },
+  { id: 'later_bukbeol', title: '북벌', ask: '"군사를 길러 청을 치고 치욕을 씻으려 한다. 경은 이것이 될 일이라 보는가?"', risk: 2, from: [1649, 6], to: [1659, 4] },
+  { id: 'later_yangyeok', title: '양역의 폐단', ask: '"양인이 군포를 두 필씩 내느라 도망치는 자가 많다. 호포와 결포 가운데 무엇이 옳은가?"', risk: 1, from: [1730, 1], to: [1752, 12] },
+  { id: 'later_sado', title: '동궁의 행실', ask: '"세자의 행실을 두고 흉흉한 말이 들린다. 경은 들은 바가 있는가?"', risk: 3, from: [1755, 1], to: [1762, 4] },
+  { id: 'later_uiri', title: '임오년의 의리', ask: '"과인은 사도세자의 아들이다. 경은 임오년의 일을 어떻게 보는가?"', risk: 3, from: [1776, 4], to: [1790, 12] },
+  { id: 'later_hwaseong', title: '화성과 장용영', ask: '"화성을 쌓고 장용영을 키우려 한다. 나라 살림이 이를 버티겠는가?"', risk: 1, from: [1789, 1], to: [1800, 6] },
+  { id: 'later_seobuk', title: '서북의 민심', ask: '"평안도 백성의 원망이 깊다 한다. 그 까닭이 무엇이라 보는가?"', risk: 2, from: [1808, 1], to: [1821, 12] },
 ];
 
 const HONGMUN = ['bujehak', 'gyori1', 'gyori2', 'eunggyo', 'daejehak'];

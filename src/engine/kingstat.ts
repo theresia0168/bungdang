@@ -32,7 +32,14 @@ const PROFILES: Record<string, KingProfile> = {
 
 const kingName = (s: GameState) => s.chars[String(s.flags.kingId ?? 'seonjo')]?.name ?? '선조';
 
+/** 수렴청정 중인가: 어린 임금 대신 대비가 발 뒤에서 정사를 듣는다 */
+export const regency = (s: GameState) => typeof s.flags.suryeomUntil === 'number' && s.t < (s.flags.suryeomUntil as number);
+
+/** 수렴청정 중이면 「대왕대비」, 아니면 임금의 이름 */
+export const rulerName = (s: GameState) => (regency(s) ? '대왕대비' : kingName(s));
+
 export function kingProfile(s: GameState): KingProfile {
+  if (regency(s)) return { learning: 5, politics: 7, zeal: 0, note: '대왕대비 정순왕후가 발 뒤에서 정사를 듣는다(수렴청정). 어린 임금 대신 대비의 뜻을 살펴야 한다. 대비는 벽파를 감싸고 서학을 미워한다.' };
   return PROFILES[kingName(s)] ?? { learning: 5, politics: 5, zeal: 0, note: '' };
 }
 

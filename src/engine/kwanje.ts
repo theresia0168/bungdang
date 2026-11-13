@@ -138,23 +138,55 @@ function warMerit(s: GameState, c: Character, o: OfficeDef) {
 /** 겸직: 자격을 잃은 이는 내려놓고, 빈 겸직은 채운다 */
 function tickKyeom(s: GameState) {
   const k = kyeomOf(s);
+  // 예전 저장: 김조순의 종신 자리를 임명 제조로 옮긴다
+  for (const old of ['bibyeon_je1', 'bibyeon_je3']) {
+    if (typeof s.flags[`kyeomLife_${old}`] !== 'string') continue;
+    const who = s.flags[`kyeomLife_${old}`] as string;
+    delete s.flags[`kyeomLife_${old}`];
+    s.flags.kyeomLife_bibyeon_je7 = who;
+    k.bibyeon_je7 = { who, since: k[old]?.since ?? s.t };
+    delete k[old];
+  }
+  // 당연직: 그 자리에 앉은 이가 저절로 겸한다
+  const hmEx = holderMap(s);
+  for (const o of OFFICES) {
+    if (!o.exOfficio) continue;
+    const h = officeOpen(s, o) && officeOpen(s, OFFICE_MAP[o.exOfficio]) ? hmEx[o.exOfficio] : undefined;
+    const cur = k[o.id];
+    if (!h) {
+      if (cur) delete k[o.id];
+      continue;
+    }
+    if (cur?.who === h.id) continue;
+    k[o.id] = { who: h.id, since: s.t };
+    if (isP(s, h)) notice(s, '당연직 겸직', `${OFFICE_MAP[o.exOfficio].name}로서 ${josa(o.name, '을/를')} 겸한다. ${o.desc}`, 'court');
+  }
   for (const [id, v] of Object.entries(k)) {
+    if (OFFICE_MAP[id]?.exOfficio) continue;
     const o = OFFICE_MAP[id];
     const c = s.chars[v.who];
     if (!o || !officeOpen(s, o)) {
       delete k[id];
       continue;
     }
+    const life = s.flags[`kyeomLife_${id}`];
+    if (life && life === v.who) {
+      if (c && alive(c) && c.status !== 'exiled') continue;
+      delete s.flags[`kyeomLife_${id}`];
+    }
     const expired = s.t - v.since >= o.term && chance(s, 0.08);
-    if (!c || !canKyeom(s, c, o) || expired) {
+    const doubled = Object.entries(k).some(([x, w]) => x !== id && w.who === v.who && OFFICE_MAP[x]?.exOfficio && OFFICE_MAP[x]?.dept === o.dept);
+    if (!c || !canKyeom(s, c, o) || expired || doubled) {
       delete k[id];
       if (c && isP(s, c) && alive(c)) notice(s, '겸직을 내려놓음', `${o.name} 겸직을 내려놓았다.`, 'court');
     }
   }
   const hm = holderMap(s);
   for (const o of openKyeom(s)) {
-    if (k[o.id]) continue;
-    const taken = new Set(Object.values(k).map((v) => v.who));
+    if (k[o.id] || o.exOfficio) continue;
+    // 당연직은 다른 겸직을 막지 않는다 (정승이 도제조이면서 도체찰사를 겸할 수 있다)
+    // 다만 비변사 안에서는 한 사람이 두 자리를 겸하지 않는다
+    const taken = new Set(Object.entries(k).filter(([id]) => !OFFICE_MAP[id]?.exOfficio || OFFICE_MAP[id]?.dept === o.dept).map(([, v]) => v.who));
     let best: Character | undefined;
     let bs = -Infinity;
     for (const c of people(s)) {
@@ -225,7 +257,8 @@ export function tickDept(s: GameState) {
   const p = P(s);
   if (!alive(p) || p.status !== 'active' || s.pending.length >= 2 || monthsSince(s, 'deptEvAt') < 8) return;
   const mates: Character[] = [];
-  for (const d of deptsOf(s, p)) for (const c of deptMembers(s, d)) if (c.id !== p.id && !mates.includes(c)) mates.push(c);
+  // 실권 없는 중추부에서는 다툴 일도, 함께 세울 공도 없다
+  for (const d of deptsOf(s, p)) if (d !== 'jungchubu') for (const c of deptMembers(s, d)) if (c.id !== p.id && !mates.includes(c)) mates.push(c);
   if (!mates.length || !chance(s, 0.035)) return;
   const c = pick(s, mates);
   const op = opinion(s, c, p);
@@ -425,6 +458,8 @@ export function authorityBase(s: GameState): number {
   const v = bibyeonPower(s);
   let base = -Math.max(0, v - 35) * 0.4;
   if (s.flags.kingStyle === 'tangpyeong') base += 6;
+  // 수렴청정 아래에서는 임금의 권위가 더 낮다
+  if (typeof s.flags.suryeomUntil === 'number' && s.t < (s.flags.suryeomUntil as number)) base -= 6;
   return Math.round(base * 10) / 10;
 }
 

@@ -182,9 +182,14 @@ export function appointParts(s: GameState, c: Character, o: OfficeDef, hm = hold
   }
   if ((s.recs[c.id] ?? -1) > s.t) parts.push({ label: '천거', value: 8 });
   if (c.tags.includes('kingsman')) parts.push({ label: '왕의 사람', value: 2 });
+  // 쌍거호대(雙擧互對): 탕평하는 임금은 한 관서의 판서와 참판에 서로 다른 당 사람을 짝지어 앉힌다
+  if (s.flags.kingStyle === 'tangpyeong' && c.faction !== 'none' && o.dept && ['ijo', 'hojo', 'yejo', 'byeongjo', 'hyeongjo', 'gongjo'].includes(o.dept)) {
+    const mate = hm[o.id.startsWith('champan_') ? o.dept : `champan_${o.dept}`];
+    if (mate && mate.id !== c.id && mate.faction !== 'none') parts.push(mate.faction === c.faction ? { label: '쌍거호대: 같은 당이 한 관서를 쥠', value: -3 } : { label: '쌍거호대: 다른 당과 짝을 이룸', value: 3 });
+  }
   // 비변사가 국정을 쥐면 도제조가 인사에 입김을 넣는다
   const bv = bibyeonPower(s);
-  const dj = bv >= 45 ? kyeomHolder(s, 'bibyeon_do') : undefined;
+  const dj = bv >= 45 ? kyeomHolder(s, 'bibyeon_do1') : undefined;
   if (dj && dj.id !== c.id && o.rank <= 4) {
     const w = Math.min(1, (bv - 45) / 35);
     const v = Math.round((opinion(s, dj, c) / 15) * w * 10) / 10;

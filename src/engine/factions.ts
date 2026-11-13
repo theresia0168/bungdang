@@ -21,7 +21,7 @@ export function officePower(s: GameState): Record<FactionId, number> {
   for (const [id, v] of Object.entries(s.kyeom ?? {})) {
     const c = s.chars[v.who];
     const o = OFFICE_MAP[id];
-    if (c && o && c.status === 'active') p[c.faction] += o.weight * bibyeonWeight(s, o);
+    if (c && o && (c.status === 'active' || c.status === 'idle')) p[c.faction] += o.weight * bibyeonWeight(s, o);
   }
   return p;
 }

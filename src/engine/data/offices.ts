@@ -41,6 +41,8 @@ export interface OfficeDef {
   concurrent?: number;
   /** 군문의 자리 */
   military?: boolean;
+  /** 당연직(例兼): 이 자리에 앉은 이가 저절로 겸한다 */
+  exOfficio?: string;
   /** 허직(虛職): 실권 없이 녹봉으로 대우하는 자리. 보직을 기다리는 당상관만 앉고, 요직으로 옮기는 데 걸림이 없다 */
   sinecure?: boolean;
 }
@@ -167,8 +169,17 @@ export const OFFICES: OfficeDef[] = [
   { id: 'busengji2', dept: 'seungjeongwon', name: '우부승지', group: 'court', rank: 3, weight: 1, term: 10, desc: '승정원 승지.' },
   { id: 'jwayun', dept: 'hanseongbu', name: '한성부 좌윤', group: 'court', rank: 3, weight: 1, term: 14, desc: '한성판윤을 보좌한다.' },
   // ── 겸직: 비변사·선혜청 ──
-  { id: 'bibyeon_do', dept: 'bibyeonsa', name: '비변사 도제조', group: 'court', rank: 1, weight: 3, term: 36, concurrent: 1, desc: '정승이 겸한다. 변방과 군국(軍國)의 일을 총괄한다.' },
-  ...slots(3, { id: 'bibyeon_je', dept: 'bibyeonsa', name: '비변사 제조', group: 'court', rank: 2, weight: 2, term: 24, concurrent: 2, desc: '판서·대신이 겸한다. 해마다 비변사 회의에서 방비의 큰 줄기를 정한다.' }),
+  // 비변사 11석: 도제조는 삼정승이, 제조 여섯은 병조·호조·이조판서와 훈련·어영대장, 대제학이 당연직으로 겸하고, 나머지 둘은 임명한다
+  { id: 'bibyeon_do1', dept: 'bibyeonsa', name: '비변사 도제조', group: 'court', rank: 1, weight: 3, term: 36, concurrent: 1, exOfficio: 'yeonguijeong', desc: '영의정이 당연직으로 겸한다. 변방과 군국(軍國)의 일을 총괄한다.' },
+  { id: 'bibyeon_do2', dept: 'bibyeonsa', name: '비변사 도제조', group: 'court', rank: 1, weight: 3, term: 36, concurrent: 1, exOfficio: 'jwauijeong', desc: '좌의정이 당연직으로 겸한다.' },
+  { id: 'bibyeon_do3', dept: 'bibyeonsa', name: '비변사 도제조', group: 'court', rank: 1, weight: 3, term: 36, concurrent: 1, exOfficio: 'uuijeong', desc: '우의정이 당연직으로 겸한다.' },
+  { id: 'bibyeon_je1', dept: 'bibyeonsa', name: '비변사 제조', group: 'court', rank: 2, weight: 2, term: 36, concurrent: 2, exOfficio: 'byeongjo', desc: '병조판서가 당연직으로 겸한다. 해마다 비변사 회의에서 방비의 큰 줄기를 정한다.' },
+  { id: 'bibyeon_je2', dept: 'bibyeonsa', name: '비변사 제조', group: 'court', rank: 2, weight: 2, term: 36, concurrent: 2, exOfficio: 'hullyeon_dj', desc: '훈련대장이 당연직으로 겸한다.' },
+  { id: 'bibyeon_je3', dept: 'bibyeonsa', name: '비변사 제조', group: 'court', rank: 2, weight: 2, term: 36, concurrent: 2, exOfficio: 'hojo', desc: '호조판서가 당연직으로 겸한다. 나라 살림을 비변사에서 의논한다.' },
+  { id: 'bibyeon_je4', dept: 'bibyeonsa', name: '비변사 제조', group: 'court', rank: 2, weight: 2, term: 36, concurrent: 2, exOfficio: 'ijo', desc: '이조판서가 당연직으로 겸한다. 인사를 비변사에서 의논한다.' },
+  { id: 'bibyeon_je5', dept: 'bibyeonsa', name: '비변사 제조', group: 'court', rank: 2, weight: 2, term: 36, concurrent: 2, exOfficio: 'eoyeong_dj', desc: '어영대장이 당연직으로 겸한다.' },
+  { id: 'bibyeon_je6', dept: 'bibyeonsa', name: '비변사 제조', group: 'court', rank: 2, weight: 2, term: 36, concurrent: 2, exOfficio: 'daejehak', desc: '대제학이 당연직으로 겸한다. 사대교린의 문서를 맡는다.' },
+  ...([7, 8] as const).map((n): OfficeDef => ({ id: `bibyeon_je${n}`, dept: 'bibyeonsa', name: '비변사 제조', group: 'court', rank: 2, weight: 2, term: 24, concurrent: 2, desc: '판서·대신 가운데 임명해 겸하게 한다(유사당상). 해마다 비변사 회의에서 방비의 큰 줄기를 정한다.' })),
   { id: 'seonhye', dept: 'seonhyecheong', name: '선혜청 당상', group: 'court', rank: 2, weight: 2, term: 24, concurrent: 2, from: [1608, 5], desc: '대동미를 맡는 겸직. 호조와 함께 나라 살림을 쥔다.' },
   // ── 군문 ──
   { id: 'hullyeon_dj', dept: 'hullyeon', name: '훈련대장', group: 'court', rank: 2, weight: 4, term: 30, law: 'hullyeon', military: true, desc: '훈련도감의 장. 도성의 군권을 쥔다. 반정이 일면 그의 칼끝이 향방을 가른다.' },
