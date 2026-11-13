@@ -232,7 +232,8 @@ export function gunmunSway(s: GameState, coupFaction: Character['faction']): [nu
 export function wonsuBonus(s: GameState): number {
   const h = holderMap(s).dowonsu;
   if (!h) return 0;
-  return h.politics >= 7 ? 1 : h.politics <= 3 ? -1 : 0;
+  const v = (h.politics >= 7 ? 1 : h.politics <= 3 ? -1 : 0) + (h.traits.includes('martial') ? 1 : 0);
+  return Math.max(-1, Math.min(2, v));
 }
 
 /* ───────── 같은 관서 안의 다툼과 협력 ───────── */

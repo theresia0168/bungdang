@@ -168,7 +168,7 @@ export const WANG_EVENTS: Record<string, EventDef> = {
       const k = kingProfile(s);
       if (key === 'sijeong') {
         s.player.exp.politics += 3;
-        const r = d6(s) + p.politics - k.politics + (p.favor >= 40 ? 1 : 0);
+        const r = d6(s) + p.politics - k.politics + (p.favor >= 40 ? 1 : 0) + (p.traits.includes('eloquent') ? 1 : 0);
         if (r >= 2) {
           fav(p, 4);
           return `시정의 득실을 아뢰자 ${josa(kn, '이/가')} "경의 말이 옳다" 하며 승지에게 받아 적게 했다. (판정 ${r}, 성심 +4)`;
@@ -195,7 +195,7 @@ export const WANG_EVENTS: Record<string, EventDef> = {
       }
       if (key === 'defend' && p.faction !== 'none') {
         const need = (s.king.lean[p.faction] ?? 0) < 0 ? 4 : 3;
-        const r = d6(s) + p.politics - k.politics;
+        const r = d6(s) + p.politics - k.politics + (p.traits.includes('eloquent') ? 1 : 0);
         if (r >= need) {
           kingLean(s, p.faction, 5);
           return `${FACTION_META[p.faction].name}이 나라를 위하는 마음을 아뢰었다. ${kn}의 표정이 누그러졌다. (판정 ${r}, 왕이 당을 보는 마음 +5)`;
@@ -279,7 +279,7 @@ export const WANG_EVENTS: Record<string, EventDef> = {
       const p = P(s);
       if (key === 'bow') {
         pres(p, 2);
-        fav(p, 1);
+        fav(p, p.traits.includes('loyal') ? 3 : 1);
         return '사은숙배했다. (명망 +2, 성심 +1)';
       }
       pres(p, 3);
@@ -309,7 +309,7 @@ export const WANG_EVENTS: Record<string, EventDef> = {
       const p = P(s);
       if (key === 'daejoe') {
         pres(p, -1);
-        fav(p, 5);
+        fav(p, p.traits.includes('loyal') ? 8 : 5);
         return '대궐 앞에 엎드려 대죄했다. 사흘 만에 "대죄하지 말라"는 명이 내렸다. (성심 +5)';
       }
       if (key === 'explain') {

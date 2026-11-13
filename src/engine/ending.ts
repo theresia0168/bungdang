@@ -38,6 +38,7 @@ function breakdownOf(s: GameState, withLineage = true) {
     { label: '당내 영향력', value: Math.round(influence(s, p)) },
     { label: '살아서 1821년을 맞음', value: survived ? 20 : 0 },
     { label: '과거 급제', value: p.tags.includes('passed') ? 10 : 0 },
+    { label: '청백리 녹선', value: p.tags.includes('cheongbaek') ? 15 : 0 },
     { label: '급제한 문인', value: Object.values(s.chars).filter((c) => c.teacher === p.id).length * 6 },
     { label: '혼맥', value: pl.stats.marriages * 5 },
     { label: `이룬 뜻 (${pl.goalsDone.length})`, value: pl.goalsDone.length * GOAL_REWARD },

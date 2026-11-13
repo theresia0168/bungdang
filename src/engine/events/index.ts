@@ -71,6 +71,10 @@ const GREED_LABEL = /(챙긴|착복|몫을|뇌물|사례를 받|나누어 받|�
 const COVER_LABEL = /(눈감아|못 본 척|덮어 둔다|입을 막)/;
 const FRAME_LABEL = /(얽어 넣|날조|모함)/;
 const GIVE_LABEL = /(사재|털어|내놓|재물을 들여|\(재산 \d+\))/;
+const BOLD_LABEL = /(직언|거듭 간|들춰|정면으로|맞선다|탄핵한다|구명한다|곧게 간)/;
+const RISK_LABEL = /(목숨을 걸고|거듭 간|정면으로)/;
+const BOW_LABEL = /(아첨|뜻에 맞춘|뜻에 맞추어|반성문|사죄|대죄|한발 물러|양보)/;
+const BETRAY_LABEL = /(반정에 가담|밀고|흘린다|궁중에 흘)/;
 
 function bindByTraits(s: GameState, choices: Choice[]): Choice[] {
   const p = P(s);
@@ -85,6 +89,10 @@ function bindByTraits(s: GameState, choices: Choice[]): Choice[] {
     else if ((gain || COVER_LABEL.test(c.label) || FRAME_LABEL.test(c.label)) && has('upright')) why = '강직한 성품이 허락하지 않는다';
     else if (FRAME_LABEL.test(c.label) && has('mild')) why = '온건한 성품이 허락하지 않는다';
     else if (GIVE_LABEL.test(c.label) && !/재산 \+/.test(c.hint ?? '') && has('greedy')) why = '재물을 내놓기가 아까워 차마 못 하겠다';
+    else if (BOLD_LABEL.test(c.label) && has('timid')) why = '소심한 성품이 허락하지 않는다';
+    else if (RISK_LABEL.test(c.label) && has('cautious')) why = '신중한 성품이 허락하지 않는다';
+    else if (BOW_LABEL.test(c.label) && has('arrogant')) why = '오만한 성품이 허락하지 않는다';
+    else if (BETRAY_LABEL.test(c.label) && has('loyal')) why = '충직한 성품이 허락하지 않는다';
     return why ? { ...c, disabled: why } : c;
   });
   return out.some((c) => !c.disabled) ? out : choices;

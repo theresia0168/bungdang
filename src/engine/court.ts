@@ -182,6 +182,9 @@ export function appointParts(s: GameState, c: Character, o: OfficeDef, hm = hold
   }
   if ((s.recs[c.id] ?? -1) > s.t) parts.push({ label: '천거', value: 8 });
   if (c.tags.includes('kingsman')) parts.push({ label: '왕의 사람', value: 2 });
+  // 청렴한 이는 언관·인사·형옥·감사 자리에 믿고 쓴다
+  if (c.traits.includes('clean') && (o.samsa || o.cheongyo || o.id === 'ijo' || o.id === 'hyeongjo' || o.group === 'gamsa')) parts.push({ label: '청백(淸白)의 이름', value: 2 });
+  if (o.military && c.traits.includes('martial')) parts.push({ label: '무재(武才)', value: 3 });
   // 쌍거호대(雙擧互對): 탕평하는 임금은 한 관서의 판서와 참판에 서로 다른 당 사람을 짝지어 앉힌다
   if (s.flags.kingStyle === 'tangpyeong' && c.faction !== 'none' && o.dept && ['ijo', 'hojo', 'yejo', 'byeongjo', 'hyeongjo', 'gongjo'].includes(o.dept)) {
     const mate = hm[o.id.startsWith('champan_') ? o.dept : `champan_${o.dept}`];
@@ -227,6 +230,7 @@ function fallbackFor(s: GameState, o: OfficeDef): Character {
 
 export function fillVacancies(s: GameState, max = 6) {
   let hm = holderMap(s);
+  vetoedMonth.clear();
   const vac = openOffices(s)
     .filter((o) => !hm[o.id] && !s.flags[`reserve_${o.id}`])
     .sort((a, b) => (a.sinecure ? 1 : 0) - (b.sinecure ? 1 : 0) || a.rank - b.rank);
@@ -266,9 +270,14 @@ export function fillVacancies(s: GameState, max = 6) {
         if (r) best = r;
       } else best = npcNominate(s, o, hm, pool.length ? pool : people(s));
     }
+    // 왕이 물리친 사람은 이 자리에 1년 동안 다시 오르지 못한다
+    const rj = typeof s.flags[`rejected_${o.id}`] === 'string' ? (s.flags[`rejected_${o.id}`] as string).split(':') : null;
+    const banned = rj && Number(rj[1]) > s.t ? rj[0] : undefined;
+    const vetoed = rejectedNow;
+    rejectedNow = undefined;
     if (!best)
       for (const c of pool.length ? pool : people(s)) {
-        if (!eligible(s, c, o)) continue;
+        if (!eligible(s, c, o) || c.id === banned || vetoedMonth.has(c.id)) continue;
         const sc = appointScore(s, c, o, hm);
         if (sc > bs) {
           bs = sc;
@@ -276,6 +285,10 @@ export function fillVacancies(s: GameState, max = 6) {
         }
       }
     if (!best) best = fallbackFor(s, o);
+    if (vetoed && best.id !== vetoed && o.rank <= 2) {
+      const ijo = hm['ijo'];
+      log(s, `[인사] ${ijo ? `이조판서 ${josa(ijo.name, '이/가')}` : '이조가'} ${o.name}에 ${josa(s.chars[vetoed]?.name ?? '', '을/를')} 의망했으나 왕이 물리치고, 특지(特旨)로 ${josa(best.name, '을/를')} 골랐다.`, 'court');
+    }
     if (isP(s, best)) {
       s.flags[`reserve_${o.id}`] = true;
       pushEvent(s, 'appointment_offer', { office: o.id });
@@ -337,8 +350,10 @@ export const raceFor = (s: GameState, officeId: string) => s.races.find((r) => r
 
 function startRace(s: GameState, o: OfficeDef, holder: Character): boolean {
   const hm = holderMap(s);
+  // 다른 자리 경쟁에 이미 거론되는 이는 겹쳐 거론하지 않는다
+  const busy = new Set(s.races.flatMap((r) => [...r.candidates, ...(r.nominee ? [r.nominee] : [])]));
   const pool = people(s)
-    .filter((c) => c.id !== holder.id && eligible(s, c, o))
+    .filter((c) => c.id !== holder.id && !busy.has(c.id) && eligible(s, c, o))
     .map((c) => [c, appointParts(s, c, o, hm).reduce((a, x) => a + x.value, 0)] as const)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 3)
@@ -545,6 +560,11 @@ export function nominate(s: GameState, officeId: string, candId: string): string
 
 /* ───────── NPC 이조의 의망 ───────── */
 
+/** 왕이 방금 물리친 의망 대상: 같은 자리에 곧바로 그를 앉히지 않는다 */
+let rejectedNow: string | undefined;
+/** 이번 달 왕이 물리친 사람들: 그달에는 어느 자리에도 오르지 못한다 */
+const vetoedMonth = new Set<string>();
+
 /** NPC 이조판서(삼사·청요직은 전랑)가 사람을 골라 올린다. 왕이 물리치면 undefined */
 function npcNominate(s: GameState, o: OfficeDef, hm: Record<string, Character>, pool: Character[]): Character | undefined {
   const jr = hm['jeonrang'];
@@ -553,7 +573,7 @@ function npcNominate(s: GameState, o: OfficeDef, hm: Record<string, Character>, 
   let best: Character | undefined;
   let bs = -Infinity;
   for (const c of pool) {
-    if (c.id === who.id || !eligible(s, c, o)) continue;
+    if (c.id === who.id || !eligible(s, c, o) || vetoedMonth.has(c.id)) continue;
     const sc = appointScore(s, c, o, hm) + (c.faction !== 'none' && c.faction === who.faction ? 3 : 0) + opinion(s, who, c) / 10;
     if (sc > bs) {
       bs = sc;
@@ -565,7 +585,9 @@ function npcNominate(s: GameState, o: OfficeDef, hm: Record<string, Character>, 
   if (best.faction !== 'none' && best.faction === who.faction && (powerShare(s)[best.faction] ?? 0) > 0.5) ch -= 0.15;
   const title = OFFICE_MAP[who.office ?? '']?.name ?? '이조';
   if (!chance(s, Math.max(0.1, Math.min(0.95, ch)))) {
-    if (o.rank <= 2) log(s, `[인사] ${title} ${josa(who.name, '이/가')} ${o.name}에 ${josa(best.name, '을/를')} 의망했으나 왕이 물리쳤다.`, 'court');
+    rejectedNow = best.id;
+    vetoedMonth.add(best.id);
+    s.flags[`rejected_${o.id}`] = `${best.id}:${s.t + 12}`;
     return undefined;
   }
   if (isP(s, best)) notice(s, '이조의 의망', `${title} ${josa(who.name, '이/가')} 당신을 ${o.name}에 의망했다.`, 'court');

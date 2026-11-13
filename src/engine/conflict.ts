@@ -123,6 +123,7 @@ export function impeach(
   if (atkSamsa && !tgtSamsa && tgt.rank <= 3) aParts.push({ label: tgt.rank <= 1 ? '대간이 정승을 논함' : '대간이 대신을 논함', value: tgt.rank <= 1 ? 2 : 1 });
   if (atk.traits.includes('upright') || atk.traits.includes('radical')) aParts.push({ label: '강경한 기질', value: 1 });
   if (atk.traits.includes('mild')) aParts.push({ label: '온건한 기질', value: -1 });
+  if (atk.traits.includes('timid')) aParts.push({ label: '소심한 기질', value: -1 });
   if (atk.grudges.includes(tgt.id)) aParts.push({ label: '설욕', value: 2 });
   if ((powerShare(s)[atk.faction] ?? 0) > 0.55 && atk.faction !== 'none') aParts.push({ label: '당세 우위', value: 1 });
   if (atk.faction !== 'none' && atk.faction !== tgt.faction && controlsCheongyo(s, atk.faction)) aParts.push({ label: '언로 장악', value: 1 });
@@ -141,8 +142,8 @@ export function impeach(
   if (pr) dParts.push({ label: '명망', value: pr });
   const fv = tgt.favor >= 50 ? 2 : tgt.favor >= 20 ? 1 : tgt.favor <= -30 ? -1 : 0;
   if (fv) dParts.push({ label: '성심', value: fv });
-  if (tgt.traits.includes('clean')) dParts.push({ label: '청렴', value: 1 });
-  if (opt.response === 'explain') dParts.push({ label: '해명 상소', value: 1 });
+  if (tgt.traits.includes('clean')) dParts.push({ label: '청렴', value: tgt.flaws.some((f) => f.public) ? 1 : 2 });
+  if (opt.response === 'explain') dParts.push({ label: '해명 상소', value: 1 + (tgt.traits.includes('eloquent') ? 1 : 0) });
   if (atk.faction !== tgt.faction && gd <= -0.15) dParts.push({ label: '사림의 공론', value: 1 });
   for (const b of opt.defBonus ?? []) if (b.value) dParts.push(b);
 
@@ -152,7 +153,7 @@ export function impeach(
   const dTotal = dRoll + sum(dParts);
   const diff = aTotal - dTotal;
   let outcome: Outcome =
-    diff <= -4 ? 'severe_backfire' : diff <= -1 ? 'backfire' : diff === 0 ? 'rejected' : diff <= 2 ? 'dismiss' : diff <= 4 ? 'strip' : 'exile';
+    diff <= -4 && !atk.traits.includes('cautious') ? 'severe_backfire' : diff <= -1 ? 'backfire' : diff === 0 ? 'rejected' : diff <= 2 ? 'dismiss' : diff <= 4 ? 'strip' : 'exile';
   if (tgt.favor >= 50) {
     if (outcome === 'exile') outcome = 'strip';
     else if (outcome === 'strip') outcome = 'dismiss';
@@ -363,7 +364,7 @@ export function memorial(
   const roll = d6(s);
   const total = roll + sum(parts);
   const success = total >= difficulty;
-  const disaster = !success && !arts.includes('daejoe') && total <= difficulty - (arts.includes('jikgan') ? 3 : 4);
+  const disaster = !success && !arts.includes('daejoe') && !init.traits.includes('cautious') && total <= difficulty - (arts.includes('jikgan') ? 3 : 4);
   let dismissed = false;
   let text = '';
 

@@ -173,6 +173,27 @@ export function advanceMonth(s: GameState) {
   runHistory(s);
   income(s);
   tickFocus(s);
+  // 청렴한 이름은 벼슬살이 동안 조금씩 쌓이고, 늘그막에 청백리(淸白吏)로 뽑히기도 한다
+  {
+    const pc = P(s);
+    if (pc.traits.includes('clean') && pc.status === 'active' && alive(pc)) {
+      pc.prestige = clamp(pc.prestige + 0.05, 0, 100);
+      const age = yearOf(s.t) - pc.born;
+      if (!pc.tags.includes('cheongbaek') && age >= 45 && pc.rank <= 3 && !pc.flaws.some((f) => f.public) && chance(s, 0.012)) {
+        pc.tags.push('cheongbaek');
+        pc.prestige = clamp(pc.prestige + 8, 0, 100);
+        pc.favor = clamp(pc.favor + 5, -100, 100);
+        s.player.deeds.push(`${yearOf(s.t)} 청백리(淸白吏)에 녹선`);
+        log(s, `${josa(pc.name, '이/가')} 청백리(淸白吏)에 녹선되었다.`, 'player');
+        notice(s, '청백리 녹선', '벼슬을 지내며 재물을 탐하지 않은 이름이 조정에 알려져 청백리에 뽑혔다. 자손 대대로 이름이 남는다. (명망 +8, 성심 +5, 결말 점수 +15)', 'personal');
+      }
+    }
+  }
+  // 병약한 몸은 자주 앓는다
+  if (P(s).traits.includes('sickly') && !s.player.sick && alive(P(s)) && chance(s, 0.012)) {
+    s.player.sick = true;
+    notice(s, '병', '몸이 약한 탓에 또 자리에 누웠다. 의원을 부르거나 쉬어야 한다.', 'personal');
+  }
   tickScheme(s);
   decayMods(s);
   tickKing(s);

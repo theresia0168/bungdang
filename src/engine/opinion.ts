@@ -34,6 +34,7 @@ export function opinionLines(s: GameState, a: Character, b: Character): OpLine[]
   if (bt.includes('inlaw') && !at.includes('inlaw')) L.push({ label: '외척 경계', value: -10 });
   if (bt.includes('mediator')) L.push({ label: '조제의 인품', value: 5 });
   if (bt.includes('schemer')) L.push({ label: '권모술수', value: -5 });
+  if (bt.includes('arrogant')) L.push({ label: '오만한 태도', value: -5 });
   if (bt.includes('radical') && a.faction !== b.faction) L.push({ label: '과격한 언행', value: -5 });
   if (at.includes('upright') && bt.includes('greedy')) L.push({ label: '탐욕을 경멸', value: -10 });
   if (bt.includes('clean')) L.push({ label: '청렴', value: 3 });

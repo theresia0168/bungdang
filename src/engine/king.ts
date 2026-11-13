@@ -108,6 +108,7 @@ export function hwanguk(s: GameState, f: FactionId, forced = false) {
   }
   delete s.flags[`waryWarn_${f}`];
   s.flags.lastHwanguk = s.t;
+  s.flags.hwangukAfter = `${f}:${s.t}`;
   s.king.lean[f] = -10;
   for (const o of activeFactions(s)) if (o !== f) kingLean(s, o, 12);
   s.tension = clamp(s.tension + 8, 0, 100);
@@ -249,7 +250,7 @@ export const KING_EVENTS: Record<string, EventDef> = {
       }
       const k = kingProfile(s);
       if (key === 'soft') {
-        const r = d6(s) + p.politics - k.politics;
+        const r = d6(s) + p.politics - k.politics + (p.traits.includes('eloquent') ? 1 : 0);
         if (r >= 3 + t.risk) {
           p.favor = clamp(p.favor + 4, -100, 100);
           kingMood(s, 3);

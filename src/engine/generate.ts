@@ -42,11 +42,17 @@ export function genName(s: GameState, forceSurname?: { bon: string; sur: string 
   return { name: `무명${s.nextId}`, clan: '미상' };
 }
 
-const TRAIT_POOL: TraitId[] = ['upright', 'mild', 'radical', 'scholar', 'writer', 'schemer', 'clean', 'greedy', 'ambitious'];
+const TRAIT_POOL: TraitId[] = ['upright', 'mild', 'radical', 'scholar', 'writer', 'schemer', 'clean', 'greedy', 'ambitious', 'eloquent', 'martial', 'cautious', 'loyal', 'timid', 'arrogant', 'sickly'];
 const EXCLUSIVE: [TraitId, TraitId][] = [
   ['upright', 'greedy'],
   ['clean', 'greedy'],
   ['mild', 'radical'],
+  ['timid', 'radical'],
+  ['timid', 'upright'],
+  ['cautious', 'radical'],
+  ['arrogant', 'mediator'],
+  ['arrogant', 'mild'],
+  ['timid', 'arrogant'],
 ];
 
 function randomTraits(s: GameState): TraitId[] {
@@ -132,6 +138,7 @@ export function genChar(s: GameState, o: GenOpts): Character {
     c.flaws.push({ id: `f${s.nextId}`, label: pick(s, FLAW_POOL), public: false, knownBy: [], t: s.t });
   }
   s.chars[c.id] = c;
+  if (c.traits.includes('sickly') && c.destiny > year + 3) c.destiny = Math.max(year + 3, c.destiny - randInt(s, 6, 14));
   return c;
 }
 

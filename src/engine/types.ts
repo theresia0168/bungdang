@@ -26,7 +26,14 @@ export type TraitId =
   | 'inlaw'
   | 'mediator'
   | 'recluse'
-  | 'seoeol';
+  | 'seoeol'
+  | 'eloquent'
+  | 'martial'
+  | 'cautious'
+  | 'loyal'
+  | 'timid'
+  | 'arrogant'
+  | 'sickly';
 
 /** active: 재직, idle: 한성에서 보직 대기, retired: 낙향, exiled: 유배 */
 export type Status = 'active' | 'idle' | 'retired' | 'exiled' | 'dead' | 'royal';
@@ -418,6 +425,16 @@ export interface Oksa {
   harsh?: boolean;
   /** 위관이 진위를 캐어 수상한 점을 찾았다 */
   cleared?: boolean;
+  /** 옥사의 기세 1~3: 몇 단계까지, 몇 명까지 번지는가 */
+  sev?: number;
+  /** 국문을 기다리는 이들 (누가 불어서 끌려왔는가) */
+  queue?: { id: string; depth: number; by?: string }[];
+  /** 국문을 받은 이들의 결과 */
+  done?: Record<string, string>;
+  /** 국문이 몇 달째인가 */
+  month?: number;
+  /** 구명 상소가 올라온 이들 */
+  pleaded?: string[];
 }
 
 export interface RegionState {

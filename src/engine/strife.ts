@@ -4,13 +4,14 @@ import { FACTION_META } from './data/meta';
 import { OFFICE_MAP, OFFICES } from './data/offices';
 import { officeOpen } from './kwanje';
 import { yearOf } from './calendar';
-import { chance, d6, pick } from './rng';
-import { alive, atSeat, clamp, fav, inCourt, isP, josa, log, monthsSince, notice, officeTitle, owe, P, people, pres, pushEvent } from './state';
+import { chance, d6, pick, rand, randInt } from './rng';
+import { addFlaw, alive, atSeat, clamp, fav, inCourt, isP, josa, log, monthsSince, notice, officeTitle, owe, P, people, pres, pushEvent } from './state';
 import { opinion, sway, swayFaction, topOf } from './opinion';
 import { activeFactions, influence, members, powerShare } from './factions';
 import { kingLean, kingMood } from './king';
 import { appoint, appointParts, eligible, holderMap, vacate } from './court';
 import { exile, kill } from './conflict';
+import { openCase } from './cases';
 
 /* ═════════════ 1. 당내 계파와 영수 승계 ═════════════
  * 당 안에는 원로들의 노장파와 젊은 언관들의 소장파가 있다. 소장파가 힘을 얻으면 당론이 강경해진다.
@@ -213,7 +214,7 @@ export function startOksa(s: GameState, accused: Character, by?: string, fabrica
     .filter((c) => c.status === 'active' && c.office && (OFFICE_MAP[c.office]?.rank === 1 || c.office === 'hyeongjo') && c.id !== accused.id)
     .sort((a, b) => (share[b.faction] ?? 0) - (share[a.faction] ?? 0));
   const p = P(s);
-  s.oksa = { accused: accused.id, faction: f, due: s.t + 2, by, fabricated, judge: judges.find((c) => !isP(s, c))?.id };
+  s.oksa = { accused: accused.id, faction: f, due: s.t + 1, by, fabricated, judge: judges.find((c) => !isP(s, c))?.id };
   log(s, `[옥사] ${FACTION_META[f].name} ${josa(accused.name, '이/가')} 역모를 꾀했다는 고변이 들어왔다. 도성에 국청(鞫廳)이 열렸다.`, 'history');
   s.tension = clamp(s.tension + 8, 0, 100);
   if (judges.some((c) => isP(s, c)) && !isP(s, accused)) pushEvent(s, 'oksa_judge', {});
@@ -233,53 +234,189 @@ function tickOksa(s: GameState) {
   }
   const o = s.oksa;
   if (!o || s.t < o.due) return;
-  s.oksa = undefined;
   const acc = s.chars[o.accused];
   const judge = o.judge ? s.chars[o.judge] : undefined;
+  // 첫 국문 전에: 꾸며 낸 고변이면 무고가 드러나기도 한다
+  if (!o.queue) {
+    if (o.fabricated && chance(s, o.cleared ? 0.9 : 0.25)) {
+      s.oksa = undefined;
+      log(s, `[옥사] ${acc?.name ?? ''}의 역모는 꾸며 낸 괘서에서 비롯된 무고로 드러났다. 국청이 끝났다.`, 'history');
+      if (o.by && s.chars[o.by]) {
+        const framer = s.chars[o.by];
+        if (isP(s, framer)) {
+          exile(s, framer);
+          framer.exileLevel = 2;
+          notice(s, '무고가 드러나다', '당신이 붙인 괘서가 무고로 드러났다. 위리안치되었다.', 'danger');
+        } else exile(s, framer);
+      }
+      return;
+    }
+    // 옥사의 강도: 위관이 넓히기로 했으면 3, 수괴만 다스리기로 했으면 1, 그 밖에는 위관의 당색과 긴장이 정한다
+    let sev = o.harsh === true ? 3 : o.harsh === false ? 1 : judge && topOf(judge.faction) !== topOf(o.faction) && !judge.traits.includes('mild') ? 2 : 1;
+    if (o.harsh === undefined && s.tension >= 60) sev = Math.min(3, sev + 1);
+    o.sev = sev;
+    o.queue = [{ id: o.accused, depth: 0 }];
+    o.done = {};
+    o.month = 0;
+    log(s, `[옥사] 국문이 시작되었다. ${['', '수괴만 다스리려는 기색이다.', '위관이 연루자를 캐려 한다.', '위관이 역당의 뿌리를 뽑으려 한다. 피바람이 불 것이다.'][sev]}`, 'history');
+  }
+  const sev = o.sev ?? 1;
+  o.month = (o.month ?? 0) + 1;
+  const lines: string[] = [];
+  const cap = [0, 4, 9, 15][sev];
+  const maxDepth = sev;
+  const taken = () => Object.keys(o.done ?? {}).length + (o.queue?.length ?? 0);
+  const n = Math.min(o.queue!.length, 1 + sev);
+  for (const item of o.queue!.splice(0, n)) {
+    const c = s.chars[item.id];
+    if (!alive(c) || c.status === 'exiled') {
+      o.done![item.id] = '빠짐';
+      continue;
+    }
+    // 플레이어는 스스로 공초를 올린다
+    if (isP(s, c)) {
+      o.done![c.id] = '플레이어';
+      pushEvent(s, 'oksa_implicated', { judge: judge?.id, sev, by: item.by });
+      continue;
+    }
+    const foeJudge = judge && topOf(judge.faction) !== topOf(c.faction) ? 1 : 0;
+    const plead = o.pleaded?.includes(c.id) ? 2 : 0;
+    const roll =
+      d6(s) + Math.floor(c.politics / 2) + (c.traits.includes('clean') ? 1 : 0) + (c.traits.includes('loyal') ? 1 : 0) + (c.traits.includes('cautious') ? 1 : 0) - (c.traits.includes('timid') ? 1 : 0) - (sev - 1) - foeJudge + plead;
+    const head = item.depth === 0;
+    // 국문을 이기지 못하면 이름을 분다
+    const names = (k: number): string[] => {
+      if (item.depth >= maxDepth || taken() >= cap) return [];
+      const queued = new Set([...(o.queue ?? []).map((x) => x.id), ...Object.keys(o.done ?? {})]);
+      const pool = people(s).filter((x) => !queued.has(x.id) && x.id !== c.id && x.status !== 'exiled' && x.status !== 'royal' && (topOf(x.faction) === topOf(c.faction) || x.clan === c.clan));
+      const out: string[] = [];
+      for (let i = 0; i < k && pool.length && taken() < cap; i++) {
+        const w = pool.map((x) => [x, Math.max(0.5, 10 + opinion(s, c, x) / 5 + (x.clan === c.clan ? 8 : 0) + (judge ? -opinion(s, judge, x) / 10 : 0) + (x.rank <= 3 ? 3 : 0))] as [Character, number]);
+        const total = w.reduce((a, [, v]) => a + v, 0);
+        let r = rand(s) * total;
+        let got = w[0][0];
+        for (const [x, v] of w) {
+          r -= v;
+          if (r <= 0) {
+            got = x;
+            break;
+          }
+        }
+        pool.splice(pool.indexOf(got), 1);
+        o.queue!.push({ id: got.id, depth: item.depth + 1, by: c.id });
+        out.push(got.name);
+      }
+      return out;
+    };
+    if (!head && roll <= sev - 1) {
+      const told = sev >= 2 && chance(s, 0.5) ? names(1) : [];
+      kill(s, c, '국문을 받다가 형장 아래 물고(物故)되었다');
+      o.done![c.id] = '물고';
+      lines.push(`${c.name}${told.length ? `(${josa(told.join('·'), '을/를')} 불고)` : ''} 물고`);
+    } else if (roll <= 4 || head) {
+      // 수괴는 강도만큼, 버티지 못한 연루자는 1~강도만큼 분다
+      const told = names(head ? sev : randInt(s, 1, sev));
+      if (head || (sev >= 3 && chance(s, 0.3))) {
+        kill(s, c, head ? '역모의 수괴로 몰려 복주(伏誅)되었다' : '역모에 연루되어 사사되었다');
+        o.done![c.id] = '사형';
+        lines.push(told.length ? `${josa(c.name, '이/가')} ${josa(told.join('·'), '을/를')} 불고 ${head ? '복주' : '사사'}` : `${c.name} ${head ? '복주' : '사사'}`);
+      } else {
+        exile(s, c, judge?.id);
+        o.done![c.id] = '유배';
+        lines.push(told.length ? `${josa(c.name, '이/가')} ${josa(told.join('·'), '을/를')} 불고 유배` : `${c.name} 유배`);
+      }
+    } else if (roll <= 6) {
+      exile(s, c, judge?.id);
+      o.done![c.id] = '유배';
+      lines.push(`${josa(c.name, '은/는')} 끝내 불지 않았으나 유배`);
+    } else {
+      o.done![c.id] = '방면';
+      lines.push(`${josa(c.name, '은/는')} 혐의를 벗고 방면`);
+    }
+  }
+  if (lines.length) log(s, `[옥사] 국문 ${o.month}달째: ${lines.join(', ')}.`, 'history');
+
+  // 플레이어와 가까운 이가 끌려오면 구명할지 묻는다
   const p = P(s);
-  if (o.fabricated && chance(s, o.cleared ? 0.9 : 0.25)) {
-    // 무고가 드러난다
-    log(s, `[옥사] ${acc?.name ?? ''}의 역모는 꾸며 낸 괘서에서 비롯된 무고로 드러났다.`, 'history');
-    if (o.by && s.chars[o.by]) {
-      const framer = s.chars[o.by];
-      if (isP(s, framer)) {
-        exile(s, framer);
-        framer.exileLevel = 2;
-        notice(s, '무고가 드러나다', '당신이 붙인 괘서가 무고로 드러났다. 위리안치되었다.', 'danger');
-      } else exile(s, framer);
+  const friend = (o.queue ?? []).map((x) => s.chars[x.id]).find((x) => x && !isP(s, x) && !o.pleaded?.includes(x.id) && opinion(s, x, p) >= 20);
+  if (friend && alive(p) && p.status !== 'exiled' && inCourt(p) && s.pending.length < 2) pushEvent(s, 'oksa_friend', { who: friend.id });
+  // 위관인 플레이어는 옥사가 번질 때 더 캘지 정한다
+  if (judge && isP(s, judge) && o.month === 2 && (o.queue?.length ?? 0) > 0 && s.pending.length < 2) pushEvent(s, 'oksa_widen', {});
+
+  if ((o.queue?.length ?? 0) > 0 && o.month < 8) {
+    o.due = s.t + 1;
+    return;
+  }
+  // 국청이 끝난다
+  s.oksa = undefined;
+  const done = Object.values(o.done ?? {});
+  const dead = done.filter((x) => x === '물고' || x === '사형').length;
+  const exiled = done.filter((x) => x === '유배').length;
+  const freed = done.filter((x) => x === '방면').length;
+  kingLean(s, o.faction, -5 * sev);
+  s.tension = clamp(s.tension + 3 * sev, 0, 100);
+  if (judge && o.faction !== 'none' && sev >= 2) swayFaction(s, o.faction, judge.id, -8 * sev, '옥사의 원한', 0.03);
+  log(s, `[옥사] 국청이 끝났다. ${o.month}달 동안 ${done.length}명이 국문을 받아 ${dead}명이 죽고 ${exiled}명이 유배되었으며 ${freed}명이 풀려났다.${judge ? ` (위관 ${judge.name})` : ''}`, 'history');
+  if (judge && isP(s, judge)) pres(p, sev >= 3 ? -3 : sev <= 1 ? 3 : 0);
+}
+
+
+/* ═════════════ 환국의 여파: 쫓겨난 당을 석 달 동안 몰아친다 ═════════════ */
+function tickHwangukAfter(s: GameState) {
+  const v = s.flags.hwangukAfter;
+  if (typeof v !== 'string') return;
+  const [f, at] = v.split(':') as [FactionId, string];
+  const m = s.t - Number(at);
+  if (m < 1) return;
+  if (m > 3 || !s.factions[f]?.active) {
+    delete s.flags.hwangukAfter;
+    return;
+  }
+  const fname = FACTION_META[f].name;
+  const p = P(s);
+  const left = members(s, f).filter((c) => c.status === 'active' && c.office && OFFICE_MAP[c.office] && !OFFICE_MAP[c.office].sinecure).sort((a, b) => OFFICE_MAP[a.office!].rank - OFFICE_MAP[b.office!].rank);
+  if (m === 1) {
+    // 새로 들어온 삼사가 잔당을 논핵한다
+    const tgt = left.find((c) => !isP(s, c));
+    const atk = people(s).find((c) => c.status === 'active' && c.office && OFFICE_MAP[c.office]?.samsa && topOf(c.faction) !== topOf(f) && !isP(s, c));
+    if (tgt && atk) {
+      openCase(s, atk, tgt, { bonus: 2 });
+      log(s, `[환국] 여파: 새로 들어온 삼사가 ${fname}의 잔당 ${josa(tgt.name, '을/를')} 논핵하기 시작했다.`, 'history');
     }
     return;
   }
-  const harsh = o.harsh ?? (!!judge && topOf(judge.faction) !== topOf(o.faction) && !judge.traits.includes('mild'));
-  if (alive(acc)) {
-    if (isP(s, acc)) {
-      const r = d6(s) + acc.politics + (acc.favor >= 40 ? 2 : 0) - (harsh ? 3 : 0);
-      if (r >= 8) notice(s, '옥사를 벗어나다', `국문 끝에 혐의를 벗었다. (판정 ${r})`, 'personal');
-      else {
-        exile(s, acc);
-        acc.exileLevel = 2;
-        notice(s, '역모로 몰리다', `역모의 수괴로 몰려 위리안치되었다. (판정 ${r})`, 'danger');
-      }
-    } else kill(s, acc, '역모의 수괴로 몰려 국문 끝에 죽었다');
-  }
-  const caught: string[] = [];
-  if (harsh) {
-    const pool = members(s, o.faction).filter((c) => c.id !== o.accused && c.status !== 'exiled' && inCourt(c));
-    const n = Math.min(pool.length, 2 + Math.floor(s.tension / 30));
-    for (const c of pool.sort((a, b) => (judge ? opinion(s, judge, a) - opinion(s, judge, b) : 0)).slice(0, n)) {
+  if (m === 2) {
+    // 남은 자리에서도 물러난다
+    const out: string[] = [];
+    for (const c of left.slice(0, 2)) {
       if (isP(s, c)) {
-        pushEvent(s, 'oksa_implicated', { judge: judge?.id });
+        if (chance(s, 0.3)) {
+          vacate(s, c);
+          notice(s, '환국의 여파', `${fname}을 몰아내는 바람이 당신에게도 닿았다. 자리에서 물러났다.`, 'danger');
+          out.push(c.name);
+        }
         continue;
       }
-      exile(s, c, judge?.id);
-      caught.push(c.name);
+      vacate(s, c);
+      out.push(c.name);
     }
-    kingLean(s, o.faction, -20);
-    s.tension = clamp(s.tension + 10, 0, 100);
-    if (judge && o.faction !== 'none') swayFaction(s, o.faction, judge.id, -20, '옥사의 원한', 0.03);
+    if (out.length) log(s, `[환국] 여파: ${fname}의 ${out.join('·')} 등이 남은 자리에서마저 물러났다.`, 'history');
+    return;
   }
-  log(s, `[옥사] 국청이 끝났다.${caught.length ? ` 위관 ${judge?.name ?? ''}의 손에 ${caught.join('·')} 등 ${FACTION_META[o.faction].name} 사람들이 연루되어 유배되었다.` : ' 수괴 외에 크게 연루된 이는 없었다.'}`, 'history');
-  if (judge && isP(s, judge)) pres(p, harsh ? -3 : 3);
+  // 석 달째: 영수를 처분하고, 긴장이 높으면 옥사로 번진다
+  const lead = s.chars[s.factions[f].leader ?? ''];
+  if (lead && alive(lead) && !isP(s, lead) && lead.status !== 'exiled' && chance(s, 0.4)) {
+    exile(s, lead);
+    log(s, `[환국] 여파: ${fname}의 영수 ${josa(lead.name, '이/가')} 귀양을 갔다.`, 'history');
+  }
+  if (!s.oksa && s.tension >= 55 && chance(s, 0.3)) {
+    const pool = members(s, f).filter((c) => !isP(s, c) && alive(c) && c.status !== 'exiled');
+    if (pool.length) {
+      log(s, `[환국] 여파: ${fname}을 노리는 역모 고변이 들어왔다.`, 'history');
+      startOksa(s, pick(s, pool));
+    }
+  }
+  delete s.flags.hwangukAfter;
 }
 
 /* ═════════════ 6. 왕의 탕평과 견제 ═════════════ */
@@ -315,6 +452,7 @@ function tickTangpyeong(s: GameState) {
 }
 
 export function tickStrife(s: GameState) {
+  tickHwangukAfter(s);
   checkSuccession(s);
   tickWings(s);
   tickYusaeng(s);
@@ -469,38 +607,118 @@ export const STRIFE_EVENTS: Record<string, EventDef> = {
     build: () => ({
       title: '역모의 고변',
       kind: 'danger',
-      text: '당신이 역모를 꾀했다는 고변이 들어와 국청이 열렸다. 두 달 뒤 국문을 받는다. 정치력과 성심이 당신을 지킨다. 위관이 다른 당 사람이면 더 위험하다.',
+      text: '당신이 역모를 꾀했다는 고변이 들어와 국청이 열렸다. 다음 달 국문을 받는다. 정치력과 성심이 당신을 지킨다. 위관이 다른 당 사람이면 더 위험하다.',
       choices: [{ key: 'ok', label: '결백을 호소하며 기다린다' }],
     }),
     resolve() {},
   },
 
   oksa_implicated: {
-    build: (s, c) => ({
-      title: '옥사에 연루되다',
-      kind: 'danger',
-      text: `국청에서 당신의 이름이 나왔다. ${c.judge && s.chars[c.judge] ? `위관 ${josa(s.chars[c.judge].name, '은/는')} 당신과 사이가 좋지 않다.` : ''}`,
-      choices: [
-        { key: 'plead', label: '결백을 밝히는 공초를 올린다', hint: '주사위 + 정치력 + (성심 40 이상이면 2) ≥ 9. 실패하면 유배' },
-        { key: 'beg', label: '왕에게 직접 매달린다', hint: '성심이 높으면 살아남는다 (성심 + 주사위×10 ≥ 60). 실패하면 위리안치' },
-      ],
-    }),
+    build: (s, c) => {
+      const sev = Number(c.sev ?? 2);
+      const by = c.by ? s.chars[c.by] : undefined;
+      return {
+        title: '옥사에 연루되다',
+        kind: 'danger',
+        text: `국청에서 당신의 이름이 나왔다.${by ? ` 형장을 이기지 못한 ${josa(by.name, '이/가')} 당신을 불었다.` : ''} ${c.judge && s.chars[c.judge] ? `위관은 ${s.chars[c.judge].name}이다.` : ''}\n\n옥사의 기세: ${['', '수괴만 다스리려 한다', '연루자를 캐고 있다', '역당의 뿌리를 뽑으려 한다'][sev] ?? ''}.`,
+        choices: [
+          { key: 'plead', label: '결백을 밝히는 공초를 올린다', hint: `주사위 + 정치력 + (성심 40 이상이면 2) ≥ ${8 + sev}. 실패하면 유배` },
+          { key: 'beg', label: '왕에게 직접 매달린다', hint: `성심 + 주사위×10 ≥ ${50 + sev * 10}이면 살아남는다. 실패하면 위리안치` },
+          { key: 'name', label: '살기 위해 동지의 이름을 분다', hint: '70% 확률로 풀려난다. 같은 당이 등을 돌리고(호감 -12) 「동지를 밀고」가 드러난다. 옥사가 더 번진다' },
+        ],
+      };
+    },
     resolve(s, _c, key) {
       const p = P(s);
+      const sev = Number(_c.sev ?? 2);
+      if (key === 'name') {
+        const o = s.oksa;
+        const pool = members(s, p.faction).filter((x) => !isP(s, x) && x.status !== 'exiled' && inCourt(x) && !(o?.done?.[x.id]) && !(o?.queue ?? []).some((q) => q.id === x.id));
+        const v = pool.length ? pick(s, pool) : undefined;
+        if (v && o?.queue) o.queue.push({ id: v.id, depth: 1, by: p.id });
+        if (p.faction !== 'none') swayFaction(s, p.faction, p.id, -12, '동지를 불다', 0.05);
+        addFlaw(s, p, '동지를 밀고', true);
+        if (chance(s, 0.7)) return `${v ? `${josa(v.name, '을/를')} 불었다. ` : ''}풀려났다. 그러나 동지들의 눈빛이 싸늘하다.`;
+        exile(s, p);
+        return `${v ? `${josa(v.name, '을/를')} 불었지만 ` : ''}끝내 유배를 면하지 못했다.`;
+      }
       if (key === 'plead') {
         const r = d6(s) + p.politics + (p.favor >= 40 ? 2 : 0);
-        if (r >= 9) return `공초가 받아들여져 풀려났다. (판정 ${r})`;
+        if (r >= 8 + sev) return `공초가 받아들여져 풀려났다. (판정 ${r})`;
         exile(s, p);
-        return `연루되어 유배되었다. (판정 ${r})`;
+        return `연루되어 유배되었다. (판정 ${r} < ${8 + sev})`;
       }
       const r = p.favor + d6(s) * 10;
-      if (r >= 60) {
+      if (r >= 50 + sev * 10) {
         fav(p, -5);
         return `왕이 당신을 살려 주었다. (판정 ${r}, 성심 -5)`;
       }
       exile(s, p);
       p.exileLevel = 2;
       return `왕이 외면했다. 위리안치되었다. (판정 ${r})`;
+    },
+  },
+
+  oksa_friend: {
+    build: (s, c) => {
+      const f = s.chars[c.who];
+      return {
+        title: '국청에 끌려온 벗',
+        kind: 'danger',
+        text: `${josa(f.name, '이/가')} 국청에 끌려왔다. 당신과 가까운 사이다. 다음 국문에서 그가 버티지 못하면 죽거나 귀양을 간다. 그가 당신의 이름을 부를 수도 있다.`,
+        choices: [
+          { key: 'plead', label: '구명하는 상소를 올린다', hint: `${f.name}의 국문 판정 +2, 그의 호감 +12. 성심 -3. 옥사의 기세가 세면 당신도 엮일 수 있다` },
+          { key: 'silent', label: '몸을 사린다', hint: `${f.name}의 호감 -8` },
+        ],
+      };
+    },
+    resolve(s, c, key) {
+      const p = P(s);
+      const f = s.chars[c.who];
+      const o = s.oksa;
+      if (!o || !alive(f)) return '국청이 이미 끝났다.';
+      if (key === 'silent') {
+        sway(s, f, p.id, -8, '구명하지 않음', { decay: 0.1 });
+        return '몸을 사렸다.';
+      }
+      (o.pleaded ??= []).push(f.id);
+      fav(p, -3);
+      sway(s, f, p.id, 12, '국청의 구명', { decay: 0.05 });
+      if ((o.sev ?? 1) >= 2 && chance(s, 0.25) && !(o.queue ?? []).some((q) => q.id === p.id) && !o.done?.[p.id]) {
+        o.queue?.push({ id: p.id, depth: 1, by: f.id });
+        return `${josa(f.name, '을/를')} 구명하는 상소를 올렸다. 그런데 위관이 「역적을 감싸는 자」라며 당신의 이름을 적었다.`;
+      }
+      return `${josa(f.name, '을/를')} 구명하는 상소를 올렸다. (성심 -3)`;
+    },
+  },
+
+  oksa_widen: {
+    build: (s) => {
+      const o = s.oksa!;
+      return {
+        title: '국청의 갈림길',
+        kind: 'history',
+        text: `국문이 두 달째다. 지금까지 ${Object.keys(o.done ?? {}).length}명이 국문을 받았고, ${o.queue?.length ?? 0}명이 더 끌려와 있다. 위관인 당신이 정해야 한다. 더 캘 것인가, 이쯤에서 마무리할 것인가.`,
+        choices: [
+          { key: 'widen', label: '끝까지 캐어 역당을 뿌리 뽑는다', hint: '옥사의 기세가 세진다. 같은 당 호감 +, 맞은 당의 깊은 원한, 명망 -2' },
+          { key: 'close', label: '이쯤에서 마무리한다', hint: '이미 끌려온 이들만 다스린다. 명망 +2' },
+        ],
+      };
+    },
+    resolve(s, _c, key) {
+      const o = s.oksa;
+      const p = P(s);
+      if (!o) return '국청이 이미 끝났다.';
+      if (key === 'widen') {
+        o.sev = Math.min(3, (o.sev ?? 1) + 1);
+        pres(p, -2);
+        if (p.faction !== 'none') swayFaction(s, p.faction, p.id, 4, '역당을 다스림', 0.1);
+        return '더 캐기로 했다. 국청 앞에 끌려오는 이들의 줄이 길어진다.';
+      }
+      o.sev = Math.max(1, (o.sev ?? 1) - 1);
+      o.queue = (o.queue ?? []).filter((q) => q.depth <= 1);
+      pres(p, 2);
+      return '이쯤에서 마무리하기로 했다.';
     },
   },
 

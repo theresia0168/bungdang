@@ -83,7 +83,8 @@ export interface Scene {
 const num = (s: GameState, c: Ctx, v: Num | undefined) => (typeof v === 'function' ? v(s, c) : (v ?? 0));
 const sg = (v: number) => (v > 0 ? `+${v}` : `${v}`);
 const who = (s: GameState, c: Ctx): Character | undefined => (c.who ? s.chars[c.who] : undefined);
-const statOf = (p: Character, k: 'politics' | 'learning' | 'mixed') => (k === 'mixed' ? Math.round((p.politics + p.vigor) / 2) : p[k]);
+// 전장의 판정(정치력+강건)에는 무재(武才)가 +1
+const statOf = (p: Character, k: 'politics' | 'learning' | 'mixed') => (k === 'mixed' ? Math.round((p.politics + p.vigor) / 2) + (p.traits.includes('martial') ? 1 : 0) : p[k]);
 const STAT_NAME = { politics: '정치력', learning: '학식', mixed: '정치력+강건' } as const;
 
 /** 효과를 사람이 읽을 말로 */

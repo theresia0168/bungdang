@@ -442,8 +442,17 @@ export const LATER_SCHEDULE: Scheduled[] = [
     },
   },
   { id: 'l_imo', at: at(1762, 5), run: (s) => (inCourt(P(s)) ? pushEvent(s, 'later_imo', {}) : log(s, '임오화변: 영조가 세자를 뒤주에 가두었다. 여드레 만에 세자가 죽었다(사도세자).', 'history')) },
-  { id: 'l_sipa', at: at(1772, 6), run: L('사도세자의 죽음을 두고 조정이 갈렸다. 세자를 동정하는 시파와 영조의 처분을 옳다는 벽파다.', (s) => (s.tension = clamp(s.tension + 6, 0, 100))) },
-  { id: 'l_jeongjo', at: at(1776, 3), run: (s) => (crown(s, '정조'), imoPayback(s), daeriPayback(s)) },
+  {
+    id: 'l_sipa',
+    at: at(1772, 6),
+    run(s) {
+      log(s, '사도세자의 죽음을 두고 조정이 갈렸다. 세자를 동정하는 시파와 영조의 처분을 옳다는 벽파다.', 'history');
+      s.tension = clamp(s.tension + 6, 0, 100);
+      const p = P(s);
+      if (alive(p) && p.status !== 'exiled' && inCourt(p)) pushEvent(s, 'later_sipa', {});
+    },
+  },
+  { id: 'l_jeongjo', at: at(1776, 3), run: (s) => (crown(s, '정조'), imoPayback(s), daeriPayback(s), sipaTurn(s, 'jeongjo')) },
   { id: 'l_gyujang', at: at(1776, 9), run: L('정조가 규장각을 세우고 젊은 문신들을 길렀다.') },
   { id: 'l_seoeol_gyujang', at: at(1779, 3), run: (s) => (log(s, '정조가 박제가·유득공 등 서얼 출신을 규장각 검서관으로 썼다.', 'history'), setLaw(s, 'seoeol', true)) },
   { id: 'l_tongong', at: at(1791, 1), run: (s) => raiseAgenda(s, 'law_debate', { lawId: 'tongong', abolish: false, by: figure(s, 'chae_jegong')?.id ?? '' }) },
@@ -461,6 +470,7 @@ export const LATER_SCHEDULE: Scheduled[] = [
     run(s) {
       crown(s, '순조');
       s.flags.suryeomUntil = tOf(1804, 1);
+      sipaTurn(s, 'regency');
       log(s, '[수렴청정] 어린 임금을 대신해 대왕대비 정순왕후가 발을 드리우고 정사를 듣는다. 대비를 따르는 벽파가 조정을 쥔다.', 'history');
       if (s.factions.noron.active) kingLean(s, 'noron', 8);
       if (s.factions.nam.active) kingLean(s, 'nam', -10);
@@ -586,7 +596,7 @@ LATER_SCHEDULE.push(
       } else notice(s, '신유박해', '진산 사건 때 서학을 감쌌던 일로 이름이 오르내렸지만, 가까스로 화를 면했다.', 'danger');
     },
   },
-  { id: 'l_jeongsun', at: at(1805, 1), run: L('정순왕후가 세상을 떠났다. 벽파가 무너지고 안동 김씨의 시파가 조정을 쥔다.', (s) => (s.tension = clamp(s.tension - 3, 0, 100))) },
+  { id: 'l_jeongsun', at: at(1805, 1), run: L('정순왕후가 세상을 떠났다. 벽파가 무너지고 안동 김씨의 시파가 조정을 쥔다.', (s) => ((s.tension = clamp(s.tension - 3, 0, 100)), sipaTurn(s, 'fall'))) },
   { id: 'l_gisa_famine', at: at(1809, 8), run: L('기사년 대기근: 팔도에 흉년이 들어 굶주린 백성이 길을 메웠다.', (s) => {
     for (const r of Object.values(s.regions)) r.minsim = clamp(r.minsim - 12, 0, 100);
     s.realm.treasury -= 60;
@@ -718,6 +728,43 @@ function rollAmhaeng(s: GameState) {
   s.flags.amhaengAt = s.t;
   const worst = Object.values(s.regions).filter((r) => r.id !== 'hanseong').sort((a, b) => a.minsim - b.minsim)[0];
   pushEvent(s, 'later_amhaeng', { region: worst.id });
+}
+
+/* ───────── 시파와 벽파: 한 번 선 자리가 세 번의 고비마다 따라온다 ───────── */
+function sipaTurn(s: GameState, when: 'jeongjo' | 'regency' | 'fall') {
+  const side = s.flags.sipa;
+  const p = P(s);
+  if ((side !== 'si' && side !== 'byeok') || !alive(p)) return;
+  if (when === 'jeongjo') {
+    if (side === 'si') {
+      fav(p, 8);
+      notice(s, '시파의 날', '정조가 즉위했다. 사도세자를 동정하던 시파인 당신을 새 임금이 가까이한다. (성심 +8)', 'personal');
+    } else {
+      fav(p, -8);
+      notice(s, '벽파의 겨울', '정조가 즉위했다. 영조의 처분을 옳다 하던 벽파인 당신을 새 임금이 멀리한다. (성심 -8)', 'danger');
+    }
+    return;
+  }
+  if (when === 'regency') {
+    if (side === 'byeok') {
+      fav(p, 8);
+      notice(s, '벽파의 날', '정순왕후가 수렴청정을 시작했다. 대비는 벽파를 감싼다. (성심 +8)', 'personal');
+    } else {
+      fav(p, -8);
+      notice(s, '시파의 겨울', '정순왕후가 수렴청정을 시작했다. 대비는 시파를 미워한다. (성심 -8)', 'danger');
+    }
+    return;
+  }
+  if (side === 'byeok') {
+    fav(p, -10);
+    if (p.status === 'active' && p.office && chance(s, 0.3)) {
+      vacate(s, p);
+      notice(s, '벽파의 몰락', '정순왕후가 세상을 떠나자 벽파가 줄줄이 쫓겨났다. 당신도 자리에서 밀려났다. (성심 -10)', 'danger');
+    } else notice(s, '벽파의 몰락', '정순왕후가 세상을 떠나자 벽파가 줄줄이 쫓겨났다. 당신은 가까스로 자리를 지켰다. (성심 -10)', 'danger');
+  } else {
+    fav(p, 5);
+    notice(s, '시파의 세상', '정순왕후가 세상을 떠나고 벽파가 무너졌다. 시파가 조정을 쥔다. (성심 +5)', 'personal');
+  }
 }
 
 /** 매달: 인물 등장, 전란 종료, 늘그막의 처리 */
@@ -1123,6 +1170,27 @@ export const LATER_EVENTS: Record<string, EventDef> = {
       }
       pres(p, 1);
       return `석 달을 돌았으나 수령들이 낌새를 채고 장부를 감추었다. 큰 허물은 잡지 못했다. (판정 ${roll} < 7, 명망 +1)`;
+    },
+  },
+  later_sipa: {
+    build: () => ({
+      title: '시파(時派)와 벽파(僻派)',
+      kind: 'court',
+      text: '임오년의 일을 두고 조정이 둘로 갈렸다. 세자를 동정하고 세손을 받드는 시파와, 영조의 처분이 옳았다며 세손의 즉위를 경계하는 벽파다. 당색을 넘어 사람들이 어느 쪽인지를 묻는다. 세손이 즉위하면 시파가, 그 뒤 대비가 정사를 잡으면 벽파가 득세할 것이다.',
+      choices: [
+        { key: 'si', label: '시파에 선다', hint: '세손이 즉위하면 성심 +8. 훗날 대비의 수렴청정 아래에서는 성심 -8. 대비가 세상을 떠나면 성심 +5' },
+        { key: 'byeok', label: '벽파에 선다', hint: '세손이 즉위하면 성심 -8. 대비의 수렴청정 아래에서는 성심 +8. 대비가 세상을 떠나면 성심 -10에 파직될 수 있다' },
+        { key: 'none', label: '어느 쪽에도 서지 않는다', hint: '명망 -1. 아무 일도 없다' },
+      ],
+    }),
+    resolve(s, _c, key) {
+      const p = P(s);
+      if (key === 'none') {
+        pres(p, -1);
+        return '어느 쪽에도 서지 않았다. 줏대가 없다는 말을 들었다. (명망 -1)';
+      }
+      s.flags.sipa = key;
+      return key === 'si' ? '시파에 섰다. 세손의 사람들이 당신을 반긴다.' : '벽파에 섰다. 영조의 처분을 받드는 이들이 당신을 반긴다.';
     },
   },
   later_imo: {
