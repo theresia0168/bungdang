@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react';
+import { MemorialComposer } from './Composer';
 import { useG } from './ctx';
 import { P, officeTitle, statusLabel } from '../engine/state';
 import { FACTION_META, REGION_META, SCHOOL_META, TRAIT_META } from '../engine/data/meta';
@@ -266,31 +267,7 @@ export function PlayerPanel() {
             </button>
           </div>
         ) : (
-          <>
-            <div className="law-pick">
-              <select value={lawPick} onChange={(e) => setLawPick(e.target.value)}>
-                {openLaws.map((l) => (
-                  <option key={l.id} value={l.id}>
-                    {s.laws[l.id]?.on ? `${l.name} 폐지` : `${l.name} 시행`}
-                  </option>
-                ))}
-              </select>
-              <button
-                className="fbtn"
-                disabled={!!memorialError(s) || !LAW_MAP[lawPick] || !!lawMemorialError(s, lawPick)}
-                title={memorialError(s) ?? lawMemorialError(s, lawPick) ?? `${MEMORIAL_INFO.law.desc}\n\n${LAW_MAP[lawPick]?.desc ?? ''}\n효과: ${LAW_MAP[lawPick]?.effect ?? ''}`}
-                onClick={() => act((g) => startMemorial(g, 'law', { lawId: lawPick, abolish: !!g.laws[lawPick]?.on }))}
-              >
-                변법 상소
-              </button>
-            </div>
-            <div className="focus-grid">
-              <button className="fbtn" disabled={!!memorialError(s)} title={memorialError(s) ?? MEMORIAL_INFO.jojae.desc} onClick={() => act((g) => startMemorial(g, 'jojae'))}>
-                조제 상소
-              </button>
-            </div>
-            <p className="small muted">상소는 행동력이 들지 않는다. 두 달 동안 지으며 연명을 모은다. 나라의 법은 「국정」 탭에서 볼 수 있다.</p>
-          </>
+          <MemorialComposer />
         )}
       </Fold>
 

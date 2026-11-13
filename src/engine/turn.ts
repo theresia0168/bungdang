@@ -13,6 +13,8 @@ import { tickStrife } from './strife';
 import { tickLater } from './later';
 import { rollExamCall } from './gwageo';
 import { tickGukbon } from './gukbon';
+import { rollBibyeon, tickDept, tickKwanje } from './kwanje';
+import { tickWang } from './wang';
 import { rollBunjo, rollWarFront } from './events/war';
 import { kill } from './conflict';
 import { refreshAp, RETAINER_UPKEEP, tickFocus, tickScheme } from './actions';
@@ -179,6 +181,7 @@ export function advanceMonth(s: GameState) {
   npcMonth(s);
   tickPlots(s);
   tickCases(s);
+  tickKwanje(s);
   fillVacancies(s);
   settleRaces(s);
   tickWants(s);
@@ -217,11 +220,24 @@ export function advanceMonth(s: GameState) {
   tickStrife(s);
   tickLater(s);
   tickGukbon(s);
+  tickDept(s);
+  tickWang(s);
+  rollBibyeon(s);
   updateLeaders(s);
   checkSplit(s);
   s.tension = clamp(s.tension - (0.3 + s.tension * 0.012), 10, 100);
   // 명성은 잊힌다: 50을 넘는 몫이 다달이 2.5%씩 바랜다. 꾸준히 이름을 내야 높은 명망을 지킨다.
   for (const c of Object.values(s.chars)) if (c.prestige > 50) c.prestige -= (c.prestige - 50) * 0.025;
+  // 벼슬에 있는 이들은 자리에 걸맞은 명망과 성심을 천천히 쌓는다 (플레이어는 스스로 쌓는다)
+  for (const c of Object.values(s.chars)) {
+    if (c.id === p.id || c.status !== 'active' || !c.office) continue;
+    const o = OFFICE_MAP[c.office];
+    if (!o) continue;
+    const pTarget = 12 + (10 - o.rank) * 6 + c.learning * 1.5;
+    if (c.prestige < pTarget) c.prestige += (pTarget - c.prestige) * 0.012;
+    const fTarget = 10 + (10 - o.rank) * 3;
+    if (c.favor < fTarget) c.favor += (fTarget - c.favor) * 0.01;
+  }
   if (p.status === 'active' && p.office) {
     const o = OFFICE_MAP[p.office];
     if (o && o.rank < s.player.peakRank) {

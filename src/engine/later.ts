@@ -4,7 +4,7 @@ import { FACTION_META } from './data/meta';
 import { OFFICE_MAP } from './data/offices';
 import { tOf, yearOf } from './calendar';
 import { chance, d6, pick } from './rng';
-import { alive, clamp, fav, inCourt, isP, josa, log, notice, P, people, pres, pushEvent } from './state';
+import { addFlaw, alive, clamp, fav, inCourt, isP, josa, log, notice, P, people, pres, pushEvent } from './state';
 import { topOf } from './opinion';
 import { activeFactions, members, splitDong, updateLeaders } from './factions';
 import { hwanguk, kingLean, kingMood } from './king';
@@ -16,6 +16,7 @@ import { setLaw } from './laws';
 import { raiseAgenda } from './agenda';
 import { startOksa } from './strife';
 import { daeriPayback, heirKey, sejePayback, startGukbon } from './gukbon';
+import { bibyeonJump, wonsuBonus } from './kwanje';
 
 /* ═══════════════════ 1601~1821: 조선 후기의 붕당 정치 ═══════════════════
  * 왕이 바뀔 때마다 성향이 달라진다. 북인이 몰락하고 서인이 노론·소론으로 갈라지며,
@@ -76,6 +77,8 @@ function crown(s: GameState, name: string) {
   s.heir = undefined;
   s.situations = s.situations.filter((x) => x.kind !== 'heir' && x.kind !== 'illness' && x.kind !== 'gukbon');
   s.flags.reignFrom = s.t;
+  // 선왕의 밀지를 받들던 「왕의 사람」은 새 임금 아래에서 그 끈을 잃는다
+  for (const c of Object.values(s.chars)) if (c.tags.includes('kingsman')) c.tags = c.tags.filter((t) => t !== 'kingsman');
   s.king.mood = 15;
   s.king.lean = {};
   s.king.base = {};
@@ -297,6 +300,8 @@ function rebellion(s: GameState, regions: RegionId[], name: string, months: numb
 }
 
 function tickLaterWar(s: GameState) {
+  const b = wonsuBonus(s);
+  if (b && typeof s.flags.horanEnd === 'number' && (s.flags.horanEnd as number) > s.t + 1 && chance(s, 0.3)) s.flags.horanEnd = (s.flags.horanEnd as number) - b;
   const end = s.flags.horanEnd;
   if (typeof end === 'number' && s.t >= end && s.t > tOf(1600, 1)) {
     s.war.active = false;
@@ -597,6 +602,38 @@ LATER_SCHEDULE.push(
   heirAt(1812, 7, '효명세자'),
 );
 
+/* ───────── 정조의 초계문신, 세도기의 매관매직 ───────── */
+
+for (let y = 1781; y <= 1799; y += 2)
+  LATER_SCHEDULE.push({
+    id: `l_chogye_${y}`,
+    at: at(y, 2),
+    cond: (s) => {
+      const p = P(s);
+      return alive(p) && p.status === 'active' && p.rank >= 5 && p.rank <= 9 && p.learning >= 6 && !p.tags.includes('chogye');
+    },
+    run: (s) => pushEvent(s, 'later_chogye', {}),
+  });
+
+for (let y = 1806; y <= 1820; y += 3)
+  LATER_SCHEDULE.push({
+    id: `l_maegwan_${y}`,
+    at: at(y, 6),
+    cond: (s) => {
+      const p = P(s);
+      return alive(p) && p.status !== 'exiled' && p.rank >= 3 && p.wealth >= 80 && !p.traits.includes('clean');
+    },
+    run: (s) => pushEvent(s, 'later_maegwan', {}),
+  });
+
+/* ───────── 비변사가 국정의 중심이 되는 고비 ───────── */
+LATER_SCHEDULE.push(
+  { id: 'l_bb_1592', at: at(1592, 6), run: (s) => bibyeonJump(s, 10, '왜란이 일자 비변사가 전쟁을 총괄하게 되었다. 군량과 외교, 장수의 임명까지 비변사 회의에서 정한다.') },
+  { id: 'l_bb_1598', at: at(1598, 12), run: (s) => bibyeonJump(s, 9, '전쟁이 끝났지만 비변사는 물러나지 않았다. 재정과 인사까지 쥔 국정 최고 기관으로 자리를 굳혔다. 의정부는 이름만 남는다.') },
+  { id: 'l_bb_1637', at: at(1637, 2), run: (s) => bibyeonJump(s, 4, '호란을 치르며 비변사 당상이 늘고, 팔도의 일을 나누어 맡는 당상까지 두게 되었다.') },
+  { id: 'l_bb_1802', at: at(1802, 11), run: (s) => bibyeonJump(s, 15, '척신들이 비변사 당상 자리를 차지하고 서로를 천거해 요직과 인사를 독점한다. 왕은 비변사가 정한 일을 따를 뿐이다.') },
+);
+
 /** 매달: 인물 등장, 전란 종료, 늘그막의 처리 */
 export function tickLater(s: GameState) {
   if (yearOf(s.t) < 1601) return;
@@ -763,6 +800,66 @@ export const LATER_EVENTS: Record<string, EventDef> = {
         return '죄를 한 사람에 그치자고 했다. 정조가 고개를 끄덕였지만, 벽파가 당신의 이름을 적어 두었다. (명망 +3)';
       }
       return '말을 아꼈다.';
+    },
+  },
+  later_chogye: {
+    build: () => ({
+      title: '초계문신(抄啓文臣)',
+      kind: 'personal',
+      text: '정조가 서른일곱 아래의 젊은 문신 가운데 재주 있는 이를 골라 규장각에서 다시 공부시킨다. 왕이 몸소 시험을 내고 성적을 매긴다. 당신의 이름이 명단에 올랐다.',
+      choices: [
+        { key: 'join', label: '규장각에 나아가 배운다', hint: '학식 경험 +10, 성심 +6, 명망 +3. 몇 달 동안 업무가 밀린다 (행동력 -1)' },
+        { key: 'decline', label: '맡은 일이 바쁘다며 사양한다', hint: '성심 -3' },
+      ],
+    }),
+    resolve(s, _c, key) {
+      const p = P(s);
+      if (key !== 'join') {
+        fav(p, -3);
+        return '초계문신을 사양했다. 왕이 서운해한다.';
+      }
+      p.tags.push('chogye');
+      s.player.exp.learning += 10;
+      fav(p, 6);
+      pres(p, 3);
+      s.player.ap = Math.max(0, s.player.ap - 1);
+      s.player.deeds.push(`${yearOf(s.t)} 초계문신에 뽑힘`);
+      log(s, `${josa(p.name, '이/가')} 초계문신으로 뽑혀 규장각에서 공부했다.`, 'player');
+      return '규장각에서 왕이 내는 시험을 치렀다. 왕이 당신의 답안에 붉은 점을 찍었다. (성심 +6, 명망 +3)';
+    },
+  },
+  later_maegwan: {
+    build: (s) => {
+      const p = P(s);
+      return {
+        title: '세도가의 문객',
+        kind: 'danger',
+        text: `안동 김씨 세도가의 문객이 찾아와 넌지시 말한다. "대감께서 성의를 보이시면 다음 정사(政事)에 좋은 자리가 날 겁니다." 벼슬이 돈으로 오가는 세상이다. 거절하면 세도가의 눈 밖에 난다.`,
+        choices: [
+          { key: 'pay', label: `재물을 바친다 (재산 -${Math.min(150, Math.round(p.wealth * 0.4))})`, hint: '성심 +8, 다음 승진이 빨라진다. 숨은 흠결 「매관」' },
+          { key: 'refuse', label: '정중히 거절한다', hint: '노론 세도가가 언짢아한다 (성심 -4)' },
+          { key: 'expose', label: '매관매직을 탄핵하는 상소를 올린다', hint: '명망 +6, 성심 -10. 세도가의 미움을 산다', disabled: inCourt(p) ? undefined : '조정에 있어야 한다' },
+        ],
+      };
+    },
+    resolve(s, _c, key) {
+      const p = P(s);
+      if (key === 'pay') {
+        p.wealth -= Math.min(150, Math.round(p.wealth * 0.4));
+        fav(p, 8);
+        p.promotedAt -= 24;
+        addFlaw(s, p, '매관(賣官)', false);
+        return '재물을 바쳤다. 곧 좋은 소식이 있을 거라 한다. (성심 +8, 숨은 흠결)';
+      }
+      if (key === 'refuse') {
+        fav(p, -4);
+        return '거절했다. 문객이 차갑게 웃으며 돌아갔다. (성심 -4)';
+      }
+      pres(p, 6);
+      fav(p, -10);
+      kingLean(s, 'noron', -2);
+      log(s, `${josa(p.name, '이/가')} 세도가의 매관매직을 탄핵하는 상소를 올렸다.`, 'player');
+      return '세도가의 매관매직을 들춰냈다. 선비들이 박수를 치지만 세도가는 당신의 이름을 잊지 않을 것이다. (명망 +6, 성심 -10)';
     },
   },
   later_imo: {

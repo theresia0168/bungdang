@@ -7,6 +7,10 @@ import { moodLabel } from '../../engine/king';
 import { backError, backPrince, candidates, dropBacking, favorite, heirOdds, heirSit, loveOf, motherOf, princes } from '../../engine/royal';
 import { Bar, CharLink, FactionBadge } from '../common';
 import { kingId } from '../../engine/later';
+import { CenterBar } from './CourtTab';
+import { KING_ACTS, kingAct, kingActError } from '../../engine/wang';
+import { kingProfile, ZEAL_NAME } from '../../engine/kingstat';
+import { ApPips } from '../common';
 import { gukbonError, gukbonOdds, gukbonSit, joinGukbon, TOPICS } from '../../engine/gukbon';
 import { KINGS, kingOfYear, tOf, yearOf } from '../../engine/calendar';
 
@@ -40,6 +44,8 @@ export function RoyalTab() {
           </h3>
           <p className="muted small">{STYLE_TEXT[String(s.flags.kingStyle ?? 'plain')] ?? ''}</p>
         </section>
+        <KingAudience />
+        <CenterBar />
         <GukbonPanel />
         <section>
           <h4>역대 임금</h4>
@@ -90,6 +96,7 @@ export function RoyalTab() {
           )}
         </p>
       </section>
+      <KingAudience />
 
       <section>
         <h4>왕비와 후궁</h4>
@@ -231,6 +238,47 @@ function GukbonPanel() {
         약 {Math.max(1, sit.until - s.t)}달 뒤에 끝난다. 왕은 속으로 한쪽을 바란다. 용안이 밝으면 왕의 뜻대로, 어두우면 당들의 세력대로 끝나기 쉽고, 신하들이 왕의 뜻을 꺾으면 왕권이 더 흔들린다.
         {p.faction !== 'none' && sit.data.picks[p.faction] ? ` ${FACTION_META[p.faction].name}과 다른 쪽에 서면 당의 호감이 떨어진다.` : ''}
       </p>
+    </section>
+  );
+}
+
+/** 임금을 뵙다 */
+function KingAudience() {
+  const { s, act } = useG();
+  const k = kingProfile(s);
+  const p = P(s);
+  return (
+    <section className="king-acts">
+      <div className="king-stats">
+        <span>
+          학식 <b>{k.learning}</b> <em className="muted small">(나 {p.learning})</em>
+        </span>
+        <span>
+          정치력 <b>{k.politics}</b> <em className="muted small">(나 {p.politics})</em>
+        </span>
+        <span className={k.zeal < 0 ? 'bad-text' : k.zeal >= 2 ? 'good-text' : ''}>{ZEAL_NAME[k.zeal]}</span>
+      </div>
+      <p className="muted small">
+        {k.note} 경연·진강·책문은 주사위 + (내 학식 − 임금의 학식), 청대에서 아뢰고 설득하는 일은 주사위 + (내 정치력 − 임금의 정치력)으로 판정한다.
+      </p>
+      <h4>
+        임금을 뵙다 <ApPips />
+      </h4>
+      <div className="act-grid">
+        {KING_ACTS.map((a) => {
+          const err = kingActError(s, a.id);
+          return (
+            <button key={a.id} className="abtn" disabled={!!err} title={a.desc} onClick={() => act((g) => kingAct(g, a.id))}>
+              <b>
+                {a.name}
+                <span className="cost">{'●'.repeat(a.ap)}</span>
+              </b>
+              <span>{err ?? a.desc}</span>
+            </button>
+          );
+        })}
+      </div>
+      <p className="muted small">임금도 때로 먼저 부른다. 성심이 높으면 밀지나 하사가, 낮으면 견책이 내려오고, 경연 뒤에 사람됨을 묻거나 몸소 책문을 내기도 한다.</p>
     </section>
   );
 }

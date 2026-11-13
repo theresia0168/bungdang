@@ -195,6 +195,10 @@ export interface Case {
   yusaeng?: boolean;
   /** 플레이어가 통문을 돌렸다 */
   tongmun?: boolean;
+  /** 플레이어가 고른 죄목(흠결 id). 없으면 아는 흠결을 모두 쓴다 */
+  charges?: string[];
+  /** 대간이 풍문으로 논했다 */
+  pungmun?: boolean;
 }
 
 export interface Scheme {
@@ -222,6 +226,8 @@ export interface Focus {
   lawId?: string;
   /** 변법 상소: 폐지를 청하는가 */
   abolish?: boolean;
+  /** 상소에 담은 조목 (sangso.ts) */
+  articles?: string[];
   progress: number;
   required: number;
   cosigners: string[];
@@ -282,6 +288,8 @@ export interface PlayerState {
   socialBonus: boolean;
   /** 내가 이끈 논핵을 연 달들. 잦으면 왕과 조정이 싫증을 낸다. */
   impeachAt: number[];
+  /** 탄핵 계사에 담을 죄목 (흠결 id). 탄핵을 시작할 때 쓰고 비운다 */
+  draftCharges?: string[] | null;
   /** 개인 사건별로 마지막에 일어난 달 */
   eventAt: Record<string, number>;
   /** 앞서 간 선대들. 가문을 이어 하면 쌓인다. */
@@ -506,6 +514,8 @@ export interface GameState {
   realm: RealmState;
   laws: Record<string, LawState>;
   oksa?: Oksa;
+  /** 겸직: 자리 id → 맡은 이와 맡은 때 */
+  kyeom?: Record<string, { who: string; since: number }>;
   nextId: number;
   over?: { reason: string; t: number };
 }

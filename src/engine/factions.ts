@@ -1,4 +1,5 @@
 import type { Character, FactionId, GameState } from './types';
+import { bibyeonWeight } from './kwanje';
 import { OFFICE_MAP } from './data/offices';
 import { FACTION_META, REGION_META } from './data/meta';
 import { chance } from './rng';
@@ -15,7 +16,12 @@ export function officePower(s: GameState): Record<FactionId, number> {
   for (const c of people(s)) {
     if (c.status !== 'active' || !c.office) continue;
     const o = OFFICE_MAP[c.office];
-    if (o) p[c.faction] += o.weight;
+    if (o) p[c.faction] += o.weight * bibyeonWeight(s, o);
+  }
+  for (const [id, v] of Object.entries(s.kyeom ?? {})) {
+    const c = s.chars[v.who];
+    const o = OFFICE_MAP[id];
+    if (c && o && c.status === 'active') p[c.faction] += o.weight * bibyeonWeight(s, o);
   }
   return p;
 }

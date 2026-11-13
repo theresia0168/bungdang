@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import { useG } from './ctx';
+import { ImpeachComposer } from './Composer';
 import type { Character, GameState } from '../engine/types';
 import { P, age, inCourt, isP, knownFlaws, officeTitle, statusLabel } from '../engine/state';
 import { FACTION_META, REGION_META, SCHOOL_META, TRAIT_META } from '../engine/data/meta';
@@ -44,6 +46,7 @@ function usesOf(s: GameState, c: Character, op: number): [string, string][] {
 
 export function CharPanel({ id }: { id: string }) {
   const { s, act, select } = useG();
+  const [drafting, setDrafting] = useState<string | null>(null);
   const c = s.chars[id];
   const p = P(s);
   const me = isP(s, c);
@@ -221,7 +224,7 @@ export function CharPanel({ id }: { id: string }) {
               const err = actionError(s, a, c);
               const cost = a.cost(s);
               return (
-                <button key={a.id} className="abtn" disabled={!!err} onClick={() => act((g) => runTargetAction(g, a.id, c.id))} title={a.desc}>
+                <button key={a.id} className="abtn" disabled={!!err} onClick={() => (a.id === 'impeach' ? setDrafting(c.id) : act((g) => runTargetAction(g, a.id, c.id)))} title={a.desc}>
                   <b>
                     {a.name}
                     <span className={`cost ${cost === 'authority' ? 'auth' : cost === 0 ? 'free' : ''}`}>
@@ -233,6 +236,7 @@ export function CharPanel({ id }: { id: string }) {
               );
             })}
           </div>
+          {drafting === c.id && !actionError(s, TARGET_ACTIONS.find((x) => x.id === 'impeach')!, c) && <ImpeachComposer c={c} onClose={() => setDrafting(null)} />}
         </section>
       )}
 

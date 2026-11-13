@@ -41,9 +41,9 @@ while (!s.over) {
     const live = people(s);
     const share = powerShare(s);
     console.log(
-      `${y} | ${P(s).name}(${yearOf(s.t) - P(s).born}세, ${P(s).office ?? P(s).status}) | 인물 ${live.length}명(조정 ${live.filter((c) => c.status === 'active').length}) 전체 ${Object.keys(s.chars).length} | ` +
+      `${y} | ${P(s).name}(${yearOf(s.t) - P(s).born}세, ${P(s).office ?? P(s).status}) | 인물 ${live.length}명(조정 ${live.filter((c) => c.status === "active").length} 대기 ${live.filter((c) => c.status === "idle").length}) 전체 ${Object.keys(s.chars).length} | ` +
         activeFactions(s).map((f) => `${FACTION_META[f].name} ${Math.round((share[f] ?? 0) * 100)}%/${live.filter((c) => c.faction === f).length}명`).join(' ') + ` 이판 ${FACTION_META[(Object.values(s.chars).find((c) => c.office === 'ijo' && c.status === 'active')?.faction) ?? 'none'].short}` +
-        ` | 국고 ${Math.round(s.realm.treasury)} 용안 ${Math.round(s.king.mood)} 긴장 ${Math.round(s.tension)} | mods ${s.mods.length} | ${Math.round((Date.now() - t0) / 1000)}s`,
+        ` | 국고 ${Math.round(s.realm.treasury)} 용안 ${Math.round(s.king.mood)} 비변사 ${Math.round(Number(s.flags.bibyeon ?? 25))} 긴장 ${Math.round(s.tension)} | mods ${s.mods.length} | ${Math.round((Date.now() - t0) / 1000)}s`,
     );
   }
 }
@@ -54,5 +54,5 @@ console.log('선대:', s.player.lineage.map((a) => `${a.name}(${a.peakOffice ?? 
 const cnt = (re: RegExp) => s.log.filter((e) => re.test(e.text)).length;
 console.log(`횟수: 옥사 ${cnt(/\[옥사\] 국청이 끝/)} · 환국 ${cnt(/^\[환국\]/)} · 반정 시도 ${cnt(/\[반정\]|\[역모\]/)} · 탕평 인사 ${cnt(/^\[탕평\]/)} · 민란 ${cnt(/^\[민란\]/)} · 변법 ${cnt(/^\[국법\]/)} · 영수 승계 ${cnt(/영수가 되었다/)} · 시행 중인 법 ${Object.entries(s.laws).filter(([, v]) => v.on).map(([k]) => k).join(',')}`);
 console.log('저장 크기', Math.round(JSON.stringify(s).length / 1024), 'KB, 연대기', s.log.length, '줄');
-const keys = ['[국본]', '[국왕]', '[반정]', '호란]', '예송', '환국', '[붕당]', '탕평', '임오화변', '세도', '[민란]', '[옥사]', '[국법]', '과거', '급제', '장원'];
+const keys = ['[비변사]', '국정의 중심', '[관제]', '겸했다', '초계문신', '매관', '[국본]', '[국왕]', '[반정]', '호란]', '예송', '환국', '[붕당]', '탕평', '임오화변', '세도', '[민란]', '[옥사]', '[국법]', '과거', '급제', '장원'];
 for (const e of s.log) if (keys.some((k) => e.text.includes(k))) console.log(`  ${yearOf(e.t)} ${e.text.slice(0, 90)}`);

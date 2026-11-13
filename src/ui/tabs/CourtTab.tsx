@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useG } from '../ctx';
-import { OFFICES, OFFICE_GROUPS, rankLabel } from '../../engine/data/offices';
+import { BRANCHES, DEPTS, OFFICES, OFFICE_MAP, rankLabel, type OfficeDef } from '../../engine/data/offices';
+import { authorityBase, bibyeonPower, bibyeonStage, kyeomHolder, kyeomsOf, officeOpen, openOffices } from '../../engine/kwanje';
+import { yearOf } from '../../engine/calendar';
 import { P, people } from '../../engine/state';
 import { appointParts, cooldownLeft, eligible, holderMap, nominate, nominateChance, nominateRight, nomineePool, raceFor } from '../../engine/court';
 import { FACTION_META } from '../../engine/data/meta';
@@ -40,14 +42,15 @@ export function CourtTab() {
   const { s } = useG();
   const p = P(s);
   const hm = holderMap(s);
-  const nominable = OFFICES.filter((o) => !nominateRight(s, o));
+  const live = openOffices(s);
+  const nominable = live.filter((o) => !nominateRight(s, o));
   const canNominate = p.status === 'active' && (p.office === 'ijo' || p.office === 'jeonrang');
-  const mine = OFFICES.filter((o) => eligible(s, p, o)).map((o) => {
+  const mine = live.filter((o) => eligible(s, p, o)).map((o) => {
     const parts = appointParts(s, p, o, hm);
     return { o, parts, total: parts.reduce((a, x) => a + x.value, 0) };
   });
   mine.sort((a, b) => b.total - a.total);
-  const cooling = OFFICES.map((o) => ({ o, n: cooldownLeft(s, p, o) }))
+  const cooling = live.map((o) => ({ o, n: cooldownLeft(s, p, o) }))
     .filter((x) => x.n > 0 && x.o.rank >= p.rank && x.o.id !== p.office)
     .filter((x, i, xs) => xs.findIndex((y) => y.o.name === x.o.name) === i);
 
@@ -65,25 +68,31 @@ export function CourtTab() {
 
   return (
     <div className="court">
-      <div className="court-groups">
-        {OFFICE_GROUPS.map((g) => (
-          <section key={g.id} className="ogroup">
-            <h3>{g.name}</h3>
-            <ul>
-              {OFFICES.filter((o) => o.group === g.id).map((o) => {
-                const h = hm[o.id];
-                return (
-                  <li key={o.id} style={{ ['--fc' as string]: h ? fcolor(h.faction) : 'transparent' }} title={o.desc}>
-                    <span className="o-name">{o.name}</span>
-                    <span className="o-rank">{rankLabel(o.rank)}</span>
-                    <span className="o-holder">{h ? <CharLink id={h.id} /> : <span className="muted">공석</span>}</span>
-                    <span className="o-tenure muted">{h ? `${h.tenure}개월` : ''}</span>
-                  </li>
-                );
-              })}
-            </ul>
-          </section>
-        ))}
+      <div className="court-chart">
+        <div className="chart-king">국왕</div>
+        <CenterBar />
+        {BRANCHES.map((b) => {
+          const depts = DEPTS.filter((d) => d.branch === b.id && OFFICES.some((o) => o.dept === d.id && officeOpen(s, o)));
+          if (!depts.length) return null;
+          return (
+            <section key={b.id} className={`chart-branch br-${b.id}`}>
+              <h3>{b.name}</h3>
+              <div className="chart-depts">
+                {depts.map((d) => (
+                  <div key={d.id} className="chart-dept" title={d.desc}>
+                    <h4>{d.name}</h4>
+                    <ul>
+                      {OFFICES.filter((o) => o.dept === d.id && officeOpen(s, o)).map((o) => (
+                        <OfficeRow key={o.id} o={o} />
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            </section>
+          );
+        })}
+        <KwanjeHistory />
       </div>
 
       <div className="court-side">
@@ -154,5 +163,79 @@ export function CourtTab() {
         </section>
       </div>
     </div>
+  );
+}
+
+function OfficeRow({ o }: { o: OfficeDef }) {
+  const { s } = useG();
+  const hm = holderMap(s);
+  const h = o.concurrent ? kyeomHolder(s, o.id) : hm[o.id];
+  const main = o.concurrent && h?.office ? OFFICE_MAP[h.office] : undefined;
+  const since = o.concurrent ? s.kyeom?.[o.id]?.since : undefined;
+  const other = !o.concurrent && h ? kyeomsOf(s, h) : [];
+  return (
+    <li style={{ ['--fc' as string]: h ? fcolor(h.faction) : 'transparent' }} title={o.desc} className={o.concurrent ? 'kyeom' : ''}>
+      <span className="o-name">
+        {o.name}
+        {o.concurrent ? <em className="o-tag">겸</em> : null}
+      </span>
+      <span className="o-rank">{o.concurrent ? '' : rankLabel(o.rank)}</span>
+      <span className="o-holder">
+        {h ? <CharLink id={h.id} /> : <span className="muted">공석</span>}
+        {main ? <span className="muted small"> ({main.name})</span> : null}
+        {other.length ? (
+          <em className="o-tag" title={`겸직: ${other.map((x) => x.name).join(', ')}`}>
+            겸{other.length > 1 ? other.length : ''}
+          </em>
+        ) : null}
+      </span>
+      <span className="o-tenure muted">{h ? (since !== undefined ? `${s.t - since}개월` : `${h.tenure}개월`) : ''}</span>
+    </li>
+  );
+}
+
+/** 관서가 생기고 없어진 내력 */
+function KwanjeHistory() {
+  const { s } = useG();
+  const lines = s.log.filter((e) => e.text.startsWith('[관제]')).slice(-8).reverse();
+  if (!lines.length) return null;
+  return (
+    <section className="chart-branch">
+      <h3>관제의 변화</h3>
+      <ul className="kwanje-log">
+        {lines.map((e, i) => (
+          <li key={i}>
+            <span className="muted small">{yearOf(e.t)}</span> {e.text.replace('[관제] ', '')}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/** 국정의 중심: 의정부 ↔ 비변사 */
+export function CenterBar() {
+  const { s } = useG();
+  const v = bibyeonPower(s);
+  const st = bibyeonStage(v);
+  const base = authorityBase(s);
+  return (
+    <section className="chart-center" title="비변사는 왜변에 대비한 임시 기구로 출발해 임진왜란 뒤 국정 최고 기관이 되었다. 의정부와 육조는 형식만 남고, 세도기에는 척신이 비변사를 쥐어 왕권이 제약되었다 (이재호 1971, 반윤홍 2003, 『신편 한국사』 30).">
+      <div className="center-head">
+        <span>국정의 중심</span>
+        <b>{st.name}</b>
+        <span className="muted small">비변사 위상 {Math.round(v)} · 왕권의 바탕 {base > 0 ? '+' : ''}{base}</span>
+      </div>
+      <div className="center-bar">
+        <span className="cb-left">의정부</span>
+        <div className="cb-track">
+          <div className="cb-fill" style={{ width: `${v}%` }} />
+        </div>
+        <span className="cb-right">비변사</span>
+      </div>
+      <p className="muted small">
+        {st.text} 비변사의 위상이 높을수록 정승 자리의 힘이 줄고 비변사 당상의 힘이 커지며, 용안이 돌아가는 바탕(왕권)이 낮아진다. 위상 45부터는 비변사 도제조의 호감이 임용에 끼어든다. 전란 중에 크게 오르고, 탕평하는 임금 때 조금씩 내려가며, 세도 아래서 빠르게 오른다. 「의정부 서사제 복구」 법으로 되돌릴 수 있다.
+      </p>
+    </section>
   );
 }

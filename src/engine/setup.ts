@@ -3,6 +3,7 @@ import { initLaws } from './laws';
 import type { Character, FactionId, GameState, RegionId, SchoolId, TraitId } from './types';
 import { ROSTER } from './data/roster';
 import { OFFICES, OFFICE_MAP } from './data/offices';
+import { openOffices } from './kwanje';
 import { REGIONS } from './data/meta';
 import { fromRoster, genChar } from './generate';
 import { holderMap } from './court';
@@ -152,7 +153,7 @@ export function newGame(choice: StartChoice, seed = Date.now()): GameState {
   s.player.peakRank = player.office ? player.rank : 10;
 
   const hm = holderMap(s);
-  for (const o of OFFICES) {
+  for (const o of openOffices(s)) {
     if (hm[o.id]) continue;
     const ageBy = o.rank <= 1 ? randInt(s, 58, 68) : o.rank <= 2 ? randInt(s, 46, 60) : o.rank <= 3 ? randInt(s, 40, 52) : randInt(s, 28, 38);
     const faction = weighted<FactionId>(s, o.rank <= 2 ? [['dong', 35], ['seo', 35], ['none', 30]] : [['dong', 55], ['seo', 40], ['none', 5]]);

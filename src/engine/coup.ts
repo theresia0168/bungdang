@@ -1,4 +1,5 @@
 import type { Character, FactionId, GameState } from './types';
+import { authorityBase, gunmunSway } from './kwanje';
 import type { EventDef } from './events/types';
 import { FACTION_META } from './data/meta';
 import { OFFICE_MAP } from './data/offices';
@@ -19,7 +20,9 @@ import { warReadiness } from './realm';
 export const COUP_LINE = -40;
 
 /** 이달 반정이 꾸며질 확률 */
-export const coupRisk = (s: GameState) => (s.king.mood >= COUP_LINE || s.realm.coup ? 0 : (COUP_LINE - s.king.mood) / 900);
+/** 비변사가 국정을 쥔 시대에는 낮은 왕권이 예사라, 그 바탕에서 더 떨어져야 반정의 기운이 인다 */
+const coupLine = (s: GameState) => COUP_LINE + Math.min(0, authorityBase(s));
+export const coupRisk = (s: GameState) => (s.king.mood >= coupLine(s) || s.realm.coup ? 0 : (coupLine(s) - s.king.mood) / 900);
 
 export function tickAuthority(s: GameState) {
   const realm = s.realm;
@@ -68,9 +71,10 @@ function resolveCoup(s: GameState) {
   const fname = FACTION_META[c.faction].name;
   const a = d6(s);
   const b = d6(s);
-  const atk = a + Math.round((COUP_LINE - s.king.mood) / 10) + Math.round((powerShare(s)[c.faction] ?? 0) * 4) + (c.joined ? 1 : 0);
-  const def = b + 4 + Math.round(warReadiness(s).score / 40) + (c.reported ? 4 : 0);
-  const roll = `반정 ${a}→${atk} · 왕실 ${b}→${def}`;
+  const [gA, gD] = gunmunSway(s, c.faction);
+  const atk = a + Math.round((COUP_LINE - s.king.mood) / 10) + Math.round((powerShare(s)[c.faction] ?? 0) * 4) + (c.joined ? 1 : 0) + gA;
+  const def = b + 4 + Math.round(warReadiness(s).score / 40) + (c.reported ? 4 : 0) + gD;
+  const roll = `반정 ${a}→${atk} · 왕실 ${b}→${def}${gA + gD ? ` (도성 군영 대장 ${gA}명이 반정 쪽, ${gD}명이 왕실 쪽)` : ''}`;
   const cons = conspirators(s, c.faction, lead.id);
   if (atk > def) {
     // 반정 성공: 왕은 자리를 지키되 허수아비가 되고, 반정한 당이 조정을 쥔다

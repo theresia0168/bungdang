@@ -2,6 +2,7 @@ import type { Case, Character, FactionId, GameState } from './types';
 import type { EventDef } from './events/types';
 import { FACTION_META } from './data/meta';
 import { OFFICE_MAP, OFFICES } from './data/offices';
+import { officeOpen } from './kwanje';
 import { yearOf } from './calendar';
 import { chance, d6, pick } from './rng';
 import { alive, atSeat, clamp, fav, inCourt, isP, josa, log, monthsSince, notice, officeTitle, owe, P, people, pres, pushEvent } from './state';
@@ -122,7 +123,7 @@ export function cheongyoHeld(s: GameState): Partial<Record<FactionId, number>> &
   const hm = holderMap(s);
   const out: Partial<Record<FactionId, number>> & { total: number } = { total: 0 };
   for (const o of OFFICES) {
-    if (!isCheongyo(o.id)) continue;
+    if (!isCheongyo(o.id) || o.concurrent || !officeOpen(s, o)) continue;
     out.total++;
     const h = hm[o.id];
     if (h) out[h.faction] = (out[h.faction] ?? 0) + 1;

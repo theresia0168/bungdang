@@ -1,4 +1,5 @@
 import type { Character, GameState, MemorialTopic } from './types';
+import { articleParts, bidap, memorialDraft } from './sangso';
 import { OFFICE_MAP } from './data/offices';
 import { chance, d6 } from './rng';
 import { addFlaw, alive, chargeable, clamp, isP, josa, log, owe, seat } from './state';
@@ -109,10 +110,11 @@ export function impeach(
   s: GameState,
   atk: Character,
   tgt: Character,
-  opt: { bonus?: RollPart[]; defBonus?: RollPart[]; response?: 'explain' | 'endure'; quiet?: boolean; hapgye?: number } = {},
+  opt: { bonus?: RollPart[]; defBonus?: RollPart[]; response?: 'explain' | 'endure'; quiet?: boolean; hapgye?: number; charges?: string[]; pungmun?: boolean } = {},
 ): ImpeachReport {
   const aParts: RollPart[] = [{ label: '정치력', value: atk.politics }];
-  const flaws = chargeable(s, tgt, atk.id);
+  // 고른 죄목만 쓴다. 고르지 않은 흠결은 다음을 위해 남는다
+  const flaws = chargeable(s, tgt, atk.id).filter((f) => !opt.charges || opt.charges.includes(f.id));
   if (flaws.length) aParts.push({ label: `흠결 ${flaws.length}개`, value: flaws.length });
   const atkSamsa = !!(atk.office && OFFICE_MAP[atk.office]?.samsa);
   if (atkSamsa) aParts.push({ label: '삼사 언관', value: 1 });
@@ -182,11 +184,12 @@ export function impeach(
   switch (outcome) {
     case 'severe_backfire':
       if (atk.office) vacate(s, atk);
-      addFlaw(s, atk, '무고(誣告)', true);
+      if (!opt.pungmun) addFlaw(s, atk, '무고(誣告)', true);
       atk.favor = clamp(atk.favor - 10, -100, 100);
       break;
     case 'backfire':
-      addFlaw(s, atk, '무고(誣告)', true);
+      // 대간은 풍문으로 논해도 무고의 죄를 묻지 않는다 (풍문거핵)
+      if (!opt.pungmun) addFlaw(s, atk, '무고(誣告)', true);
       atk.favor = clamp(atk.favor - 5, -100, 100);
       break;
     case 'rejected':
@@ -294,6 +297,10 @@ export interface MemorialResult {
   parts: RollPart[];
   text: string;
   disaster: boolean;
+  /** 상소문의 한 대목 */
+  draft?: string;
+  /** 임금의 비답 */
+  bidap?: string;
 }
 
 export const TOPIC_LABEL: Record<MemorialTopic, string> = {
@@ -310,8 +317,10 @@ export function memorial(
   topic: MemorialTopic,
   cosigners: string[],
   targetId?: string,
-  opt: { lawId?: string; abolish?: boolean } = {},
+  opt: { lawId?: string; abolish?: boolean; articles?: string[] } = {},
 ): MemorialResult {
+  const arts = opt.articles ?? [];
+  const draft = memorialDraft(s, init, topic, arts, { lawId: opt.lawId, abolish: opt.abolish, targetId });
   const tgt = targetId ? s.chars[targetId] : undefined;
   const law = topic === 'law' && opt.lawId ? LAW_MAP[opt.lawId] : undefined;
   const enact = !opt.abolish;
@@ -321,7 +330,7 @@ export function memorial(
     const text = `도승지 ${josa(ds.name, '이/가')} ${init.name}의 ${josa(TOPIC_LABEL[topic], '을/를')} 왕에게 올리지 않고 돌려보냈다.`;
     log(s, text, isP(s, init) ? 'player' : 'court');
     if (isP(s, init)) sway(s, ds, init.id, -5, '상소 봉환', {});
-    return { success: false, veto: ds.id, roll: 0, total: 0, difficulty: 0, parts: [], text, disaster: false };
+    return { success: false, veto: ds.id, roll: 0, total: 0, difficulty: 0, parts: [], text, disaster: false, draft };
   }
 
   const parts: RollPart[] = [];
@@ -338,6 +347,7 @@ export function memorial(
   if (mood <= -40) parts.push({ label: '용안이 어두움', value: -1 });
   if (s.situations?.some((x) => x.kind === 'omen')) parts.push({ label: '구언(求言)', value: 1 });
   if (s.situations?.some((x) => x.kind === 'illness')) parts.push({ label: '왕의 환후', value: -1 });
+  parts.push(...articleParts(s, init, topic, arts));
 
   let difficulty = topic === 'sipye' ? 5 : 6;
   if (law) {
@@ -353,7 +363,8 @@ export function memorial(
   const roll = d6(s);
   const total = roll + sum(parts);
   const success = total >= difficulty;
-  const disaster = !success && total <= difficulty - 4;
+  const disaster = !success && !arts.includes('daejoe') && total <= difficulty - (arts.includes('jikgan') ? 3 : 4);
+  let dismissed = false;
   let text = '';
 
   if (success) {
@@ -421,11 +432,22 @@ export function memorial(
       text += ' 왕이 크게 노하여 성심을 잃었다.';
       if (init.office && chance(s, 0.4)) {
         vacate(s, init);
+        dismissed = true;
         text += ' 관직에서 물러났다.';
       }
     }
+    if (arts.includes('jikgan')) init.favor = clamp(init.favor - 5, -100, 100);
   }
+  // 조목이 남기는 뒷맛
+  if (success && arts.includes('jikgan')) init.prestige = clamp(init.prestige + 3, 0, 100);
+  if (arts.includes('dangron') && init.faction !== 'none') {
+    s.tension = clamp(s.tension + 3, 0, 100);
+    swayFaction(s, init.faction, init.id, 3, '당론을 세운 상소', 0.1);
+    const foe = MAIN_FACTIONS.filter((f) => s.factions[f].active && topOf(f) !== topOf(init.faction)).sort((a, b) => (powerShare(s)[b] ?? 0) - (powerShare(s)[a] ?? 0))[0];
+    if (foe) swayFaction(s, foe, init.id, -4, '당을 논박한 상소', 0.1);
+  }
+  const reply = bidap(s, success, disaster, topic, arts, dismissed);
   if (isP(s, init)) s.player.stats.memorials++;
   log(s, text, isP(s, init) ? 'player' : 'court');
-  return { success, roll, total, difficulty, parts, text, disaster };
+  return { success, roll, total, difficulty, parts, text, disaster, draft, bidap: reply };
 }

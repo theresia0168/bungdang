@@ -11,6 +11,7 @@ import { genChar } from './generate';
 import { jadaePick } from './strife';
 import { shortDate, yearOf } from './calendar';
 import { FACTION_META } from './data/meta';
+import { bibyeonPower, kyeomHolder, openOffices } from './kwanje';
 
 export function holderMap(s: GameState): Record<string, Character> {
   const m: Record<string, Character> = {};
@@ -119,9 +120,11 @@ export function eligible(s: GameState, c: Character, o: OfficeDef): boolean {
   if (age(s, c) < 20) return false;
   if (c.office === o.id) return false;
   const cur = c.office ? OFFICE_MAP[c.office] : undefined;
-  if (cur && cur.rank <= o.rank) return false;
+  // 중추부 같은 허직은 보직을 기다리는 이만 앉고, 허직에 있는 이는 언제든 요직으로 옮길 수 있다
+  if (o.sinecure && (c.status !== 'idle' || isP(s, c) || c.rank !== o.rank)) return false;
+  if (cur && cur.rank <= o.rank && !cur.sinecure) return false;
   // 자리에 앉자마자 다른 자리로 옮기지 않는다
-  if (c.office && c.status === 'active' && c.tenure < MIN_TENURE) return false;
+  if (c.office && c.status === 'active' && c.tenure < MIN_TENURE && !cur?.sinecure) return false;
   if (o.rank > lowestOfficeFor(c.rank)) return false;
   if (cooldownLeft(s, c, o) > 0) return false;
   if (c.rank > minRankFor(o.rank)) return false;
@@ -159,7 +162,10 @@ export function appointParts(s: GameState, c: Character, o: OfficeDef, hm = hold
     const jr = hm['jeonrang'];
     if (jr && jr.id !== c.id) parts.push({ label: `이조전랑 ${jr.name}의 통청`, value: opinion(s, jr, c) / 12 });
   }
-  if (c.faction !== 'none') {
+  const y = yearOf(s.t);
+  // 내쳐진 당은 안배의 몫도 없다
+  const shut = (c.faction === 'nam' && ((y >= 1694 && y < 1776) || y >= 1801)) || (c.faction === 'buk' && y >= 1623);
+  if (c.faction !== 'none' && !shut) {
     const share = powerShare(s)[c.faction] ?? 0;
     if (share < 0.3) parts.push({ label: '왕의 안배', value: 2 });
   }
@@ -175,11 +181,23 @@ export function appointParts(s: GameState, c: Character, o: OfficeDef, hm = hold
     parts.push({ label: '자리 경쟁의 지지', value: Math.round(v * 10) / 10 });
   }
   if ((s.recs[c.id] ?? -1) > s.t) parts.push({ label: '천거', value: 8 });
+  if (c.tags.includes('kingsman')) parts.push({ label: '왕의 사람', value: 2 });
+  // 비변사가 국정을 쥐면 도제조가 인사에 입김을 넣는다
+  const bv = bibyeonPower(s);
+  const dj = bv >= 45 ? kyeomHolder(s, 'bibyeon_do') : undefined;
+  if (dj && dj.id !== c.id && o.rank <= 4) {
+    const w = Math.min(1, (bv - 45) / 35);
+    const v = Math.round((opinion(s, dj, c) / 15) * w * 10) / 10;
+    if (v) parts.push({ label: `비변사 도제조 ${dj.name}의 입김`, value: v });
+  }
   if (c.traits.includes('recluse')) parts.push({ label: '은일', value: -5 });
   if (c.eumseo) parts.push({ label: '음서 출신', value: o.rank <= 2 ? -6 : -3 });
   // 갑술환국 뒤 정조가 채제공을 쓰기 전까지 남인은 요직에서 밀려났다
-  const y = yearOf(s.t);
-  if (c.faction === 'nam' && y >= 1694 && y < 1776) parts.push({ label: '남인 폐출', value: o.rank <= 3 ? -5 : -2 });
+  // 대신(판서·정승)일수록 막혔다. 신유박해 뒤 세도기에도 남인은 다시 밀려났다.
+  if (c.faction === 'nam' && y >= 1694 && y < 1776) parts.push({ label: '남인 폐출', value: o.rank <= 2 ? -12 : o.rank <= 3 ? -6 : -2 });
+  if (c.faction === 'nam' && y >= 1801) parts.push({ label: '사학(邪學)의 당', value: o.rank <= 2 ? -8 : o.rank <= 3 ? -4 : -1 });
+  // 나주 괘서 뒤 소론은 탕평의 구색으로만 남았다
+  if (c.faction === 'soron' && y >= 1755 && y < 1776 && o.rank <= 2) parts.push({ label: '괘서의 여파', value: -5 });
   // 인조반정 뒤 한 세대 동안 서인이 조정을 쥐었다
   if (topOf(c.faction) === 'seo' && y >= 1623 && y < 1674 && o.rank <= 3) parts.push({ label: '반정 공신의 당', value: 2 });
   if (c.home === 'jeolla' && s.regions.jeolla.tags.includes('banyeok')) parts.push({ label: '반역향 출신', value: -2 });
@@ -204,12 +222,21 @@ function fallbackFor(s: GameState, o: OfficeDef): Character {
 
 export function fillVacancies(s: GameState, max = 6) {
   let hm = holderMap(s);
-  const vac = OFFICES.filter((o) => !hm[o.id] && !s.flags[`reserve_${o.id}`]).sort((a, b) => a.rank - b.rank);
+  const vac = openOffices(s)
+    .filter((o) => !hm[o.id] && !s.flags[`reserve_${o.id}`])
+    .sort((a, b) => (a.sinecure ? 1 : 0) - (b.sinecure ? 1 : 0) || a.rank - b.rank);
   let filled = 0;
   for (const o of vac) {
     if (filled >= max) break;
     let best: Character | undefined;
     let bs = -Infinity;
+    // 허직은 기다리는 이 가운데 가장 오래 품계에 있었던 이를 앉힌다. 사람을 새로 만들어 채우지 않는다.
+    if (o.sinecure) {
+      const idle = people(s).filter((c) => eligible(s, c, o)).sort((a, b) => a.rank - b.rank || b.prestige - a.prestige);
+      if (idle[0]) appoint(s, idle[0], o.id, true);
+      hm = holderMap(s);
+      continue;
+    }
     // 자리 경쟁이 붙어 있던 자리는 거론되던 후보 가운데서 고른다. 이조가 의망해 낙점받은 이가 있으면 그가 오른다.
     const race = raceFor(s, o.id);
     const nom = race?.nominee ? s.chars[race.nominee] : undefined;

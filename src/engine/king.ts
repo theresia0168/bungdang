@@ -1,4 +1,6 @@
 import type { Character, FactionId, GameState } from './types';
+import { kingProfile, vsText, ZEAL_FREQ } from './kingstat';
+import { authorityBase } from './kwanje';
 import type { EventDef } from './events/types';
 import { OFFICE_MAP } from './data/offices';
 import { FACTION_META } from './data/meta';
@@ -51,7 +53,8 @@ export const WARY_TRIGGER = -35;
  */
 export function tickKing(s: GameState) {
   const k = s.king;
-  kingMood(s, randInt(s, -8, 8) - k.mood * 0.08 - (s.war.active ? 1 : 0));
+  // 용안은 왕권의 바탕으로 돌아간다. 비변사가 국정을 쥘수록 그 바탕이 낮아진다 (kwanje.ts authorityBase)
+  kingMood(s, randInt(s, -8, 8) - (k.mood - authorityBase(s)) * 0.08 - (s.war.active ? 1 : 0));
   for (const f of new Set([...Object.keys(k.lean), ...Object.keys(k.base ?? {})]) as Set<FactionId>) {
     const b = k.base?.[f] ?? 0;
     k.lean[f] = b + ((k.lean[f] ?? 0) - b) * 0.97;
@@ -93,7 +96,7 @@ export function tickKing(s: GameState) {
 }
 
 /** 왕이 판을 뒤집는다 */
-export function hwanguk(s: GameState, f: FactionId, _forced = false) {
+export function hwanguk(s: GameState, f: FactionId, forced = false) {
   const p = P(s);
   const holders = people(s)
     .filter((c) => c.faction === f && c.status === 'active' && c.office && OFFICE_MAP[c.office] && !isP(s, c))
@@ -120,7 +123,9 @@ export function hwanguk(s: GameState, f: FactionId, _forced = false) {
   }
   const leader = s.factions[f].leader === p.id;
   const distanced = typeof s.flags.distanced === 'number' && s.t - s.flags.distanced <= 12;
-  const risk = clamp(0.35 + (leader ? 0.3 : 0) + Math.max(0, (s.line[f] ?? 0) / 300) - (distanced ? 0.3 : 0) - (p.favor >= 50 ? 0.15 : 0), 0.05, 0.9);
+  // 역사의 환국은 그 당의 대신을 통째로 갈아치웠다
+  const top = OFFICE_MAP[p.office].rank <= 2;
+  const risk = clamp(0.35 + (forced ? 0.2 + (top ? 0.25 : 0) : 0) + (leader ? 0.3 : 0) + Math.max(0, (s.line[f] ?? 0) / 300) - (distanced ? 0.3 : 0) - (p.favor >= 50 ? 0.15 : 0), 0.05, 0.9);
   if (chance(s, risk)) {
     const name = officeTitle(p);
     vacate(s, p);
@@ -177,7 +182,7 @@ export function rollAudience(s: GameState) {
   const p = P(s);
   // 지난달 업무에 힘썼으면 왕의 눈에 띈다
   const keen = monthsSince(s, 'workAt') <= 1 ? 0.12 : 0;
-  if (!chance(s, (HONGMUN.includes(p.office!) ? 0.25 : 0.12) + keen)) return;
+  if (!chance(s, ((HONGMUN.includes(p.office!) ? 0.25 : 0.12) + keen) * ZEAL_FREQ[kingProfile(s).zeal])) return;
   const pool = TOPICS.filter((x) => (!x.from || s.t >= tOf(...x.from)) && (!x.to || s.t <= tOf(...x.to)));
   const topic = pool[randInt(s, 0, pool.length - 1)];
   s.flags.audienceAt = s.t;
@@ -201,15 +206,18 @@ export const KING_EVENTS: Record<string, EventDef> = {
       const p = P(s);
       const mood = moodLabel(s.king.mood);
       const riskTxt = ['', '조금 민감한 주제다.', '왕이 듣기 싫어할 주제다.', '목이 달아날 수도 있는 주제다.'][t.risk];
+      const k = kingProfile(s);
+      const bored = k.zeal < 0 ? ' 다만 이 임금은 경전 이야기를 지루해한다.' : k.zeal >= 2 ? ' 이 임금은 강론에 크게 감복하지만 눈이 높다.' : '';
+      const sharp = k.politics >= 7 ? ' 정치에 밝은 임금이라 듣기 좋은 말을 꿰뚫어 본다.' : '';
       return {
         title: `경연(經筵) — ${t.title}`,
         kind: 'court',
         text: `경연이 끝나 갈 무렵, 왕이 당신을 돌아보며 묻는다.\n\n${t.ask}\n\n오늘 용안은 「${mood}」이다. ${riskTxt}`,
         choices: [
           { key: 'bold', label: '직언(直言)한다', hint: `명망 +3. 용안이 밝으면 성심이 오르고, 어두우면 크게 떨어진다.${p.traits.includes('upright') ? ' (강직: 명망 +1)' : ''}` },
-          { key: 'soft', label: '완곡하게 아뢴다', hint: `정치력 판정 (주사위 + ${p.politics} ≥ ${7 + t.risk}). 성공하면 성심 +4.` },
-          { key: 'classic', label: '경전을 들어 답한다', hint: `학식 판정 (주사위 + ${p.learning} ≥ 8). 성공하면 성심 +3, 명망 +2.` },
-          { key: 'flatter', label: '왕의 뜻에 맞춘다', hint: '성심 +5, 명망 -3. 같은 당에서 아첨한다는 말을 듣는다.' },
+          { key: 'soft', label: '완곡하게 아뢴다', hint: `${vsText(p.politics, k.politics, '정치력')} ≥ ${3 + t.risk}. 성공하면 성심 +4.` },
+          { key: 'classic', label: '경전을 들어 답한다', hint: `${vsText(p.learning, k.learning, '학식')} ≥ 3. 성공하면 성심 +${k.zeal >= 2 ? 5 : 3}, 명망 +2.${bored}` },
+          { key: 'flatter', label: '왕의 뜻에 맞춘다', hint: `성심 +${k.politics >= 7 ? 2 : 5}, 명망 -3. 같은 당에서 아첨한다는 말을 듣는다.${sharp}` },
         ],
       };
     },
@@ -230,32 +238,49 @@ export const KING_EVENTS: Record<string, EventDef> = {
         front(s, 'audience_follow', { topic: t.id, mode: 'angry' });
         return `왕의 낯빛이 굳어졌다. (명망 +3, 성심 -${loss})`;
       }
+      const k = kingProfile(s);
       if (key === 'soft') {
-        const r = d6(s) + p.politics;
-        if (r >= 7 + t.risk) {
+        const r = d6(s) + p.politics - k.politics;
+        if (r >= 3 + t.risk) {
           p.favor = clamp(p.favor + 4, -100, 100);
           kingMood(s, 3);
           if (chance(s, 0.5)) front(s, 'audience_follow', { topic: t.id, mode: 'ask' });
           return `말을 골라 아뢰자 왕이 흡족해했다. (판정 ${r}, 성심 +4)`;
         }
-        return `왕이 알아듣지 못한 듯 다른 신하에게 말을 돌렸다. (판정 ${r})`;
+        return `${k.politics >= 7 ? '왕이 말의 속뜻을 꿰뚫어 보고 엷게 웃었다' : '왕이 알아듣지 못한 듯 다른 신하에게 말을 돌렸다'}. (판정 ${r} < ${3 + t.risk})`;
       }
       if (key === 'classic') {
-        const r = d6(s) + p.learning;
-        if (r >= 8) {
-          p.favor = clamp(p.favor + 3, -100, 100);
+        const r = d6(s) + p.learning - k.learning;
+        // 학문에 뜻이 없는 임금은 경전 이야기를 지루해한다
+        if (k.zeal < 0) {
+          if (r >= 3 && chance(s, 0.5)) {
+            p.prestige = clamp(p.prestige + 1, 0, 100);
+            return `구절을 막힘없이 풀었지만 왕은 하품을 참을 뿐이었다. (판정 ${r}, 명망 +1)`;
+          }
+          p.favor = clamp(p.favor - 2, -100, 100);
+          kingMood(s, -2);
+          return `경전 이야기가 길어지자 왕이 "그만하라. 머리가 아프다" 하고 자리를 떴다. (판정 ${r}, 성심 -2)`;
+        }
+        if (r >= 3) {
+          const g = k.zeal >= 2 ? 5 : 3;
+          p.favor = clamp(p.favor + g, -100, 100);
           p.prestige = clamp(p.prestige + 2, 0, 100);
           kingMood(s, 4);
-          return `경전의 구절을 들어 풀어내자 좌우가 감탄했다. (판정 ${r}, 성심 +3, 명망 +2)`;
+          return `${k.zeal >= 2 ? '왕이 몸소 다른 구절로 되묻자 막힘없이 받아냈다. 왕이 무릎을 쳤다' : '경전의 구절을 들어 풀어내자 좌우가 감탄했다'}. (판정 ${r}, 성심 +${g}, 명망 +2)`;
         }
         p.prestige = clamp(p.prestige - 1, 0, 100);
-        return `구절이 입안에서 맴돌 뿐 말이 막혔다. (판정 ${r}, 명망 -1)`;
+        if (k.zeal >= 2) {
+          p.favor = clamp(p.favor - 1, -100, 100);
+          return `왕이 "그 구절의 주석은 그렇지 않다" 하며 바로잡았다. 얼굴이 화끈거렸다. (판정 ${r} < 3, 명망 -1, 성심 -1)`;
+        }
+        return `구절이 입안에서 맴돌 뿐 말이 막혔다. (판정 ${r} < 3, 명망 -1)`;
       }
-      p.favor = clamp(p.favor + 5, -100, 100);
+      const gain = k.politics >= 7 ? 2 : 5;
+      p.favor = clamp(p.favor + gain, -100, 100);
       p.prestige = clamp(p.prestige - 3, 0, 100);
-      kingMood(s, 6);
+      kingMood(s, k.politics >= 7 ? 2 : 6);
       const fx = swayFaction(s, p.faction, p.id, -3, '경연에서 아첨', 0.1);
-      return `왕이 기뻐했다. 물러 나오는 길에 동료들의 시선이 싸늘했다. (성심 +5, 명망 -3${fx ? `, ${fx}` : ''})`;
+      return `${k.politics >= 7 ? '왕이 듣기 좋은 말인 줄 알면서도 받아 주었다' : '왕이 기뻐했다'}. 물러 나오는 길에 동료들의 시선이 싸늘했다. (성심 +${gain}, 명망 -3${fx ? `, ${fx}` : ''})`;
     },
   },
 

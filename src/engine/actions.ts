@@ -1,4 +1,5 @@
 import type { Character, FactionId, GameState, MemorialTopic, ProjectKind, TraitId } from './types';
+import { ARTICLE_MAP, articleError, impeachDraft, memorialMonths } from './sangso';
 import { addPrep } from './realm';
 import { OFFICE_MAP } from './data/offices';
 import { REGION_META } from './data/meta';
@@ -368,10 +369,20 @@ export const TARGET_ACTIONS: TargetAction[] = [
     run(s, t) {
       const p = P(s);
       const broke = betray(s, t);
-      openCase(s, p, t, { byMemorial: !isSamsa(p) });
+      const cs = openCase(s, p, t, { byMemorial: !isSamsa(p) });
+      const draft = s.player.draftCharges;
+      s.player.draftCharges = null;
+      let gyesa = '';
+      if (cs && draft) {
+        cs.charges = draft;
+        cs.pungmun = draft.length === 0 && isSamsa(p);
+        const labels = t.flaws.filter((f) => draft.includes(f.id)).map((f) => f.label);
+        gyesa = impeachDraft(s, p, t, labels, !!cs.pungmun);
+        log(s, `[탄핵 계사] ${gyesa}`, 'player');
+      }
       setCd(s, 'impeach', IMPEACH_COOLDOWN);
       s.player.impeachAt = [...s.player.impeachAt.filter((x) => s.t - x <= 24), s.t];
-      return `${josa(t.name, '을/를')} 논핵하기 시작했다. 2개월 동안 '연명 요청'으로 동조자를 모으라.${broke}`;
+      return `${gyesa ? `「${gyesa}」\n\n` : ''}${josa(t.name, '을/를')} 논핵하기 시작했다. 2개월 동안 '연명 요청'으로 동조자를 모으라.${broke}`;
     },
   },
   {
@@ -1346,7 +1357,8 @@ function buildStep(s: GameState, kind: ProjectKind): string {
 
 /* ───────── 상소 ───────── */
 
-export const MEMORIAL_INFO: Record<'law' | 'jojae', { name: string; desc: string }> = {
+export const MEMORIAL_INFO: Record<'law' | 'jojae' | 'sipye', { name: string; desc: string }> = {
+  sipye: { name: '시폐(時弊) 상소', desc: '나라의 폐단을 아뢴다. 받아들여지면 명망과 성심이 오른다. 가장 무난한 상소다.' },
   law: { name: '변법(變法) 상소', desc: '법을 새로 세우거나 있는 법을 없애자고 청한다. 왕의 마음과 조정 세력이 그 법을 어떻게 보느냐에 따라 어려움이 다르다. 2개월 동안 짓고 연명을 모은다.' },
   jojae: { name: '조제 상소', desc: '붕당의 화합을 청한다. 받아들여지면 긴장도가 크게 내리지만 당내에서 미온적이라는 말을 듣는다. 2개월.' },
 };
@@ -1358,12 +1370,14 @@ export function memorialError(s: GameState): string | null {
   return null;
 }
 
-export function startMemorial(s: GameState, topic: MemorialTopic, opt: { lawId?: string; abolish?: boolean; targetId?: string } = {}): string {
+export function startMemorial(s: GameState, topic: MemorialTopic, opt: { lawId?: string; abolish?: boolean; targetId?: string; articles?: string[] } = {}): string {
   const err = memorialError(s) ?? (topic === 'law' && opt.lawId ? lawMemorialError(s, opt.lawId) : null);
   if (err) return err;
-  s.player.focus = { kind: 'memorial', topic, progress: 0, required: 2, cosigners: [], ...opt };
+  const articles = (opt.articles ?? []).filter((id) => !articleError(s, id, topic));
+  const required = opt.articles ? memorialMonths(articles) : 2;
+  s.player.focus = { kind: 'memorial', topic, progress: 0, required, cosigners: [], ...opt, articles };
   const what = topic === 'law' && opt.lawId ? `${LAW_MAP[opt.lawId]?.name ?? ''} ${opt.abolish ? '폐지' : '시행'}을 청하는 상소` : TOPIC_LABEL[topic];
-  return `${josa(what, '을/를')} 짓기 시작했다. 두 달 동안 연명을 모으자.`;
+  return `${josa(what, '을/를')} 짓기 시작했다.${articles.length ? ` (${articles.map((id) => ARTICLE_MAP[id].name).join(' · ')})` : ''} ${required}달 동안 쓰며 연명을 모으자.`;
 }
 
 /** 막 바뀌었거나 부결된 법은 한동안 다시 올리지 못한다 */
@@ -1426,7 +1440,7 @@ function resolveMemorialFocus(s: GameState) {
   const p = P(s);
   const f = s.player.focus!;
   s.player.focus = null;
-  const r = memorial(s, p, f.topic ?? 'sipye', f.cosigners, f.targetId, { lawId: f.lawId, abolish: f.abolish });
+  const r = memorial(s, p, f.topic ?? 'sipye', f.cosigners, f.targetId, { lawId: f.lawId, abolish: f.abolish, articles: f.articles });
   pushEvent(s, 'memorial_report', { result: r, topic: f.topic });
 }
 

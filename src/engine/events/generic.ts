@@ -56,7 +56,9 @@ export const GENERIC_EVENTS: Record<string, EventDef> = {
   memorial_report: {
     build(_s, c) {
       const r = c.result as MemorialResult;
-      return { title: TOPIC_LABEL[c.topic as keyof typeof TOPIC_LABEL] ?? '상소', kind: 'court', text: r.text, memorial: r, choices: OK };
+      const head = r.draft ? `〈상소의 한 대목〉\n${r.draft}\n\n` : '';
+      const reply = r.veto ? '' : r.bidap ? `〈비답(批答)〉\n「${r.bidap}」\n\n` : '';
+      return { title: TOPIC_LABEL[c.topic as keyof typeof TOPIC_LABEL] ?? '상소', kind: 'court', text: `${head}${reply}${r.text}`, memorial: r, choices: OK };
     },
     resolve() {},
   },

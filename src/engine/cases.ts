@@ -143,7 +143,7 @@ function resolveImpeach(s: GameState, cs: Case) {
   const hap = hapgyeOf(s, cs);
   if (hap) bonus.push({ label: hap >= 3 ? '삼사 합계' : '양사 합계', value: hap >= 3 ? 3 : 1 });
   const defBonus = cs.cons.length ? [sidePart('구원', cs.cons.length)] : [];
-  const rep = impeach(s, atk, tgt, { bonus, defBonus, response: cs.response, hapgye: hap });
+  const rep = impeach(s, atk, tgt, { bonus, defBonus, response: cs.response, hapgye: hap, charges: cs.charges, pungmun: cs.pungmun });
   const success = SUCCESS.includes(rep.outcome);
   if (rep.outcome === 'rejected' || rep.outcome === 'shielded') pihyeom(s, cs, rep);
   const p = P(s);

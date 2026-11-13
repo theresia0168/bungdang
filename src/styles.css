@@ -1271,6 +1271,192 @@ button.trait.on {
   color: var(--gold2);
 }
 
+/* ───── 조정 조직도 ───── */
+.court-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.chart-king {
+  align-self: center;
+  padding: 4px 18px;
+  border: 1px solid var(--gold);
+  border-radius: 4px;
+  color: var(--gold2);
+  font-weight: 600;
+  letter-spacing: 0.3em;
+}
+.chart-branch {
+  background: var(--bg2);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 8px 10px;
+  position: relative;
+}
+.chart-branch::before {
+  content: '';
+  position: absolute;
+  top: -11px;
+  left: 50%;
+  width: 1px;
+  height: 10px;
+  background: var(--line);
+}
+.chart-branch > h3 {
+  font-size: 14px;
+  color: var(--gold2);
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 5px;
+  margin-bottom: 8px;
+}
+.chart-depts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+  gap: 8px;
+}
+.chart-dept {
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 6px 8px;
+  min-width: 0;
+}
+.chart-dept h4 {
+  font-size: 12px;
+  color: var(--gold);
+  margin-bottom: 4px;
+}
+.chart-dept li {
+  display: grid;
+  grid-template-columns: minmax(84px, 1fr) 30px minmax(0, 1.4fr) 44px;
+  gap: 6px;
+  align-items: center;
+  padding: 2px 0 2px 7px;
+  border-left: 3px solid var(--fc);
+  margin-bottom: 2px;
+  font-size: 12.5px;
+}
+.chart-dept li.kyeom {
+  border-left-style: dashed;
+}
+.o-tag {
+  font-style: normal;
+  font-size: 10px;
+  color: var(--gold);
+  border: 1px solid var(--gold);
+  border-radius: 2px;
+  padding: 0 2px;
+  margin-left: 4px;
+}
+.kwanje-log li {
+  font-size: 12.5px;
+  margin-bottom: 3px;
+}
+@media (max-width: 700px) {
+  .chart-depts {
+    grid-template-columns: 1fr;
+  }
+}
+
+.chart-center {
+  background: var(--bg2);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 8px 10px;
+}
+.center-head {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  flex-wrap: wrap;
+  font-size: 13px;
+}
+.center-head b {
+  color: var(--gold2);
+}
+.center-bar {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 8px;
+  align-items: center;
+  margin: 6px 0;
+  font-size: 12px;
+}
+.cb-track {
+  height: 8px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.cb-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--gold), #b0476b);
+}
+
+/* ───── 상소·탄핵 짓기 ───── */
+.composer {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.comp-topics {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.comp-topics .mini.on {
+  border-color: var(--gold);
+  color: var(--gold2);
+}
+.comp-articles li {
+  margin-bottom: 3px;
+  font-size: 12.5px;
+}
+.comp-articles li.off {
+  opacity: 0.5;
+}
+.comp-articles label {
+  display: grid;
+  grid-template-columns: 16px 1fr;
+  column-gap: 6px;
+  align-items: start;
+  cursor: pointer;
+}
+.comp-articles label em {
+  grid-column: 2;
+  font-style: normal;
+}
+.comp-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.impeach-comp {
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--bg);
+}
+.impeach-comp h5 {
+  color: var(--gold2);
+  font-size: 13px;
+}
+
+.king-stats {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+.king-stats b {
+  color: var(--gold2);
+}
+
 /* ───── 인물 ───── */
 .filters {
   display: flex;

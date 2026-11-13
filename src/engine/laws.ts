@@ -200,6 +200,17 @@ LAWS.push(
     stance: { dong: 0.6, seo: -0.2 },
   },
   {
+    id: 'seosa',
+    resist: 0.45,
+    name: '의정부 서사제(署事制) 복구',
+    desc: '육조의 일을 의정부를 거쳐 왕에게 올리게 하고, 비변사의 일을 다시 변방의 군무로 좁힌다. 비변사 당상들이 거세게 반발한다.',
+    effect: '비변사의 위상이 다달이 0.3씩 내려가고, 그만큼 왕권(용안의 바탕)이 되살아난다',
+    initial: false,
+    from: [1600, 1],
+    king: 0.7,
+    stance: { dong: 0.1, seo: 0.0 },
+  },
+  {
     id: 'napsok',
     resist: 0.0,
     name: '납속(納粟)·공명첩',

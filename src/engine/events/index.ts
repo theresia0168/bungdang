@@ -21,6 +21,8 @@ import { STRIFE_EVENTS } from '../strife';
 import { LATER_EVENTS } from '../later';
 import { GWAGEO_EVENTS } from '../gwageo';
 import { GUKBON_EVENTS } from '../gukbon';
+import { KWANJE_EVENTS } from '../kwanje';
+import { WANG_EVENTS } from '../wang';
 import { COUP_EVENTS } from '../coup';
 import { BOKSANG_EVENTS } from '../court';
 
@@ -35,6 +37,8 @@ export const EVENTS: Record<string, EventDef> = {
   ...LATER_EVENTS,
   ...GWAGEO_EVENTS,
   ...GUKBON_EVENTS,
+  ...KWANJE_EVENTS,
+  ...WANG_EVENTS,
   ...COUP_EVENTS,
   ...BOKSANG_EVENTS,
   ...GENERIC_EVENTS,
