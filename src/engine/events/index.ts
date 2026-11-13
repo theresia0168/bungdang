@@ -74,7 +74,7 @@ const GIVE_LABEL = /(사재|털어|내놓|재물을 들여|\(재산 \d+\))/;
 const BOLD_LABEL = /(직언|거듭 간|들춰|정면으로|맞선다|탄핵한다|구명한다|곧게 간)/;
 const RISK_LABEL = /(목숨을 걸고|거듭 간|정면으로)/;
 const BOW_LABEL = /(아첨|뜻에 맞춘|뜻에 맞추어|반성문|사죄|대죄|한발 물러|양보)/;
-const BETRAY_LABEL = /(반정에 가담|밀고|흘린다|궁중에 흘)/;
+const BETRAY_LABEL = /(반정에 가담|거사에 가담|밀고|흘린다|궁중에 흘)/;
 
 function bindByTraits(s: GameState, choices: Choice[]): Choice[] {
   const p = P(s);

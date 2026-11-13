@@ -7,7 +7,8 @@ import { ROSTER } from '../data/roster';
 import { tOf } from '../calendar';
 import { shortDate } from '../calendar';
 import { chance, d6 } from '../rng';
-import { addFlaw, alive, clamp, inCourt, isP, josa, log, notice, owe, P, people, pushEvent } from '../state';
+import { addFlaw, alive, clamp, inCourt, isP, josa, log, notice, officeTitle, owe, P, people, pushEvent } from '../state';
+import { OFFICE_MAP } from '../data/offices';
 import { swayFaction, topOf } from '../opinion';
 import { appoint, sendOut, vacate } from '../court';
 import { exile, kill, purge, recall } from '../conflict';
@@ -134,6 +135,7 @@ function gichukPurge(s: GameState, harsh: boolean, reroll: string[] = []) {
 function geonjeoOutcome(s: GameState, cheolFalls: boolean) {
   const cheol = live(s, 'jeong_cheol');
   if (cheolFalls && cheol && cheol.status !== 'exiled') {
+    s.flags.cheolFell = true;
     exile(s, cheol, undefined, true);
     cheol.location = 'pyeongan';
     cheol.exilePlace = '강계';
@@ -171,6 +173,20 @@ function warLog(text: string, fx?: (s: GameState) => void) {
     log(s, text, 'war');
     fx?.(s);
   };
+}
+
+/** 「영의정 이산해」처럼 지금의 관직을 붙인 이름. 죽었으면 대신 쓸 말 */
+function titled(s: GameState, id: string, fallback: string): string {
+  const c = live(s, id);
+  if (!c) return fallback;
+  const t = officeTitle(c);
+  return t && !t.startsWith('낭관') ? `${t} ${c.name}` : c.name;
+}
+
+/** 지금 삼사에 있는 동인 셋 (없으면 「동인 언관들이」) */
+function dongSamsa(s: GameState): string {
+  const xs = people(s).filter((c) => c.status === 'active' && c.office && OFFICE_MAP[c.office]?.samsa && topOf(c.faction) === 'dong' && !isP(s, c)).slice(0, 3);
+  return xs.length ? josa(xs.map((c) => c.name).join('·'), '이/가') : '언관들이';
 }
 
 // ───────────────────────────── 일정 ─────────────────────────────
@@ -303,9 +319,9 @@ export const SCHEDULE: Scheduled[] = [
     id: 'yisunsin',
     at: [1591, 2],
     run(s) {
-      if (!live(s, 'yu_seongryong')) return;
+      const ryu = live(s, 'yu_seongryong');
       addPrep(s, 8);
-      log(s, '류성룡의 천거로 정읍 현감 이순신이 전라좌도 수군절도사가 되었다.', 'history');
+      log(s, ryu && inCourt(ryu) ? `${ryu.name}의 천거로 정읍 현감 이순신이 전라좌도 수군절도사가 되었다.` : '비변사의 천거로 정읍 현감 이순신이 전라좌도 수군절도사가 되었다.', 'history');
     },
   },
   {
@@ -347,7 +363,7 @@ export const SCHEDULE: Scheduled[] = [
       if (gh && !s.heir) {
         settleHeir(s, gh.id, 'war');
         log(s, '피란을 앞두고 광해군이 서둘러 세자로 책봉되었다.', 'history');
-      } else if (s.heir) log(s, `세자 ${josa(s.chars[s.heir].name, "이/가")} 피란길에 오른다.`, 'history');
+      } else if (s.heir && path !== 'held') log(s, `세자 ${josa(s.chars[s.heir].name, "이/가")} 피란길에 오른다.`, 'history');
       const cheol = live(s, 'jeong_cheol');
       if (cheol?.status === 'exiled') recall(s, cheol);
       for (const c of people(s)) if (c.status === 'exiled' && !isP(s, c) && chance(s, 0.3)) recall(s, c);
@@ -389,7 +405,7 @@ export const SCHEDULE: Scheduled[] = [
       if (race.caught) {
         s.flags.kingCaptive = true;
         kingMood(s, -40);
-        log(s, `평양으로 가던 어가가 임진강가에서 왜군 선봉에 따라잡혔다. 왕이 사로잡혔다! 세자 광해군이 분조를 이끌고 나라를 지탱한다. (${race.text})`, 'war');
+        log(s, `평양으로 가던 어가가 임진강가에서 왜군 선봉에 따라잡혔다. 왕이 사로잡혔다! ${s.heir && s.chars[s.heir] ? `세자 ${s.chars[s.heir].name}` : '대신들'}이 분조를 이끌고 나라를 지탱한다. (${race.text})`, 'war');
         splitCourt(s);
         for (const r of ['pyeongan', 'hwanghae'] as RegionId[]) s.regions[r].minsim = clamp(s.regions[r].minsim - 15, 0, 100);
         const p = P(s);
@@ -399,7 +415,7 @@ export const SCHEDULE: Scheduled[] = [
         }
         return;
       }
-      log(s, `평양이 함락되었다. 어가는 왜군보다 한발 앞서 의주로 향했다. 세자 광해군은 분조(分朝)를 이끌고 각지를 돌며 의병을 독려했다. (${race.text})`, 'war');
+      log(s, `평양이 함락되었다. 어가는 왜군보다 한발 앞서 의주로 향했다. ${s.heir && s.chars[s.heir] ? `세자 ${josa(s.chars[s.heir].name, '은/는')}` : '대신들은'} 분조(分朝)를 이끌고 각지를 돌며 의병을 독려했다. (${race.text})`, 'war');
       splitCourt(s);
     },
   },
@@ -408,10 +424,12 @@ export const SCHEDULE: Scheduled[] = [
   {
     id: 'w5',
     at: [1592, 11],
-    run: warLog('신성군이 피란길의 의주에서 병으로 죽었다.', (s) => {
-      const c = live(s, 'sinseong');
-      if (c) kill(s, c, '병으로 세상을 떠났다');
-    }),
+    cond: (s) => !!live(s, 'sinseong'),
+    run(s) {
+      const c = s.chars.sinseong;
+      log(s, s.realm.warPath === 'held' ? `${josa(c.name, '이/가')} 병으로 세상을 떠났다.` : `${josa(c.name, '이/가')} 피란길의 의주에서 병으로 죽었다.`, 'war');
+      kill(s, c, '병으로 세상을 떠났다');
+    },
   },
   { id: 'w6', at: [1592, 12], run: warLog('명나라 이여송이 4만 원군을 이끌고 압록강을 건넜다.') },
   {
@@ -433,6 +451,7 @@ export const SCHEDULE: Scheduled[] = [
   {
     id: 'w9',
     at: [1593, 4],
+    cond: (s) => s.realm.warPath !== 'held',
     run: warLog('왜군이 한성에서 물러나 남해안으로 내려갔다.', (s) => {
       s.war.zones = ['gyeongsang'];
     }),
@@ -517,7 +536,12 @@ export const SCHEDULE: Scheduled[] = [
     id: 'buk_split',
     at: [1599, 6],
     cond: (s) => s.factions.buk.active,
-    run: warLogless('북인 안에서 이산해를 따르는 대북과 남이공을 따르는 소북이 갈라설 조짐을 보인다.'),
+    run(s) {
+      const bs = members(s, 'buk').filter((c) => c.status !== 'exiled' && !isP(s, c)).sort((a, b) => b.prestige + b.politics * 5 - (a.prestige + a.politics * 5));
+      const a = bs[0]?.name;
+      const b = bs[1]?.name;
+      log(s, a && b ? `북인 안에서 ${josa(a, '을/를')} 따르는 대북과 ${josa(b, '을/를')} 따르는 소북이 갈라설 조짐을 보인다.` : '북인 안에서 대북과 소북이 갈라설 조짐을 보인다.', 'history');
+    },
   },
   { id: 'queen', at: [1600, 6], run: warLogless('의인왕후 박씨가 승하했다. 왕은 새 왕비를 맞으려 한다.') },
   {
@@ -791,7 +815,7 @@ export const HISTORY_EVENTS: Record<string, EventDef> = {
           const was = s.chars.yi_i.office && PANSEO.includes(s.chars.yi_i.office) ? '' : '지난날 ';
           return self
             ? `동인 삼사가 일제히 당신을 탄핵했다. ${was}${title}로서 왕의 재가 없이 ${field}을 멋대로 처리했고, 왕의 부름에 병을 핑계로 나오지 않았다는 것이다.`
-            : `동인 삼사의 송응개·허봉·박근원이 이이를 탄핵했다. ${was}${title}로서 왕의 재가 없이 ${field}을 처리했다는 것이다. 왕은 이이를 감싸는 기색이다.`;
+            : `동인 삼사의 ${dongSamsa(s)} 이이를 탄핵했다. ${was}${title}로서 왕의 재가 없이 ${field}을 처리했다는 것이다. 왕은 이이를 감싸는 기색이다.`;
         })(),
         choices: self
           ? [
@@ -1022,7 +1046,7 @@ export const HISTORY_EVENTS: Record<string, EventDef> = {
         return {
           title: '건저의(建儲議)',
           kind: 'danger',
-          text: '당신은 영의정 이산해, 우의정 류성룡과 함께 광해군을 세자로 세우자고 청하기로 약조했다. 그런데 약속한 날, 이산해가 병을 핑계로 나오지 않았다. 왕이 총애하는 인빈 김씨 쪽에서 무언가 흘러나왔다는 소문도 있다.',
+          text: `당신은 ${titled(s, 'yi_sanhae', '동인 대신들')}${live(s, 'yu_seongryong') ? `, ${titled(s, 'yu_seongryong', '')}` : ''}과 함께 광해군을 세자로 세우자고 청하기로 약조했다. 그런데 약속한 날, ${live(s, 'yi_sanhae') ? josa(s.chars.yi_sanhae.name, '이/가') : '동인 대신들이'} 병을 핑계로 나오지 않았다. 왕이 총애하는 인빈 김씨 쪽에서 무언가 흘러나왔다는 소문도 있다.`,
           choices: [
             { key: 'propose', label: '약조대로 세자 책봉을 건의한다', hint: '명분을 얻지만(명망 +3) 왕의 노여움을 살 수 있다. 성심이 70 이상이면 파직, 아니면 유배.' },
             { key: 'delay', label: '이상한 기미를 느끼고 건의를 미룬다', hint: '서인 -5, 명망 -3. 화를 피한다.' },
@@ -1032,7 +1056,7 @@ export const HISTORY_EVENTS: Record<string, EventDef> = {
         return {
           title: '건저의(建儲議)',
           kind: 'danger',
-          text: '서인 영수 정철이 광해군 세자 책봉을 함께 건의하자고 청했다. 그러나 왕은 인빈 김씨 소생 신성군을 아낀다. 인빈의 오라비 김공량에게 이 일을 흘리면 정철은 왕의 노여움을 피할 수 없을 것이다.',
+          text: `${josa(titled(s, 'jeong_cheol', '서인 대신'), '이/가')} 광해군 세자 책봉을 함께 건의하자고 청했다. 그러나 왕은 인빈 김씨 소생 신성군을 아낀다. 인빈의 오라비 김공량에게 이 일을 흘리면 정철은 왕의 노여움을 피할 수 없을 것이다.`,
           choices: [
             { key: 'leak', label: '김공량에게 정철의 계획을 흘린다', hint: '정철 실각, 성심 +12. 서인의 깊은 원한을 산다. 숨은 흠결 「모함」.' },
             { key: 'join', label: '약조대로 함께 건의한다', hint: '함께 왕의 노여움을 산다. 성심 -40, 파직, 명망 +4.' },
@@ -1043,7 +1067,7 @@ export const HISTORY_EVENTS: Record<string, EventDef> = {
       return {
         title: '건저의(建儲議)',
         kind: 'history',
-        text: '좌의정 정철이 광해군을 세자로 세우자고 청했다가 왕의 진노를 샀다. 왕은 신성군을 아끼고 있었던 것이다. 정철은 강계로 귀양 가게 되었고, 서인 전체가 왕의 의심을 받고 있다.',
+        text: `${josa(titled(s, 'jeong_cheol', '서인 대신'), '이/가')} 광해군을 세자로 세우자고 청했다가 왕의 진노를 샀다. 왕은 신성군을 아끼고 있었던 것이다. 정철은 강계로 귀양 가게 되었고, 서인 전체가 왕의 의심을 받고 있다.`,
         choices:
           p.faction === 'seo'
             ? [

@@ -1,9 +1,10 @@
+import { useState } from 'react';
 import { useG } from './ctx';
 import { P, josa, officeTitle, people } from '../engine/state';
 import { opinion } from '../engine/opinion';
 import { shortDate } from '../engine/calendar';
 import { joinCase, joinError, nextLevelLabel, sideOf } from '../engine/cases';
-import { CharLink, Opinion } from './common';
+import { CharLink, Opinion, useStoredOpen } from './common';
 import { Briefing } from './Briefing';
 
 const SIDE_LABEL = { attacker: '내가 이끈다', target: '나를 겨눔', pro: '동조함', con: '구원함' } as const;
@@ -22,10 +23,13 @@ export function NewsFeed() {
     .sort((a, b) => b.v - a.v)
     .slice(0, 5);
   const fresh = s.log.filter((e) => e.t >= since).reverse();
-  const older = s.log.filter((e) => e.t < since).slice(-50).reverse();
+  const older = s.log.filter((e) => e.t < since).slice(-15).reverse();
 
   const cases = [...s.cases].sort((a, b) => (sideOf(b, p.id) ? 1 : 0) - (sideOf(a, p.id) ? 1 : 0) || a.due - b.due).slice(0, 6);
 
+  const [allFresh, setAllFresh] = useState(false);
+  const [friendsOpen, toggleFriends] = useStoredOpen('news_friends', false);
+  const [oldOpen, toggleOld] = useStoredOpen('news_old', false);
   return (
     <div className="panel news">
       <Briefing />
@@ -74,10 +78,12 @@ export function NewsFeed() {
         </section>
       )}
       <section className="cp-sec fresh">
-        <h4>{since < s.t ? `지난 ${s.t - since + 1}개월의 소식` : '이번 달의 소식'}</h4>
+        <h4>
+          {since < s.t ? `지난 ${s.t - since + 1}개월의 소식` : '이번 달의 소식'} <span className="muted small">{fresh.length}건</span>
+        </h4>
         {fresh.length ? (
           <ul className="feed">
-            {fresh.map((e, i) => (
+            {(allFresh ? fresh : fresh.slice(0, 12)).map((e, i) => (
               <li key={i} className={`k-${e.kind}`}>
                 <span className="feed-date">{shortDate(e.t)}</span>
                 {e.text}
@@ -86,6 +92,11 @@ export function NewsFeed() {
           </ul>
         ) : (
           <p className="muted small">조정은 조용했다.</p>
+        )}
+        {fresh.length > 12 && (
+          <button className="mini more" onClick={() => setAllFresh(!allFresh)}>
+            {allFresh ? '줄여 보기' : `나머지 ${fresh.length - 12}건 더 보기`}
+          </button>
         )}
       </section>
       {threats.length > 0 && (
@@ -108,8 +119,10 @@ export function NewsFeed() {
       )}
       {friends.length > 0 && (
         <section className="cp-sec">
-          <h4>당신의 우군</h4>
-          <ul className="mini-list">
+          <h4 className="fold-h" onClick={toggleFriends}>
+            <span className="fold-mark">{friendsOpen ? '▾' : '▸'}</span> 당신의 우군 <span className="muted small">{friends.length}명</span>
+          </h4>
+          {friendsOpen && <ul className="mini-list">
             {friends.map(({ c, v }) => (
               <li key={c.id}>
                 <CharLink id={c.id} />
@@ -117,19 +130,21 @@ export function NewsFeed() {
                 <Opinion v={v} />
               </li>
             ))}
-          </ul>
+          </ul>}
         </section>
       )}
       <section className="cp-sec">
-        <h4>지난 조보(朝報)</h4>
-        <ul className="feed old">
+        <h4 className="fold-h" onClick={toggleOld}>
+          <span className="fold-mark">{oldOpen ? '▾' : '▸'}</span> 지난 조보(朝報)
+        </h4>
+        {oldOpen && <ul className="feed old">
           {older.map((e, i) => (
             <li key={i} className={`k-${e.kind}`}>
               <span className="feed-date">{shortDate(e.t)}</span>
               {e.text}
             </li>
           ))}
-        </ul>
+        </ul>}
       </section>
     </div>
   );

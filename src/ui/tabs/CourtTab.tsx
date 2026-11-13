@@ -7,7 +7,7 @@ import { P, people } from '../../engine/state';
 import { appointParts, cooldownLeft, eligible, holderMap, nominate, nominateChance, nominateRight, nomineePool, raceFor } from '../../engine/court';
 import { FACTION_META } from '../../engine/data/meta';
 import { activeFactions } from '../../engine/factions';
-import { CharLink, fcolor, StackBar } from '../common';
+import { CharLink, fcolor, StackBar, useStoredOpen } from '../common';
 import type { FactionId } from '../../engine/types';
 
 function NominateRow({ officeId }: { officeId: string }) {
@@ -65,11 +65,27 @@ export function CourtTab() {
   const nang = count(() => true, (c) => c.status === 'active' && c.office === 'nanggwan');
   const sury = count(() => true, (c) => c.status === 'active' && c.office === 'suryeong');
   const idle = pool.filter((c) => c.status === 'idle').length;
+  // 내가 맡은 자리(겸직 포함)가 있는 관서는 처음부터 펼쳐 둔다
+  const myDepts = new Set<string>([p.office ? OFFICE_MAP[p.office]?.dept : undefined, ...kyeomsOf(s, p).map((o) => o.dept)].filter((x) => !!x) as string[]);
+  const [ver, setVer] = useState(0);
+  const foldAll = (open: boolean) => {
+    try {
+      for (const d of DEPTS) localStorage.setItem(`bungdang/fold/dept_${d.id}`, open ? '1' : '0');
+    } catch {
+      /* 저장할 수 없으면 무시 */
+    }
+    setVer((v) => v + 1);
+  };
 
   return (
     <div className="court">
       <div className="court-chart">
-        <div className="chart-king">국왕</div>
+        <div className="chart-tools">
+          <div className="chart-king">국왕</div>
+          <span className="muted small">관서 이름을 누르면 펼치고 접는다.</span>
+          <button className="mini" onClick={() => foldAll(true)}>모두 펼치기</button>
+          <button className="mini" onClick={() => foldAll(false)}>모두 접기</button>
+        </div>
         <CenterBar />
         {BRANCHES.map((b) => {
           const depts = DEPTS.filter((d) => d.branch === b.id && OFFICES.some((o) => o.dept === d.id && officeOpen(s, o)));
@@ -79,14 +95,7 @@ export function CourtTab() {
               <h3>{b.name}</h3>
               <div className="chart-depts">
                 {depts.map((d) => (
-                  <div key={d.id} className="chart-dept" title={d.desc}>
-                    <h4>{d.name}</h4>
-                    <ul>
-                      {OFFICES.filter((o) => o.dept === d.id && officeOpen(s, o)).map((o) => (
-                        <OfficeRow key={o.id} o={o} />
-                      ))}
-                    </ul>
-                  </div>
+                  <DeptCard key={`${d.id}-${ver}`} id={d.id} name={d.name} desc={d.desc} mine={myDepts.has(d.id)} />
                 ))}
               </div>
             </section>
@@ -166,6 +175,39 @@ export function CourtTab() {
   );
 }
 
+/** 관서 하나: 접혀 있으면 이름과 당색 점만, 펼치면 자리마다 */
+function DeptCard({ id, name, desc, mine }: { id: string; name: string; desc?: string; mine: boolean }) {
+  const { s } = useG();
+  const hm = holderMap(s);
+  const [open, toggle] = useStoredOpen(`dept_${id}`, mine || id === 'uijeongbu');
+  const offices = OFFICES.filter((o) => o.dept === id && officeOpen(s, o));
+  const holders = offices.map((o) => (o.concurrent ? kyeomHolder(s, o.id) : hm[o.id]));
+  const filled = holders.filter(Boolean).length;
+  return (
+    <div className={`chart-dept ${open ? 'open' : 'closed'} ${mine ? 'mine' : ''}`} title={desc}>
+      <h4 className="fold-h" onClick={toggle}>
+        <span className="fold-mark">{open ? '▾' : '▸'}</span> {name}
+        {mine ? <em className="o-tag">내 관서</em> : null}
+        <span className="dept-sum">
+          {holders.map((h, i) => (
+            <i key={i} className="dot" style={{ background: h ? fcolor(h.faction) : 'transparent' }} />
+          ))}
+          <span className="muted small">
+            {filled}/{offices.length}
+          </span>
+        </span>
+      </h4>
+      {open && (
+        <ul>
+          {offices.map((o) => (
+            <OfficeRow key={o.id} o={o} />
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function OfficeRow({ o }: { o: OfficeDef }) {
   const { s } = useG();
   const hm = holderMap(s);
@@ -233,9 +275,10 @@ export function CenterBar() {
         </div>
         <span className="cb-right">비변사</span>
       </div>
-      <p className="muted small">
-        {st.text} 비변사의 위상이 높을수록 정승 자리의 힘이 줄고 비변사 당상의 힘이 커지며, 용안이 돌아가는 바탕(왕권)이 낮아진다. 위상 45부터는 비변사 도제조의 호감이 임용에 끼어든다. 전란 중에 크게 오르고, 탕평하는 임금 때 조금씩 내려가며, 세도 아래서 빠르게 오른다. 「의정부 서사제 복구」 법으로 되돌릴 수 있다.
-      </p>
+      <details className="center-more">
+        <summary className="muted small">{st.text}</summary>
+        <p className="muted small">비변사의 위상이 높을수록 정승 자리의 힘이 줄고 비변사 당상의 힘이 커지며, 용안이 돌아가는 바탕(왕권)이 낮아진다. 위상 45부터는 비변사 도제조의 호감이 임용에 끼어든다. 전란 중에 크게 오르고, 탕평하는 임금 때 조금씩 내려가며, 세도 아래서 빠르게 오른다. 「의정부 서사제 복구」 법으로 되돌릴 수 있다.</p>
+      </details>
     </section>
   );
 }

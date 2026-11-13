@@ -21,6 +21,7 @@ export function PeopleTab() {
   const [q, setQ] = useState('');
   const [sort, setSort] = useState<SortKey>('office');
   const [historicalOnly, setHistoricalOnly] = useState(false);
+  const [n, setN] = useState(60);
 
   const rows = (() => {
     const list = Object.values(s.chars)
@@ -55,6 +56,7 @@ export function PeopleTab() {
   return (
     <div className="people">
       <div className="filters">
+        <span className="muted small">{rows.length}명</span>
         <input placeholder="이름 · 본관 · 관직 검색" value={q} onChange={(e) => setQ(e.target.value)} />
         <select value={fac} onChange={(e) => setFac(e.target.value as FactionId | 'all')}>
           <option value="all">모든 붕당</option>
@@ -98,7 +100,7 @@ export function PeopleTab() {
             </tr>
           </thead>
           <tbody>
-            {rows.map(({ c, op, inf }) => (
+            {rows.slice(0, n).map(({ c, op, inf }) => (
               <tr key={c.id} className={`${selected === c.id ? 'sel' : ''} ${c.id === p.id ? 'me' : ''}`}>
                 <td>
                   <FactionBadge f={c.faction} />
@@ -125,6 +127,11 @@ export function PeopleTab() {
             ))}
           </tbody>
         </table>
+        {rows.length > n && (
+          <button className="mini more" onClick={() => setN(n + 120)}>
+            더 보기 ({rows.length - n}명 남음)
+          </button>
+        )}
       </div>
     </div>
   );

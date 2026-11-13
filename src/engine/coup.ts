@@ -22,12 +22,18 @@ export const COUP_LINE = -40;
 /** 이달 반정이 꾸며질 확률 */
 /** 비변사가 국정을 쥔 시대에는 낮은 왕권이 예사라, 그 바탕에서 더 떨어져야 반정의 기운이 인다 */
 const coupLine = (s: GameState) => COUP_LINE + Math.min(0, authorityBase(s));
-export const coupRisk = (s: GameState) => (s.king.mood >= coupLine(s) || s.realm.coup ? 0 : (coupLine(s) - s.king.mood) / 900);
+// 전란 중이거나 전란이 끝난 지 한 해가 안 되었으면 신하들이 반정을 꾀하지 않는다 (나라가 먼저다)
+const warTime = (s: GameState) => s.war.active || (typeof s.flags.warEndAt === 'number' && s.t - (s.flags.warEndAt as number) < 12);
+// 반정이 끝난 지 5년이 안 되었으면 다시 꾸미지 못한다 (가담자가 숙청되고 세력을 다시 모으는 데 시간이 든다)
+const afterCoup = (s: GameState) => typeof s.flags.coupDoneAt === 'number' && s.t - (s.flags.coupDoneAt as number) < 60;
+export const coupRisk = (s: GameState) => (s.king.mood >= coupLine(s) || s.realm.coup || warTime(s) || afterCoup(s) ? 0 : (coupLine(s) - s.king.mood) / 900);
 
 export function tickAuthority(s: GameState) {
   const realm = s.realm;
   // 적자와 왕실 경비는 realm.ts가 용안에 반영한다. 여기서는 어가가 겪는 굴욕만 더한다.
   if (s.flags.kingCaptive) kingMood(s, -3);
+  // 전란이 이어진 마지막 달을 적어 둔다 (전란 뒤 한 해 동안은 반정을 꾀하지 않는다)
+  if (s.war.active) s.flags.warEndAt = s.t;
 
   if (realm.coup) {
     if (s.t >= realm.coup.due) resolveCoup(s);
@@ -43,9 +49,10 @@ function plotCoup(s: GameState) {
   if (!fs.length) return;
   const f = fs.sort((a, b) => (s.king.lean[a] ?? 0) - (s.king.lean[b] ?? 0))[0];
   const p = P(s);
-  const lead = members(s, f)
-    .filter((c) => !isP(s, c) && inCourt(c) && c.politics >= 4)
-    .sort((a, b) => b.politics + b.prestige / 20 - (a.politics + a.prestige / 20))[0];
+  // 이름난 실존 인물은 함부로 역모의 우두머리가 되지 않는다: 같은 당의 다른 야심가가 앞장선다
+  const pool = members(s, f).filter((c) => !isP(s, c) && inCourt(c) && c.politics >= 4);
+  const rank = (c: Character) => c.politics + c.prestige / 20 + (c.traits.includes('ambitious') || c.traits.includes('schemer') ? 2 : 0);
+  const lead = (pool.filter((c) => !c.historical).length ? pool.filter((c) => !c.historical) : pool).sort((a, b) => rank(b) - rank(a))[0];
   if (!lead) return;
   s.realm.coup = { faction: f, leader: lead.id, due: s.t + 2 };
   log(s, '[조정] 도성에 심상치 않은 기운이 돈다. 밤마다 대갓집에 무장한 겸인들이 드나든다는 말이 들린다.', 'court');
@@ -62,6 +69,7 @@ function conspirators(s: GameState, f: FactionId, leader: string): Character[] {
 function resolveCoup(s: GameState) {
   const c = s.realm.coup!;
   s.realm.coup = undefined;
+  s.flags.coupDoneAt = s.t;
   const lead = s.chars[c.leader];
   const p = P(s);
   if (!alive(lead) || !inCourt(lead)) {

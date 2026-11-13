@@ -33,6 +33,7 @@ export function RegionTab() {
     }));
 
   const here = all.filter((c) => c.location === sel && c.status !== 'royal');
+  const [allHere, setAllHere] = useState(false);
   const r = s.regions[sel];
   const gov = holderOf(s, `gamsa_${sel}`);
 
@@ -108,6 +109,7 @@ export function RegionTab() {
         <ul className="mini-list">
           {here
             .sort((a, b) => a.rank - b.rank)
+            .slice(0, allHere ? here.length : 20)
             .map((c) => (
               <li key={c.id}>
                 <FactionBadge f={c.faction} />
@@ -116,6 +118,11 @@ export function RegionTab() {
               </li>
             ))}
         </ul>
+        {here.length > 20 && (
+          <button className="mini more" onClick={() => setAllHere(!allHere)}>
+            {allHere ? '줄여 보기' : `나머지 ${here.length - 20}명 더 보기`}
+          </button>
+        )}
       </div>
     </div>
   );

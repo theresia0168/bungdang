@@ -2634,3 +2634,88 @@ button.mini:disabled {
   border-color: #b8432f;
   color: #e07a5f;
 }
+
+/* ───────── 한눈에 보기: 접는 관서·묶음, 연대기 찾기 ───────── */
+.chart-tools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.chart-tools .chart-king {
+  align-self: auto;
+  margin-right: auto;
+}
+.chart-dept h4.fold-h {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 0;
+}
+.chart-dept.open h4.fold-h {
+  margin-bottom: 4px;
+}
+.chart-dept.closed {
+  padding: 4px 8px;
+  opacity: 0.92;
+}
+.chart-dept.mine {
+  border-color: var(--gold);
+}
+.dept-sum {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-weight: 400;
+}
+.dept-sum .dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  border: 1px solid var(--line2);
+}
+.dept-sum .muted {
+  margin-left: 4px;
+}
+.foldsec > h3.fold-h {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.foldsec.closed > h3.fold-h {
+  margin-bottom: 0;
+}
+.fold-sum {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--muted);
+}
+.center-more summary {
+  cursor: pointer;
+  list-style: none;
+}
+.center-more summary::before {
+  content: '▸ ';
+}
+.center-more[open] summary::before {
+  content: '▾ ';
+}
+.center-more p {
+  margin-top: 4px;
+}
+.chron-q {
+  margin-left: auto;
+  min-width: 160px;
+  padding: 3px 8px;
+  background: var(--bg2);
+  color: inherit;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+}
+.mini.more {
+  display: block;
+  margin: 10px auto;
+}

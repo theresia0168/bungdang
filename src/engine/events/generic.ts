@@ -1,4 +1,14 @@
 import { LAW_MAP, lawJosa } from '../laws';
+import { splitCause } from '../factions';
+/** 그 당에서 이름난 이 둘 (영향력 순) */
+function leadersOf(s: import('../types').GameState, f: import('../types').FactionId): string {
+  const names = Object.values(s.chars)
+    .filter((c) => c.faction === f && c.status !== 'dead' && c.id !== s.player.charId)
+    .sort((a, b) => b.prestige + b.politics * 5 - (a.prestige + a.politics * 5))
+    .slice(0, 2)
+    .map((c) => c.name);
+  return names.length ? names.join('·') : '그 당 사람들';
+}
 import type { EventDef } from './types';
 import { OK } from './types';
 import type { ImpeachReport, MemorialResult } from '../conflict';
@@ -194,10 +204,10 @@ export const GENERIC_EVENTS: Record<string, EventDef> = {
       return {
         title: '동인의 분열',
         kind: 'history',
-        text: `정철의 처벌을 두고 동인이 둘로 갈라섰다. 정철 한 사람만 벌하자는 온건파는 남인, 서인을 일망타진하자는 강경파는 북인이라 불린다.\n\n당신은 지금 ${FACTION_META[p.faction].name}으로 분류되었다. 어느 편에 설 것인가?`,
+        text: `동인이 둘로 갈라섰다. ${splitCause(s)} 온건한 쪽은 남인, 강경한 쪽은 북인이라 불린다.\n\n당신은 지금 ${FACTION_META[p.faction].name}으로 분류되었다. 어느 편에 설 것인가?`,
         choices: [
-          { key: 'nam', label: '남인 — 류성룡·우성전과 함께한다', hint: FACTION_META.nam.desc },
-          { key: 'buk', label: '북인 — 이산해·정인홍과 함께한다', hint: FACTION_META.buk.desc },
+          { key: 'nam', label: `남인 — ${leadersOf(s, 'nam')}과 함께한다`, hint: FACTION_META.nam.desc },
+          { key: 'buk', label: `북인 — ${leadersOf(s, 'buk')}과 함께한다`, hint: FACTION_META.buk.desc },
         ],
       };
     },

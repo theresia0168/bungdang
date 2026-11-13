@@ -1,8 +1,9 @@
+import { legitOf } from './legit';
 import type { FactionId, GameState, Situation } from './types';
 import type { EventDef } from './events/types';
 import { FACTION_META } from './data/meta';
 import { OFFICE_MAP } from './data/offices';
-import { yearOf } from './calendar';
+import { tOf, yearOf } from './calendar';
 import { chance, rand, randInt } from './rng';
 import { addFlaw, age, alive, clamp, fav, inCourt, isP, josa, log, monthsSince, notice, P, pres, pushEvent, uid } from './state';
 import { swayFaction, topOf } from './opinion';
@@ -32,6 +33,8 @@ interface Topic {
   stance: Partial<Record<FactionId, number>>;
   /** 역사대로 정해진 결말 */
   fixed?: Side;
+  /** 역사 쪽이 크게 유리하지만 뒤집힐 수 있는 결말 (대체역사의 갈래). 반대쪽이 이길 확률은 많아야 25% */
+  hard?: Side;
   /** 논의 기간 (달) */
   months: [number, number];
   /** 끝났을 때 */
@@ -51,9 +54,13 @@ export const TOPICS: Record<string, Topic> = {
     b: '원손을 세워야 한다 — 적통의 법도를 어길 수 없다',
     king: 'a',
     stance: { seo: -0.3, nam: -0.4 },
-    fixed: 'a',
+    hard: 'a',
     months: [2, 3],
-    done: (s) => {
+    done: (s, win) => {
+      if (win === 'b') {
+        s.flags.wonsonKept = true;
+        return '신하들이 끝내 물러서지 않자 왕이 원손을 세손(世孫)으로 세웠다. 왕은 원손을 볼 때마다 낯빛이 굳는다.';
+      }
       s.flags.wonsonAt = s.t;
       return '왕이 봉림대군을 세자로 세웠다. 원손을 세우자던 신하들이 줄줄이 물러났다.';
     },
@@ -76,9 +83,13 @@ export const TOPICS: Record<string, Topic> = {
     b: '왕이 젊으니 서두를 일이 아니다',
     king: 'b',
     stance: { noron: 0.9, soron: -0.7, nam: -0.3 },
-    fixed: 'a',
+    hard: 'a',
     months: [2, 3],
-    done: (s) => {
+    done: (s, win) => {
+      if (win === 'b') {
+        s.flags.sejeFailed = true;
+        return '세제 책봉이 무산되었다. 연잉군은 사저에 칩거하고, 노론은 숨을 죽인다. 소론은 종친 가운데 후사를 고르자는 말을 꺼낸다.';
+      }
       s.flags[heirKey(s)] = s.t;
       return '대비의 뜻으로 연잉군이 세제가 되었다. 노론이 내친김에 대리청정까지 밀어붙이자 소론의 칼이 노론을 겨눈다.';
     },
@@ -212,6 +223,19 @@ const short = (x: string) => x.split(' — ')[0];
 export function gukbonOdds(s: GameState, sit: Situation): number {
   const t = TOPICS[sit.data.topic];
   if (t.fixed) return t.fixed === 'a' ? 1 : 0;
+  if (t.hard) {
+    // 역사를 뒤집기는 어렵다: 형세가 아무리 좋아도 25%를 넘지 못한다
+    const normal = gukbonOddsRaw(s, sit);
+    const histA = t.hard === 'a';
+    // 저절로는 열에 하나 남짓, 플레이어가 앞장서면 넷에 하나까지
+    const altPush = sit.data.side && sit.data.pub && sit.data.side !== t.hard ? 0.1 : 0;
+    const alt = clamp((histA ? 1 - normal : normal) * 0.15 + altPush, 0.01, 0.25);
+    return histA ? 1 - alt : alt;
+  }
+  return gukbonOddsRaw(s, sit);
+}
+
+function gukbonOddsRaw(s: GameState, sit: Situation): number {
   const share = powerShare(s);
   let a = 0;
   let b = 0;
@@ -241,6 +265,9 @@ export function tickGukbon(s: GameState) {
   if (s.war.active || monthsSince(s, 'gukbonAt') < 36) return;
   const king = kingChar(s);
   if (!alive(king)) return;
+  // 선조 뒤 열린 구간의 대체 임금은 후사를 두지 못한다 (later.ts의 방계 계승이 뒤를 잇는다)
+  if (s.t < tOf(1623, 3) && king.id !== 'gwanghae' && s.royal?.princes?.[king.id]) return;
+  if (s.flags.altKing === king.id) return;
   const kAge = age(s, king);
   const heirSet = typeof s.flags[heirKey(s)] === 'number';
   const ill = s.situations.some((x) => x.kind === 'illness');
@@ -252,6 +279,7 @@ export function tickGukbon(s: GameState) {
   if (ill) p += 0.02;
   if (s.king.mood < 0) p += (-s.king.mood / 100) * 0.02;
   if (kAge >= 50) p += 0.003;
+  if (legitOf(s).score < 45) p += 0.002;
   if (style === 'volatile') p *= 1.5;
   if (style === 'sedo') p *= 0.6;
   if (!chance(s, p)) return;
@@ -270,7 +298,7 @@ export function resolveGukbon(s: GameState, sit: Situation) {
   const t = TOPICS[sit.data.topic];
   const kingSide: Side = sit.data.kingSide;
   // 결말이 정해지지 않은 논의는 왕이 그냥 덮기도 한다
-  if (!t.fixed && s.king.mood > -10 && chance(s, 0.2)) {
+  if (!t.fixed && !t.hard && s.king.mood > -10 && chance(s, 0.2)) {
     log(s, `[국본] 왕이 「${t.title}」 논의를 덮었다. 누구도 이기지 못했다.`, 'history');
     if (sit.data.side) notice(s, '국본 논의가 덮였다', '왕이 논의를 덮었다. 어느 쪽도 이기지 못했다.', 'court');
     return;
@@ -307,6 +335,7 @@ export function resolveGukbon(s: GameState, sit: Situation) {
   // 역사의 논의에서 선 자리는 다음 임금이 기억한다
   if (sit.data.topic === 'daeri_seson' && sit.data.side) s.flags.daeriSide = sit.data.side;
   if (sit.data.topic === 'seje' && sit.data.side) s.flags.sejeSide = sit.data.side;
+  if (sit.data.topic === 'wonson' && sit.data.side) s.flags.wonsonSide = sit.data.side;
 
   const p = P(s);
   const side: Side | undefined = sit.data.side;

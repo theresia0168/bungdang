@@ -50,7 +50,7 @@ for (const c of Object.values(s.chars)) for (const t of c.traits) traitCount[t] 
 console.log(JSON.stringify({
   id, seed: seedS, end: s.over?.reason, year: yearOf(s.t), score: e.score, gens: s.player.lineage.length + 1,
   peaks: [...s.player.lineage.map(a => a.peakOffice ?? '-'), s.player.peakOffice ?? '-'],
-  hwanguk: cnt(/^\[환국\]/), oksa: cnt(/\[옥사\] 국청이 끝/), coup: cnt(/\[반정\]|\[역모\]/), minran: cnt(/^\[민란\]/), laws: cnt(/^\[국법\]/),
+  hwanguk: cnt(/^\[환국\] 왕이/), oksa: cnt(/\[옥사\] 국청이 끝/), coup: cnt(/\[반정\]|\[역모\]/), minran: cnt(/^\[민란\]/), laws: cnt(/^\[국법\]/),
   gukbon: cnt(/^\[국본\].*갈렸다/),
   oksaSize: s.log.map(x => x.text.match(/국청이 끝났다\. (\d+)달 동안 (\d+)명/)).filter(Boolean).map(m => `${m![2]}명/${m![1]}달`),
   hwangukAfter: cnt(/^\[환국\] 여파/), cheongbaek: s.player.deeds.filter(d => d.includes('청백리')).length, vetoes, vetoSame, overlapMonths, disabledByTrait, traitBlock,

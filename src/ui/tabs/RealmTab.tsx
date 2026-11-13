@@ -31,7 +31,7 @@ import {
 } from '../../engine/realm';
 import { LAWS, lawOpen } from '../../engine/laws';
 import { traitForbids } from '../../engine/actions';
-import { CharLink } from '../common';
+import { CharLink, FoldSec } from '../common';
 import { COUP_LINE, coupRisk } from '../../engine/coup';
 
 const KINDS = Object.keys(PROJECT_DEFS) as RealmProjectKind[];
@@ -63,8 +63,7 @@ export function RealmTab() {
 
   return (
     <div className="realm">
-      <section className="ogroup">
-        <h3>국고(國庫)</h3>
+      <FoldSec id="realm_treasury" title="국고(國庫)" summary={`국고 ${Math.round(realm.treasury)} · 달마다 ${spend >= 0 ? "+" : ""}${Math.round(spend)}`} open={true}>
         <div className="realm-head">
           <div className={`realm-big ${realm.treasury < 0 ? 'bad-text' : ''}`}>
             {Math.round(realm.treasury)}
@@ -165,10 +164,9 @@ export function RealmTab() {
             </tbody>
           </table>
         )}
-      </section>
+      </FoldSec>
 
-      <section className="ogroup">
-        <h3>나라 사업</h3>
+      <FoldSec id="realm_projects" title="나라 사업" summary={undefined} open={false}>
         {realm.projects.length ? (
           <ul className="mini-list">
             {realm.projects.map((x) => (
@@ -217,10 +215,9 @@ export function RealmTab() {
           </button>
         </div>
         <p className="small muted">{def.desc} 판서·정승·관찰사가 직권으로 건의한다 (자리마다 다룰 수 있는 일이 다르다).</p>
-      </section>
+      </FoldSec>
 
-      <section className="ogroup">
-        <h3>국방</h3>
+      <FoldSec id="realm_defense" title="국방" summary={`전쟁 대비 ${Math.round(ready.score)}`} open={true}>
         <div className="realm-head">
           <div className={`realm-big ${warOdds(ready.score).held >= 0.4 ? 'good-text' : warOdds(ready.score).rout >= 0.2 ? 'bad-text' : ''}`}>
             {ready.score}
@@ -276,10 +273,9 @@ export function RealmTab() {
             })}
           </tbody>
         </table>
-      </section>
+      </FoldSec>
 
-      <section className="ogroup">
-        <h3>국법(國法)</h3>
+      <FoldSec id="realm_laws" title="국법(國法)" summary={`시행 중 ${LAWS.filter((l) => s.laws[l.id]?.on).length}개`} open={false}>
         <p className="small muted">왼쪽 「상소」에서 법을 고르고 변법 상소를 올려 세우거나 없앨 수 있다.</p>
         <ul className="laws">
           {LAWS.map((l) => {
@@ -298,7 +294,7 @@ export function RealmTab() {
             );
           })}
         </ul>
-      </section>
+      </FoldSec>
     </div>
   );
 }

@@ -1,3 +1,4 @@
+import { legitOf, shakeLegit } from './legit';
 import type { Character, FactionId, GameState, RegionId } from './types';
 import { addPrep } from './realm';
 import type { EventDef } from './events/types';
@@ -17,6 +18,13 @@ import { LAW_MAP, lawJosa, lawResist, lawStance, setLaw } from './laws';
 
 type Stance = Partial<Record<FactionId, number>>;
 type Vote = 'yes' | 'no' | 'abstain';
+
+/** 실존 인물이 살아 있으면 그 이름, 아니면 대신 쓸 말 */
+function figName(s: GameState, key: string, fallback: string): string {
+  const id = s.flags[`fig_${key}`];
+  const c = typeof id === 'string' ? s.chars[id] : undefined;
+  return c && c.status !== 'dead' ? c.name : fallback;
+}
 
 export interface AgendaDef {
   id: string;
@@ -579,7 +587,7 @@ AGENDAS.push(
   {
     ...only('jeokhwa'),
     title: '척화와 주화',
-    text: () => '남한산성이 포위되었다. 김상헌은 "의리로 보아 오랑캐에게 무릎 꿇을 수 없다"며 척화를, 최명길은 "나라가 망하면 의리도 없다"며 주화를 주장한다.',
+    text: (s) => `남한산성이 포위되었다. ${figName(s, 'kim_sangheon', '척화파 대신들')}은 "의리로 보아 오랑캐에게 무릎 꿇을 수 없다"며 척화를, ${figName(s, 'choe_myeonggil', '주화파 대신들')}은 "나라가 망하면 의리도 없다"며 주화를 주장한다.`,
     stance: () => ({ seo: 0.3, nam: 0.3 }),
     king: -0.6,
     kingWeight: 0.6,
@@ -593,13 +601,13 @@ AGENDAS.push(
     },
     fail(s) {
       kingMood(s, 4);
-      return '주화론에 따라 성을 나가 항복했다. 사림은 최명길을 두고두고 비난한다.';
+      return `주화론에 따라 성을 나가 항복했다. 사림은 ${figName(s, 'choe_myeonggil', '주화를 주장한 이들')}을 두고두고 비난한다.`;
     },
   },
   {
     ...only('bukbeol'),
     title: '북벌(北伐)',
-    text: () => '효종이 청을 치기 위해 군사를 기르자고 한다. 송시열 등 산림은 명분에 찬동하면서도 먼저 임금의 마음을 닦아야 한다고 하고, 다른 이들은 나라 살림이 감당하지 못한다고 한다.',
+    text: (s) => `${legitOf(s).score < 50 ? '정통성이 흔들리는 임금에게 북벌은 왕권을 세울 대의명분이다. ' : ''}효종이 삼전도의 치욕을 씻고 청을 치기 위해 군사를 기르자고 한다. ${figName(s, 'song_siyeol', '산림의 선비들')}${figName(s, 'song_siyeol', '') ? ' 등 산림은' : '은'} 명분에 찬동하면서도 먼저 임금의 마음을 닦아야 한다고 하고, 다른 이들은 나라 살림이 감당하지 못한다고 한다.`,
     stance: () => ({ seo: 0.5, nam: -0.2 }),
     king: 1,
     kingWeight: 0.7,
@@ -609,6 +617,7 @@ AGENDAS.push(
       s.realm.budget.army = 'expand';
       for (const r of ['pyeongan', 'hwanghae', 'gyeonggi', 'hanseong'] as const) s.regions[r].defense.drill = Math.min(100, s.regions[r].defense.drill + 20);
       for (const r of Object.values(s.regions)) r.minsim = clamp(r.minsim - 3, 0, 100);
+      shakeLegit(s, 5, '북벌의 대의를 세웠다');
       return '어영청과 훈련도감의 군사를 늘렸다. 군비가 확충된다.';
     },
     fail: () => '북벌은 왕의 마음에만 남았다.',
@@ -616,33 +625,36 @@ AGENDAS.push(
   {
     ...only('yesong1'),
     title: '기해예송(己亥禮訟)',
-    text: () => '효종이 승하하자 계모인 자의대비가 상복을 얼마나 입을지를 두고 논쟁이 일었다. 송시열 등 서인은 "효종은 차남이니 1년(기년)"이라 하고, 윤휴 등 남인은 "왕위를 이었으니 맏아들과 같이 3년"이라 한다. 왕통의 정통성이 걸린 문제다.',
+    text: (s) => `효종이 승하하자 계모인 자의대비가 상복을 얼마나 입을지를 두고 논쟁이 일었다. 겉으로는 예법이지만 속은 정통성의 문제다: 둘째 아들로 왕위를 이은 효종을 맏아들로 볼 것인가(왕통), 집안의 둘째로 볼 것인가(종통). ${figName(s, 'song_siyeol', '') ? `${figName(s, 'song_siyeol', '')} 등 ` : ''}서인은 "효종은 차남이니 1년(기년)"이라 하고, ${figName(s, 'yun_hyu', '') ? `${figName(s, 'yun_hyu', '')} 등 ` : ''}남인은 "왕위를 이었으니 맏아들과 같이 3년"이라 한다. 왕통의 정통성이 걸린 문제다.`,
     stance: () => ({ seo: 1, nam: -1 }),
     king: 0.2,
     yes: () => '기년복(1년)이 옳다',
     no: () => '삼년복이 옳다',
     pass(s) {
       kingLean(s, 'nam', -6);
-      return '기년설이 채택되었다. 서인이 조정을 지킨다.';
+      shakeLegit(s, -4, '선왕 효종을 둘째 아들로 대하는 기년설이 채택되었다');
+      return '기년설이 채택되었다. 서인이 조정을 지킨다. 그러나 선왕을 둘째로 대한 일은 왕의 마음에 남는다.';
     },
     fail(s) {
       kingLean(s, 'nam', 8);
+      shakeLegit(s, 3, '선왕 효종을 맏아들로 대하는 삼년설이 채택되었다');
       return '삼년설이 채택되었다. 남인의 목소리가 커졌다.';
     },
   },
   {
     ...only('yesong2'),
     title: '갑인예송(甲寅禮訟)',
-    text: () => '효종의 비 인선왕후가 세상을 떠났다. 자의대비의 상복을 두고 다시 논쟁이 붙었다. 서인은 9개월(대공), 남인은 1년(기년)을 주장한다. 이번에는 왕의 마음이 남인 쪽에 있다는 말이 돈다.',
+    text: () => '효종의 비 인선왕후가 세상을 떠났다. 자의대비의 상복을 두고 다시 논쟁이 붙었다. 15년 전 기해년에 묻어 둔 정통성의 시비가 되살아난다. 이번에는 효종의 아들인 지금의 임금이 직접 걸려 있다. 서인은 9개월(대공), 남인은 1년(기년)을 주장한다. 이번에는 왕의 마음이 남인 쪽에 있다는 말이 돈다.',
     stance: () => ({ seo: 1, nam: -1 }),
     king: -0.7,
     kingWeight: 0.8,
     yes: () => '대공복(9개월)이 옳다',
     no: () => '기년복(1년)이 옳다',
-    pass: () => '대공설이 채택되었다. 서인이 겨우 버텼다.',
+    pass: (s) => (shakeLegit(s, -3, '선왕비를 둘째 며느리로 대하는 대공설이 채택되었다'), '대공설이 채택되었다. 서인이 겨우 버텼다.'),
     fail(s) {
       kingLean(s, 'nam', 15);
       for (const f of ['seo', 'noron', 'soron'] as FactionId[]) if (s.factions[f].active) kingLean(s, f, -12);
+      shakeLegit(s, 3, '선왕비를 맏며느리로 대하는 기년설이 채택되었다');
       return '기년설이 채택되었다. 남인이 조정을 쥐었다.';
     },
   },

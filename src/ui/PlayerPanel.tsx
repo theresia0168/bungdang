@@ -33,7 +33,7 @@ import { standing } from '../engine/factions';
 import { playerCases, sideOf } from '../engine/cases';
 import { GOALS, GOAL_REWARD, goalKey, reconsiderGoal } from '../engine/goals';
 import { GUIDE, guideOn } from '../engine/tutorial';
-import { Bar, CharLink, FactionBadge, Opinion, Portrait } from './common';
+import { Bar, CharLink, FactionBadge, Opinion, Portrait, Fold } from './common';
 import { Tip } from './guide';
 
 
@@ -251,7 +251,7 @@ export function PlayerPanel() {
         )}
       </Fold>
 
-      <Fold id="memorial" title="상소" open>
+      <Fold id="memorial2" title="상소" open={f?.kind === 'memorial'} extra={f?.kind === 'memorial' ? <span className="muted small">짓는 중 {f.progress}/{f.required}개월</span> : <span className="muted small">주제와 조목을 골라 짓는다</span>}>
         {f?.kind === 'memorial' ? (
           <div className="focus-now">
             <b>
@@ -395,35 +395,5 @@ export function PlayerPanel() {
         )}
       </Fold>
     </div>
-  );
-}
-
-/** 접었다 펼 수 있는 묶음. 펼침 상태는 이 브라우저에 기억한다. */
-function Fold({ id, title, extra, open: def = false, className, children }: { id: string; title: string; extra?: ReactNode; open?: boolean; className?: string; children: ReactNode }) {
-  const key = `bungdang/fold/${id}`;
-  const [open, setOpen] = useState<boolean>(() => {
-    try {
-      const v = localStorage.getItem(key);
-      return v === null ? def : v === '1';
-    } catch {
-      return def;
-    }
-  });
-  const toggle = () => {
-    const n = !open;
-    setOpen(n);
-    try {
-      localStorage.setItem(key, n ? '1' : '0');
-    } catch {
-      /* 저장할 수 없으면 이번만 */
-    }
-  };
-  return (
-    <section className={`pp-sec fold ${open ? 'open' : ''} ${className ?? ''}`}>
-      <h4 className="fold-h" onClick={toggle}>
-        <span className="fold-mark">{open ? '▾' : '▸'}</span> {title} {extra}
-      </h4>
-      {open && children}
-    </section>
   );
 }

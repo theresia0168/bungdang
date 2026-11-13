@@ -1,3 +1,4 @@
+import { syncReigns } from './calendar';
 import { initDefense, initRealm } from './realm';
 import { initLaws } from './laws';
 import type { Character, FactionId, GameState, RegionId, SchoolId, TraitId } from './types';
@@ -178,6 +179,7 @@ export function newGame(choice: StartChoice, seed = Date.now()): GameState {
   log(s, '선조 8년 을해년이 밝았다.', 'history');
   pushEvent(s, 'intro');
   pushEvent(s, 'goal_pick');
+  syncReigns(s);
   return s;
 }
 

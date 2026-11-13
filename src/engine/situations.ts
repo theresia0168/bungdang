@@ -107,10 +107,27 @@ function startIllness(s: GameState) {
   if (inCourt(P(s)) && s.pending.length < 2) pushEvent(s, 'king_ill');
 }
 
+/** 이 시대의 외척: 누가, 누구의 친정붙이로 권세를 부리는가. 없으면 외척의 발호가 일지 않는다 */
+export function inlawOf(s: GameState): { kin: string; rel: string; patron: string } | null {
+  const y = yearOf(s.t);
+  if (y < 1608) {
+    const inbin = consortOf(s, 'inbin');
+    return inbin?.alive && inbin.love >= 60 && inbin.kin ? { kin: inbin.kin, rel: '인빈 김씨의 오라비', patron: '왕이 총애하는 후궁' } : null;
+  }
+  if (y >= 1609 && y < 1623) return s.chars[String(s.flags.kingId ?? '')]?.id === 'gwanghae' ? { kin: '유희분', rel: '왕비 유씨의 오라비', patron: '중전' } : null;
+  if (y >= 1689 && y < 1694) return { kin: '장희재', rel: '희빈 장씨의 오라비', patron: '왕이 총애하는 희빈' };
+  if (y >= 1760 && y < 1772) return { kin: '홍봉한', rel: '혜경궁의 아버지', patron: '세손의 외가' };
+  if (y >= 1772 && y < 1777) return { kin: '김귀주', rel: '정순왕후의 오라비', patron: '중전' };
+  if (y >= 1777 && s.t < tOf(1779, 9)) return { kin: '홍국영', rel: '원빈 홍씨의 오라비', patron: '왕이 아끼는 그' };
+  if (y >= 1803) return { kin: '김조순의 일족', rel: '왕비의 친정인 안동 김씨에서', patron: '왕비의 친정' };
+  return null;
+}
+
 function startInlaw(s: GameState) {
-  const inbin = consortOf(s, 'inbin');
-  const kin = inbin?.kin ?? '외척';
-  const x = begin(s, 'inlaw', randInt(s, 6, 10), { kin });
+  const who = inlawOf(s);
+  if (!who) return;
+  const kin = who.kin;
+  const x = begin(s, 'inlaw', randInt(s, 6, 10), { kin, rel: who.rel, patron: who.patron });
   const pool = people(s).filter((c) => !isP(s, c) && c.status === 'active' && c.rank >= 3 && (c.traits.includes('schemer') || c.prestige < 30));
   const linked: string[] = [];
   for (let i = 0; i < 2 && pool.length; i++) {
@@ -120,8 +137,8 @@ function startInlaw(s: GameState) {
   }
   x.data.linked = linked;
   s.tension = clamp(s.tension + 2, 0, 100);
-  log(s, `[외척] 인빈의 오라비 ${josa(kin, '이/가')} 궁중을 등에 업고 벼슬길에 입김을 넣는다. 그의 집 앞에 청탁하는 이들의 발길이 끊이지 않는다.`, 'court');
-  if (inCourt(P(s)) && s.pending.length < 2) pushEvent(s, 'inlaw_rise', { kin });
+  log(s, `[외척] ${who.rel} ${josa(kin, '이/가')} 궁중을 등에 업고 벼슬길에 입김을 넣는다. 그의 집 앞에 청탁하는 이들의 발길이 끊이지 않는다.`, 'court');
+  if (inCourt(P(s)) && s.pending.length < 2) pushEvent(s, 'inlaw_rise', { kin, rel: who.rel, patron: who.patron });
 }
 
 function endSit(s: GameState, x: Situation) {
@@ -162,8 +179,7 @@ export function tickSituations(s: GameState) {
   if (!has('scandal') && monthsSince(s, 'sitAt_scandal') >= 12 && chance(s, 0.025)) return startScandal(s);
   if (!has('omen') && monthsSince(s, 'sitAt_omen') >= 24 && chance(s, 0.012 + (s.tension > 60 ? 0.008 : 0))) return startOmen(s);
   if (!has('illness') && monthsSince(s, 'sitAt_illness') >= 24 && king && chance(s, 0.006 + Math.max(0, age(s, king) - 30) * 0.0008)) return startIllness(s);
-  const inbin = consortOf(s, 'inbin');
-  if (!has('inlaw') && monthsSince(s, 'sitAt_inlaw') >= 36 && s.t >= tOf(1580, 1) && inbin?.alive && inbin.love >= 60 && chance(s, 0.01)) return startInlaw(s);
+  if (!has('inlaw') && monthsSince(s, 'sitAt_inlaw') >= 36 && s.t >= tOf(1580, 1) && inlawOf(s) && chance(s, 0.01)) return startInlaw(s);
 }
 
 /** 디버그·시뮬레이션용 */
@@ -352,7 +368,7 @@ export const SITUATION_EVENTS: Record<string, EventDef> = {
       return {
         title: '외척의 발호',
         kind: 'court',
-        text: `인빈 김씨의 오라비 ${josa(c.kin, '이/가')} 궁중을 등에 업고 인사에 입김을 넣는다. 그에게 줄을 대면 벼슬길이 열리고, 맞서면 왕의 총애하는 후궁과 척을 진다.`,
+        text: `${c.rel ?? '외척'} ${josa(c.kin, '이/가')} 궁중을 등에 업고 인사에 입김을 넣는다. 그에게 줄을 대면 벼슬길이 열리고, 맞서면 ${josa(c.patron ?? '궁중', '과/와')} 척을 진다.`,
         choices: [
           { key: 'link', label: '줄을 댄다 (재산 20)', hint: '외척의 발호가 끝날 때까지 임용 점수 +3. 끝날 때 50% 확률로 명망 -5와 드러난 흠결.', disabled: p.wealth < 20 ? '재산이 모자란다' : undefined },
           { key: 'impeach', label: '외척의 전횡을 탄핵한다', hint: `판정 (주사위 + 정치력 ${p.politics} + 명망/25 ≥ 9). 성공하면 명망 +5, 외척이 물러난다. 실패하면 성심 -8.` },

@@ -20,6 +20,12 @@ export interface KingProfile {
 const PROFILES: Record<string, KingProfile> = {
   선조: { learning: 7, politics: 6, zeal: 1, note: '학문을 즐기고 글씨에 능하다. 다만 의심이 많아 신하를 쉽게 믿지 않는다.' },
   광해군: { learning: 6, politics: 7, zeal: 0, note: '실리에 밝고 외교에 능하다. 경전보다 당장의 일을 묻는다.' },
+  임해군: { learning: 3, politics: 3, zeal: -1, note: '성품이 거칠고 술을 즐긴다. 경연을 귀찮아하고, 거슬리는 말에 쉽게 노한다.' },
+  정원군: { learning: 5, politics: 4, zeal: 0, note: '너그럽되 결단이 무르다. 대신들의 말을 잘 듣는다.' },
+  의창군: { learning: 6, politics: 4, zeal: 1, note: '젊고 글을 좋아한다. 아직 정사에 서툴다.' },
+  경선군: { learning: 5, politics: 3, zeal: 1, note: '어린 나이에 즉위한 소현세자의 아들이다. 몸이 약하고, 대신들의 말에 기댄다.' },
+  밀풍군: { learning: 4, politics: 4, zeal: 0, note: '소론이 받든 종친 임금이다. 소론 대신들의 뜻을 거스르지 못한다.' },
+  장조: { learning: 7, politics: 5, zeal: -1, note: '임오년에 살아남은 세자다. 총명하나 화증이 깊어, 거슬리는 말에 불같이 노한다.' },
   인조: { learning: 4, politics: 5, zeal: 0, note: '반정으로 오른 임금이다. 경연보다 공신들의 눈치를 본다.' },
   효종: { learning: 5, politics: 6, zeal: 0, note: '학문보다 북벌과 무예에 마음을 둔다.' },
   현종: { learning: 6, politics: 4, zeal: 1, note: '온화하고 학문을 좋아하나, 예송에 휘둘려 결단이 약하다.' },

@@ -31,7 +31,7 @@ function breakdownOf(s: GameState, withLineage = true) {
   const rank = pl.peakRank;
   const anc = pl.lineage;
   const legacy = anc.length ? Math.round(anc.reduce((a, x) => a + x.score, 0) / anc.length) : 0;
-  return [
+  const own = [
     { label: `최고 관직 (${pl.peakOffice ?? '없음'})`, value: rank <= 9 ? (10 - rank) * 12 : 0 },
     { label: '명망', value: Math.round(p.prestige) },
     { label: '붕당 영수', value: leader ? 25 : 0 },
@@ -45,8 +45,16 @@ function breakdownOf(s: GameState, withLineage = true) {
     { label: '서원·문집', value: pl.built.length * 8 },
     { label: '드러난 흠결', value: -pubFlaws * 6 },
     { label: '유배', value: -pl.stats.exiled * 5 },
-    ...(withLineage && anc.length ? [{ label: `가문의 내력 (선대 ${anc.length}대의 평균)`, value: legacy }] : []),
-  ].filter((b) => b.value !== 0);
+  ];
+  const out = [...own];
+  if (withLineage && anc.length) {
+    out.push({ label: `가문의 내력 (선대 ${anc.length}대의 평균)`, value: legacy });
+    // 가문을 늦게 이었으면 뜻을 펼 시간이 모자랐다: 20년이 못 되면 모자란 햇수만큼 선대 평균과의 차이를 채운다(최대 8할)
+    const yrs = (s.t - anc[anc.length - 1].died) / 12;
+    const mine = own.reduce((a, b) => a + b.value, 0);
+    if (yrs < 20 && legacy > mine) out.push({ label: `늦게 이은 가문 (가문을 이은 지 ${Math.max(0, Math.round(yrs))}년)`, value: Math.round(((legacy - mine) * (20 - yrs) * 0.8) / 20) });
+  }
+  return out.filter((b) => b.value !== 0);
 }
 
 export function computeEnding(s: GameState): Ending {

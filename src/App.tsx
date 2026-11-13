@@ -1,3 +1,4 @@
+import { syncReigns } from './engine/calendar';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { GameState } from './engine/types';
 import { newGame, upgrade, type StartChoice } from './engine/setup';
@@ -17,7 +18,9 @@ function loadSave(): GameState | null {
     const raw = localStorage.getItem(SAVE_KEY);
     if (!raw) return null;
     const s = JSON.parse(raw) as GameState;
-    return s.version >= 3 && s.version <= 5 ? upgrade(s) : null;
+    const u = s.version >= 3 && s.version <= 5 ? upgrade(s) : null;
+    if (u) syncReigns(u);
+    return u;
   } catch {
     return null;
   }

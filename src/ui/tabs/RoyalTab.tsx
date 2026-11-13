@@ -1,3 +1,4 @@
+import { legitName, legitOf } from '../../engine/legit';
 import { useG } from '../ctx';
 import type { FactionId } from '../../engine/types';
 import { FACTION_META } from '../../engine/data/meta';
@@ -12,7 +13,7 @@ import { KING_ACTS, kingAct, kingActError } from '../../engine/wang';
 import { kingProfile, ZEAL_NAME } from '../../engine/kingstat';
 import { ApPips } from '../common';
 import { gukbonError, gukbonOdds, gukbonSit, joinGukbon, TOPICS } from '../../engine/gukbon';
-import { KINGS, kingOfYear, tOf, yearOf } from '../../engine/calendar';
+import { kingList, kingOfYear, tOf, yearOf } from '../../engine/calendar';
 
 const STYLE_TEXT: Record<string, string> = {
   plain: '',
@@ -50,8 +51,8 @@ export function RoyalTab() {
         <section>
           <h4>역대 임금</h4>
           <ul className="royal-list">
-            {KINGS.filter((k) => k.from < y).map((k) => (
-              <li key={k.name} className={k.to <= y ? 'gone' : ''}>
+            {kingList().filter((k) => k.from < y).map((k) => (
+              <li key={k.name + k.from} className={k.to <= y ? 'gone' : ''}>
                 <b>{k.name}</b>
                 <span className="muted small">
                   {k.from + 1}~{Math.min(k.to, 1821)}
@@ -246,6 +247,7 @@ function GukbonPanel() {
 function KingAudience() {
   const { s, act } = useG();
   const k = kingProfile(s);
+  const lg = legitOf(s);
   const p = P(s);
   return (
     <section className="king-acts">
@@ -257,7 +259,11 @@ function KingAudience() {
           정치력 <b>{k.politics}</b> <em className="muted small">(나 {p.politics})</em>
         </span>
         <span className={k.zeal < 0 ? 'bad-text' : k.zeal >= 2 ? 'good-text' : ''}>{ZEAL_NAME[k.zeal]}</span>
+        <span className={lg.score < 40 ? 'bad-text' : lg.score >= 75 ? 'good-text' : ''}>
+          정통성 <b>{legitName(lg.score)}</b> <em className="muted small">({lg.score})</em>
+        </span>
       </div>
+      <p className="muted small">정통성: {lg.why.join(' · ')}. 정통성이 낮으면 왕권의 바탕이 낮고, 임금은 명분으로 왕권을 세우려 하며, 국본 논의와 역모가 일기 쉽다.</p>
       <p className="muted small">
         {k.note} 경연·진강·책문은 주사위 + (내 학식 − 임금의 학식), 청대에서 아뢰고 설득하는 일은 주사위 + (내 정치력 − 임금의 정치력)으로 판정한다.
       </p>

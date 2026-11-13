@@ -87,6 +87,15 @@ export function checkSplit(s: GameState) {
   if (dong.division > li) splitDong(s);
 }
 
+/** 동인이 갈라선 까닭: 실제로 일어난 일을 따라 말한다 */
+export function splitCause(s: GameState): string {
+  const cheol = s.chars.jeong_cheol;
+  if (s.flags.cheolFell && cheol) return `${cheol.name}의 처벌을 두고, 그 한 사람만 벌하자는 온건론과 서인을 일망타진하자는 강경론이 맞선 끝이었다.`;
+  if (s.flags.gichuk) return '기축옥사에서 동인이 크게 다친 뒤, 서인에 대한 보복을 두고 온건론과 강경론이 맞선 끝이었다.';
+  if (s.flags.geonjeo) return '세자 책봉 논의로 서인이 밀려난 뒤, 조정을 어떻게 쥘지를 두고 온건론과 강경론이 맞선 끝이었다.';
+  return '퇴계의 학통을 잇는 이들과 남명·화담의 학통을 잇는 이들이 오래 쌓아 온 노선의 차이가 끝내 터졌다.';
+}
+
 export function splitDong(s: GameState) {
   const p = P(s);
   const wasDong = p.faction === 'dong';
@@ -121,7 +130,7 @@ export function splitDong(s: GameState) {
     r.influence.buk = d - (r.influence.nam ?? 0);
     delete r.influence.dong;
   }
-  log(s, '동인이 남인과 북인으로 갈라섰다. 정철의 처벌을 두고 온건론과 강경론이 맞선 끝이었다.', 'faction');
+  log(s, `동인이 남인과 북인으로 갈라섰다. ${splitCause(s)}`, 'faction');
   updateLeaders(s);
   if (wasDong) pushEvent(s, 'dong_split', {});
 }

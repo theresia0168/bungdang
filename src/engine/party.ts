@@ -135,14 +135,25 @@ export const PARTY_EVENTS: Record<string, EventDef> = {
   },
 
   dong_wing: {
-    build() {
+    build(s) {
+      // 지금 동인 안에서 각 노선을 대표하는 이들 (플레이어는 빼고)
+      const wing = (w: 'nam' | 'buk') =>
+        people(s)
+          .filter((c) => c.faction === 'dong' && c.lean === w && !isP(s, c))
+          .sort((a, b) => b.prestige + b.politics * 5 - (a.prestige + a.politics * 5))
+          .slice(0, 2)
+          .map((c) => c.name);
+      const nam = wing('nam');
+      const buk = wing('buk');
+      const namTxt = nam.length ? `퇴계 문하의 ${nam.join('·')}` : '퇴계 문하의 선비들';
+      const bukTxt = buk.length ? `남명·화담 문하의 ${buk.join('·')}` : '남명·화담 문하의 선비들';
       return {
         title: '갈라지는 동인',
         kind: 'court',
-        text: '동인 안에서 두 목소리가 커진다. 퇴계 문하의 류성룡·우성전은 서인을 너그럽게 대하자 하고, 남명·화담 문하의 이산해·정인홍은 서인을 뿌리 뽑자고 한다.\n\n당이 아직 하나일 때 어느 쪽과 가까이할지 정해 둘 수 있다. 일찍 정할수록 그쪽 사람들이 당신을 믿는다.',
+        text: `동인 안에서 두 목소리가 커진다. ${josa(namTxt, '은/는')} 서인을 너그럽게 대하자 하고, ${josa(bukTxt, '은/는')} 서인을 뿌리 뽑자고 한다.\n\n당이 아직 하나일 때 어느 쪽과 가까이할지 정해 둘 수 있다. 일찍 정할수록 그쪽 사람들이 당신을 믿는다.`,
         choices: [
-          { key: 'nam', label: '류성룡 쪽(온건파)과 가까이한다', hint: '온건파 호감 +8, 강경파 호감 -5. 분당 때 남인을 고르면 더 환영받는다.' },
-          { key: 'buk', label: '이산해 쪽(강경파)과 가까이한다', hint: '강경파 호감 +8, 온건파 호감 -5. 분당 때 북인을 고르면 더 환영받는다.' },
+          { key: 'nam', label: nam[0] ? `${nam[0]} 쪽(온건파)과 가까이한다` : '온건파와 가까이한다', hint: '온건파 호감 +8, 강경파 호감 -5. 분당 때 남인을 고르면 더 환영받는다.' },
+          { key: 'buk', label: buk[0] ? `${buk[0]} 쪽(강경파)과 가까이한다` : '강경파와 가까이한다', hint: '강경파 호감 +8, 온건파 호감 -5. 분당 때 북인을 고르면 더 환영받는다.' },
           { key: 'mediate', label: '양쪽을 중재한다', hint: '동인 분열 -4, 명망 +2. 양쪽 모두 호감 -2.' },
         ],
       };

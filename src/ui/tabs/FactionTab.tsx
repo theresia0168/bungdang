@@ -1,5 +1,5 @@
 import { useG } from '../ctx';
-import { P } from '../../engine/state';
+import { josa, P } from '../../engine/state';
 import { FACTION_META } from '../../engine/data/meta';
 import { activeFactions, influence, members, powerShare, standing } from '../../engine/factions';
 import { Bar, CharLink, Opinion } from '../common';
@@ -26,11 +26,41 @@ export function FactionTab() {
 
       {ok && (
         <div className="tension-box bad">
-          <b>국청이 열려 있다</b> — {FACTION_META[ok.faction].name} <CharLink id={ok.accused} />의 역모 고변. {ok.due - s.t}달 뒤 결판.{' '}
+          <b>국청이 열려 있다</b> — {FACTION_META[ok.faction].name} <CharLink id={ok.accused} />의 역모 고변.{' '}
           {ok.judge && (
             <>
-              위관 <CharLink id={ok.judge} />
+              위관 <CharLink id={ok.judge} />.{' '}
             </>
+          )}
+          {ok.queue ? (
+            <>
+              국문 {ok.month ?? 0}달째 · 기세 「{['', '수괴만 다스린다', '연루자를 캔다', '뿌리를 뽑는다'][ok.sev ?? 1]}」
+              {ok.queue.length > 0 && (
+                <div className="small">
+                  국문을 기다리는 이:{' '}
+                  {ok.queue.map((q, i) => (
+                    <span key={q.id}>
+                      {i > 0 && ', '}
+                      <CharLink id={q.id} />
+                      {q.by && s.chars[q.by] ? <span className="muted"> ({josa(s.chars[q.by].name, '이/가')} 불어서)</span> : null}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {Object.keys(ok.done ?? {}).length > 0 && (
+                <div className="small muted">
+                  국문을 마친 이:{' '}
+                  {Object.entries(ok.done ?? {}).map(([id, r], i) => (
+                    <span key={id}>
+                      {i > 0 && ', '}
+                      {s.chars[id]?.name ?? ''} {r}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </>
+          ) : (
+            <>다음 달 국문이 시작된다.</>
           )}
         </div>
       )}

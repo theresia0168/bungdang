@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { ReactNode } from 'react';
 import type { Character, FactionId } from '../engine/types';
 import { FACTION_META } from '../engine/data/meta';
@@ -116,5 +117,72 @@ export function Paras({ text }: { text: string }) {
         </p>
       ))}
     </>
+  );
+}
+
+/** 접었다 펼 수 있는 묶음. 펼침 상태는 이 브라우저에 기억한다. */
+export function Fold({ id, title, extra, open: def = false, className, children }: { id: string; title: string; extra?: ReactNode; open?: boolean; className?: string; children: ReactNode }) {
+  const key = `bungdang/fold/${id}`;
+  const [open, setOpen] = useState<boolean>(() => {
+    try {
+      const v = localStorage.getItem(key);
+      return v === null ? def : v === '1';
+    } catch {
+      return def;
+    }
+  });
+  const toggle = () => {
+    const n = !open;
+    setOpen(n);
+    try {
+      localStorage.setItem(key, n ? '1' : '0');
+    } catch {
+      /* 저장할 수 없으면 이번만 */
+    }
+  };
+  return (
+    <section className={`pp-sec fold ${open ? 'open' : ''} ${className ?? ''}`}>
+      <h4 className="fold-h" onClick={toggle}>
+        <span className="fold-mark">{open ? '▾' : '▸'}</span> {title} {extra}
+      </h4>
+      {open && children}
+    </section>
+  );
+}
+
+/** 저장되는 펼침 상태 (접는 묶음이 아닌 곳에서 쓴다) */
+export function useStoredOpen(id: string, def: boolean): [boolean, () => void] {
+  const key = `bungdang/fold/${id}`;
+  const [open, setOpen] = useState<boolean>(() => {
+    try {
+      const v = localStorage.getItem(key);
+      return v === null ? def : v === '1';
+    } catch {
+      return def;
+    }
+  });
+  const toggle = () => {
+    const n = !open;
+    setOpen(n);
+    try {
+      localStorage.setItem(key, n ? '1' : '0');
+    } catch {
+      /* 저장할 수 없으면 이번만 */
+    }
+  };
+  return [open, toggle];
+}
+
+/** 탭 안의 큰 묶음: 제목을 누르면 접히고, 접혔을 때는 한 줄 요약을 보인다 */
+export function FoldSec({ id, title, summary, open: def = true, className, children }: { id: string; title: ReactNode; summary?: ReactNode; open?: boolean; className?: string; children: ReactNode }) {
+  const [open, toggle] = useStoredOpen(id, def);
+  return (
+    <section className={`ogroup foldsec ${open ? 'open' : 'closed'} ${className ?? ''}`}>
+      <h3 className="fold-h" onClick={toggle}>
+        <span className="fold-mark">{open ? '▾' : '▸'}</span> {title}
+        {!open && summary ? <span className="fold-sum">{summary}</span> : null}
+      </h3>
+      {open && children}
+    </section>
   );
 }

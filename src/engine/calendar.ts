@@ -35,7 +35,41 @@ export const KINGS: { name: string; from: number; to: number }[] = [
   { name: '정조', from: 1776, to: 1800 },
   { name: '순조', from: 1800, to: 1834 },
 ];
-export const kingOfYear = (y: number) => [...KINGS].reverse().find((k) => y > k.from) ?? KINGS[0];
+type Reign = { name: string; from: number; to: number };
+/** 실제로 즉위한 임금들 + 아직 오지 않은 역사의 임금들. 선조의 세자가 바뀌면 1608~1623년이 달라진다 */
+let REIGNS: Reign[] = KINGS;
+export const kingList = () => REIGNS;
+/** 저장된 즉위 기록을 읽어 왕대 표기를 맞춘다 (새 게임·불러오기 때) */
+export function syncReigns(s: { flags: Record<string, unknown> }) {
+  let done: Reign[] | null = null;
+  try {
+    done = typeof s.flags.reignsDone === 'string' ? (JSON.parse(s.flags.reignsDone) as Reign[]) : null;
+  } catch {
+    done = null;
+  }
+  if (!done || !done.length) {
+    REIGNS = KINGS;
+    return;
+  }
+  const last = done[done.length - 1];
+  const rest = KINGS.filter((k) => k.from > last.from && !done!.some((d) => d.name === k.name));
+  last.to = rest[0]?.from ?? 1834;
+  REIGNS = [...done, ...rest];
+}
+/** 새 임금의 즉위를 기록한다 */
+export function recordReign(s: { flags: Record<string, unknown> }, name: string, y: number) {
+  let done: Reign[];
+  try {
+    done = typeof s.flags.reignsDone === 'string' ? (JSON.parse(s.flags.reignsDone) as Reign[]) : KINGS.filter((k) => k.from < 1608).map((k) => ({ ...k }));
+  } catch {
+    done = KINGS.filter((k) => k.from < 1608).map((k) => ({ ...k }));
+  }
+  if (done.length) done[done.length - 1].to = y;
+  done.push({ name, from: y, to: y });
+  s.flags.reignsDone = JSON.stringify(done);
+  syncReigns(s);
+}
+export const kingOfYear = (y: number) => [...REIGNS].reverse().find((k) => y > k.from) ?? REIGNS[0];
 export const reignLabel = (y: number) => {
   const k = kingOfYear(y);
   return `${k.name} ${y - k.from}년`;

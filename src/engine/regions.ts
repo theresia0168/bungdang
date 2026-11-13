@@ -139,19 +139,22 @@ const LOCALS: Scene[] = [
     id: 'jurchen',
     regions: ['hamgyeong', 'pyeongan'],
     weight: (s) => (winter(s) ? 3 : 1),
-    title: '여진의 약탈',
-    text: (s) => `강이 얼자 여진의 기병 수십이 ${short(s)} 변경을 넘어와 마을을 불사르고 사람과 소를 끌고 갔다. 진보(鎭堡)의 군관들이 명을 기다린다.`,
-    opts: () => [
-      { key: 'chase', label: '군사를 내어 뒤쫓는다', roll: { stat: 'mixed', need: 7, ok: { say: '여진을 강 건너까지 쫓아 잡혀간 백성을 되찾았다.', prestige: 3, favor: 3, prep: 2 }, fail: { say: '매복에 걸려 군관 여럿을 잃고 돌아왔다.', prestige: -3, minsim: -4 } } },
+    title: '변경을 넘는 이들',
+    text: (s) =>
+      yearOf(s.t) >= 1637
+        ? `강이 얼자 청나라 쪽 사냥꾼과 채삼꾼 무리가 ${short(s)} 경계를 넘어와 인삼을 캐고 마을을 털었다. 청과 시비가 붙을까 진보(鎭堡)의 군관들이 명을 기다린다.`
+        : `강이 얼자 여진의 기병 수십이 ${short(s)} 변경을 넘어와 마을을 불사르고 사람과 소를 끌고 갔다. 진보(鎭堡)의 군관들이 명을 기다린다.`,
+    opts: (s) => [
+      { key: 'chase', label: yearOf(s.t) >= 1637 ? '군사를 내어 붙잡는다' : '군사를 내어 뒤쫓는다', roll: { stat: 'mixed', need: 7, ok: { say: yearOf(s.t) >= 1637 ? '월경한 무리를 붙잡아 청의 봉황성에 넘겼다. 청도 할 말이 없다.' : '여진을 강 건너까지 쫓아 잡혀간 백성을 되찾았다.', prestige: 3, favor: 3, prep: 2 }, fail: { say: '매복에 걸려 군관 여럿을 잃고 돌아왔다.', prestige: -3, minsim: -4 } } },
       { key: 'hold', label: '성을 굳게 지킨다', fx: { say: '성문을 닫고 버텼다. 성 밖 마을은 불탔다.', minsim: -4 } },
-      { key: 'pay', label: '번호(藩胡) 추장에게 재물을 주어 달랜다', cost: 10, odds: { p: 0.7, yes: { say: '추장에게 비단과 소금을 보내 달랬다. 한동안은 조용할 것이다.', minsim: 2 }, no: { say: '약탈은 그쳤으나, 오랑캐에게 재물을 바쳤다는 말이 조정에 들어갔다.', minsim: 2, favor: -4 } } },
+      { key: 'pay', label: yearOf(s.t) >= 1637 ? '청의 변경 관원에게 재물을 주어 무마한다' : '번호(藩胡) 추장에게 재물을 주어 달랜다', cost: 10, odds: { p: 0.7, yes: { say: '추장에게 비단과 소금을 보내 달랬다. 한동안은 조용할 것이다.', minsim: 2 }, no: { say: '약탈은 그쳤으나, 오랑캐에게 재물을 바쳤다는 말이 조정에 들어갔다.', minsim: 2, favor: -4 } } },
     ],
   },
   {
     id: 'fur_trade',
     regions: ['hamgyeong'],
     title: '북관의 모피 교역',
-    text: () => '회령·경원의 개시(開市)에서 여진과 모피·인삼을 사고판다. 장사치들이 감영에 줄을 대려 하고, 군관들은 몰래 끼어든다.',
+    text: (s) => `회령·경원의 개시(開市)에서 ${yearOf(s.t) >= 1637 ? '청나라 상인' : '여진'}과 모피·인삼을 사고판다. 장사치들이 감영에 줄을 대려 하고, 군관들은 몰래 끼어든다.`,
     opts: () => [
       { key: 'skim', label: '교역에 슬쩍 몫을 챙긴다', fx: { say: '담비 가죽 몇 짐이 감영 뒷방으로 들어왔다.', wealth: cut(1.2), flaw: { label: '사무역 연루', p: 0.3 } } },
       { key: 'tax', label: '세를 매겨 군량에 보탠다', fx: { say: '교역에 세를 매겨 군량을 채웠다.', prep: 2, favor: 1 } },
@@ -266,7 +269,7 @@ const LOCALS: Scene[] = [
   {
     id: 'wokou',
     regions: ['jeolla', 'gyeongsang'],
-    when: (s) => s.t < tOf(1592, 4) || !s.war.active,
+    when: (s) => s.t < tOf(1609, 6) && !s.war.active,
     title: '왜구 출몰',
     text: (s) => `${short(s)} 앞바다 섬마을에 왜선 몇 척이 나타나 곡식과 사람을 노략질했다. 수군 진의 배는 낡았다.`,
     opts: () => [

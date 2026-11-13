@@ -204,15 +204,20 @@ function tickYusaeng(s: GameState) {
  * 역모 고변이 들어오면 위관(委官)이 옥사를 다스린다. 위관을 쥔 당은 상대 당 사람들을 엮어 넣는다.
  */
 
+/** 위관이 될 만한 이: 현직 정승(중추부의 허직은 빼고)이나 형조판서 가운데, 조정을 쥔 당 사람 */
+function judgePool(s: GameState, exclude: Set<string>): Character[] {
+  const share = powerShare(s);
+  return people(s)
+    .filter((c) => c.status === 'active' && c.office && !exclude.has(c.id) && !OFFICE_MAP[c.office]?.sinecure && (OFFICE_MAP[c.office]?.rank === 1 || c.office === 'hyeongjo'))
+    .sort((a, b) => (share[b.faction] ?? 0) - (share[a.faction] ?? 0));
+}
+
 export function startOksa(s: GameState, accused: Character, by?: string, fabricated = false) {
   if (s.oksa || !alive(accused)) return;
   s.flags.oksaAt = s.t;
   const f = accused.faction;
   // 위관: 정승 가운데, 조정을 쥔 당 사람이 맡는다
-  const share = powerShare(s);
-  const judges = people(s)
-    .filter((c) => c.status === 'active' && c.office && (OFFICE_MAP[c.office]?.rank === 1 || c.office === 'hyeongjo') && c.id !== accused.id)
-    .sort((a, b) => (share[b.faction] ?? 0) - (share[a.faction] ?? 0));
+  const judges = judgePool(s, new Set([accused.id]));
   const p = P(s);
   s.oksa = { accused: accused.id, faction: f, due: s.t + 1, by, fabricated, judge: judges.find((c) => !isP(s, c))?.id };
   log(s, `[옥사] ${FACTION_META[f].name} ${josa(accused.name, '이/가')} 역모를 꾀했다는 고변이 들어왔다. 도성에 국청(鞫廳)이 열렸다.`, 'history');
@@ -235,6 +240,16 @@ function tickOksa(s: GameState) {
   const o = s.oksa;
   if (!o || s.t < o.due) return;
   const acc = s.chars[o.accused];
+  // 위관이 죽거나, 귀양 가거나, 자리에서 물러나거나, 옥사에 연루되면 다른 대신이 위관을 이어받는다
+  const busy = new Set([o.accused, ...(o.queue ?? []).map((q) => q.id), ...Object.keys(o.done ?? {})]);
+  const cur = o.judge ? s.chars[o.judge] : undefined;
+  if (o.judge && (!alive(cur) || cur.status !== 'active' || busy.has(o.judge))) {
+    const next = judgePool(s, busy).find((c) => !isP(s, c));
+    const why = !alive(cur) ? '세상을 떠나' : cur.status === 'exiled' ? '귀양을 가서' : busy.has(o.judge) ? '옥사에 연루되어' : '자리에서 물러나';
+    o.judge = next?.id;
+    log(s, `[옥사] 위관 ${josa(cur?.name ?? '', '이/가')} ${why} ${next ? `${josa(next.name, '이/가')} 위관을 이어받았다` : '국청을 맡을 대신이 없다'}.`, 'history');
+    if (cur && isP(s, cur) && alive(cur)) notice(s, '위관에서 물러남', '더는 국청을 맡지 못하게 되었다. 다른 대신이 위관을 이어받는다.', 'court');
+  }
   const judge = o.judge ? s.chars[o.judge] : undefined;
   // 첫 국문 전에: 꾸며 낸 고변이면 무고가 드러나기도 한다
   if (!o.queue) {
@@ -253,7 +268,7 @@ function tickOksa(s: GameState) {
     }
     // 옥사의 강도: 위관이 넓히기로 했으면 3, 수괴만 다스리기로 했으면 1, 그 밖에는 위관의 당색과 긴장이 정한다
     let sev = o.harsh === true ? 3 : o.harsh === false ? 1 : judge && topOf(judge.faction) !== topOf(o.faction) && !judge.traits.includes('mild') ? 2 : 1;
-    if (o.harsh === undefined && s.tension >= 60) sev = Math.min(3, sev + 1);
+    if (o.harsh === undefined && s.tension >= 70) sev = Math.min(3, sev + 1);
     o.sev = sev;
     o.queue = [{ id: o.accused, depth: 0 }];
     o.done = {};
@@ -267,7 +282,8 @@ function tickOksa(s: GameState) {
   const maxDepth = sev;
   const taken = () => Object.keys(o.done ?? {}).length + (o.queue?.length ?? 0);
   const n = Math.min(o.queue!.length, 1 + sev);
-  for (const item of o.queue!.splice(0, n)) {
+  const batch = o.queue!.splice(0, n);
+  for (const item of batch) {
     const c = s.chars[item.id];
     if (!alive(c) || c.status === 'exiled') {
       o.done![item.id] = '빠짐';
@@ -282,13 +298,14 @@ function tickOksa(s: GameState) {
     const foeJudge = judge && topOf(judge.faction) !== topOf(c.faction) ? 1 : 0;
     const plead = o.pleaded?.includes(c.id) ? 2 : 0;
     const roll =
-      d6(s) + Math.floor(c.politics / 2) + (c.traits.includes('clean') ? 1 : 0) + (c.traits.includes('loyal') ? 1 : 0) + (c.traits.includes('cautious') ? 1 : 0) - (c.traits.includes('timid') ? 1 : 0) - (sev - 1) - foeJudge + plead;
+      d6(s) + Math.floor(c.politics / 2) + (c.traits.includes('clean') ? 1 : 0) + (c.traits.includes('loyal') ? 1 : 0) + (c.traits.includes('cautious') ? 1 : 0) - (c.traits.includes('timid') ? 1 : 0) - (sev - 1) - foeJudge + plead + (c.historical ? 2 : 0);
     const head = item.depth === 0;
     // 국문을 이기지 못하면 이름을 분다
     const names = (k: number): string[] => {
       if (item.depth >= maxDepth || taken() >= cap) return [];
-      const queued = new Set([...(o.queue ?? []).map((x) => x.id), ...Object.keys(o.done ?? {})]);
-      const pool = people(s).filter((x) => !queued.has(x.id) && x.id !== c.id && x.status !== 'exiled' && x.status !== 'royal' && (topOf(x.faction) === topOf(c.faction) || x.clan === c.clan));
+      // 이번 달 국문 차례를 기다리는 이도 이미 끌려온 사람이다
+      const queued = new Set([...(o.queue ?? []).map((x) => x.id), ...batch.map((x) => x.id), ...Object.keys(o.done ?? {})]);
+      const pool = people(s).filter((x) => !queued.has(x.id) && x.id !== c.id && x.id !== o.judge && x.status !== 'exiled' && x.status !== 'royal' && (topOf(x.faction) === topOf(c.faction) || x.clan === c.clan));
       const out: string[] = [];
       for (let i = 0; i < k && pool.length && taken() < cap; i++) {
         const w = pool.map((x) => [x, Math.max(0.5, 10 + opinion(s, c, x) / 5 + (x.clan === c.clan ? 8 : 0) + (judge ? -opinion(s, judge, x) / 10 : 0) + (x.rank <= 3 ? 3 : 0))] as [Character, number]);
@@ -308,7 +325,7 @@ function tickOksa(s: GameState) {
       }
       return out;
     };
-    if (!head && roll <= sev - 1) {
+    if (!head && roll <= sev - 2) {
       const told = sev >= 2 && chance(s, 0.5) ? names(1) : [];
       kill(s, c, '국문을 받다가 형장 아래 물고(物故)되었다');
       o.done![c.id] = '물고';
@@ -316,7 +333,7 @@ function tickOksa(s: GameState) {
     } else if (roll <= 4 || head) {
       // 수괴는 강도만큼, 버티지 못한 연루자는 1~강도만큼 분다
       const told = names(head ? sev : randInt(s, 1, sev));
-      if (head || (sev >= 3 && chance(s, 0.3))) {
+      if (head || (sev >= 3 && chance(s, 0.2))) {
         kill(s, c, head ? '역모의 수괴로 몰려 복주(伏誅)되었다' : '역모에 연루되어 사사되었다');
         o.done![c.id] = '사형';
         lines.push(told.length ? `${josa(c.name, '이/가')} ${josa(told.join('·'), '을/를')} 불고 ${head ? '복주' : '사사'}` : `${c.name} ${head ? '복주' : '사사'}`);

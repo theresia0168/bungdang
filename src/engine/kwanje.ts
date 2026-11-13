@@ -1,3 +1,4 @@
+import { legitAuthority } from './legit';
 import type { Character, GameState, RegionId } from './types';
 import type { EventDef } from './events/types';
 import { DEPT_MAP, OFFICE_MAP, OFFICES, type OfficeDef } from './data/offices';
@@ -459,6 +460,8 @@ export function authorityBase(s: GameState): number {
   const v = bibyeonPower(s);
   let base = -Math.max(0, v - 35) * 0.4;
   if (s.flags.kingStyle === 'tangpyeong') base += 6;
+  // 정통성이 흔들리는 임금은 권위의 바탕도 낮다
+  base += legitAuthority(s);
   // 수렴청정 아래에서는 임금의 권위가 더 낮다
   if (typeof s.flags.suryeomUntil === 'number' && s.t < (s.flags.suryeomUntil as number)) base -= 6;
   return Math.round(base * 10) / 10;

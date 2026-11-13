@@ -1,3 +1,4 @@
+import { legitOf, shakeLegit } from './legit';
 import type { Character, FactionId, GameState } from './types';
 import { kingProfile, rulerName, vsText } from './kingstat';
 import type { EventDef } from './events/types';
@@ -21,7 +22,7 @@ import { gukbonSit, TOPICS as GUKBON_TOPICS } from './gukbon';
 const kingName = (s: GameState) => rulerName(s);
 
 export interface KingAct {
-  id: 'cheongdae' | 'jingang' | 'munan' | 'jinheon';
+  id: 'cheongdae' | 'jingang' | 'munan' | 'jinheon' | 'myeongbun';
   name: string;
   desc: string;
   ap: number;
@@ -31,6 +32,7 @@ export const KING_ACTS: KingAct[] = [
   { id: 'cheongdae', name: '청대(請對)', desc: '임금께 따로 뵙기를 청한다. 시정을 아뢰거나, 의중을 살피거나, 당을 변호하거나, 사람을 천거하거나, 남의 허물을 은밀히 아뢴다. 석 달에 한 번.', ap: 1 },
   { id: 'jingang', name: '진강(進講)', desc: '경연에서 경서를 강론한다. 주사위 + (내 학식 - 임금의 학식)으로 판정한다. 학문을 즐기는 임금은 크게 감복하고, 학문에 뜻이 없는 임금은 지루해한다. 홍문관·규장각·대제학이거나 학식 6 이상이어야 한다. 두 달에 한 번.', ap: 1 },
   { id: 'munan', name: '문안(問安)', desc: '병석의 임금께 문안을 여쭙는다. 환후 중에 한 번. 성심 +3.', ap: 1 },
+  { id: 'myeongbun', name: '명분을 세우다', desc: '정통성이 흔들리는 임금을 위해 왕통의 의리를 밝히는 글을 지어 올린다. 주사위 + 학식 ≥ 9면 정통성 +3, 성심 +5. 아니면 견강부회라는 비웃음을 산다 (명망 -2). 임금의 정통성이 「무난함」 아래일 때만, 한 해에 한 번.', ap: 2 },
   { id: 'jinheon', name: '진헌(進獻)', desc: '귀한 물건을 바친다. 재산 -30, 성심 +4. 아첨이라는 말을 듣는다 (명망 -1). 한 해에 한 번.', ap: 1 },
 ];
 
@@ -59,6 +61,12 @@ export function kingActError(s: GameState, id: KingAct['id']): string | null {
   if (id === 'munan') {
     if (!ill) return '임금이 병석에 있을 때만 할 수 있다';
     return s.flags.munanFor === s.situations.find((x) => x.kind === 'illness')?.id ? '이번 환후에 이미 문안했다' : null;
+  }
+  if (id === 'myeongbun') {
+    if (legitOf(s).score >= 55) return '임금의 정통성이 흔들리고 있지 않다';
+    if (p.learning < 5) return '학식 5 이상이어야 한다';
+    const n = 12 - monthsSince(s, 'myeongbunAt');
+    return n > 0 ? `${n}달 뒤에 다시 할 수 있다` : null;
   }
   if (p.traits.includes('upright') || p.traits.includes('clean')) return '강직한 성품이 허락하지 않는다';
   if (p.wealth < 30) return '재산 30이 필요하다';
@@ -108,6 +116,19 @@ export function kingAct(s: GameState, id: KingAct['id']): string {
     s.flags.munanFor = s.situations.find((x) => x.kind === 'illness')?.id ?? '';
     fav(p, 3);
     return '대궐에 나아가 환후를 여쭈었다. 내의원 제조가 탕제를 올리는 것을 지켜보았다. (성심 +3)';
+  }
+  if (id === 'myeongbun') {
+    s.flags.myeongbunAt = s.t;
+    const r = d6(s) + p.learning;
+    s.player.exp.learning += 3;
+    const lg = legitOf(s);
+    if (r >= 9) {
+      fav(p, 5);
+      shakeLegit(s, 3, `${josa(p.name, '이/가')} 왕통의 의리를 밝히는 글을 올렸다`);
+      return `${lg.why[0] ? `「${lg.why[0]}」는 시비를` : '왕통에 대한 시비를'} 경전과 고사로 반박하는 글을 지어 올렸다. 임금이 글을 거듭 읽고 「경의 뜻을 알겠다」 했다. (판정 ${r}, 정통성 +3, 성심 +5)`;
+    }
+    pres(p, -2);
+    return `글을 지어 올렸으나 억지로 끌어다 붙였다는 평을 들었다. 선비들은 아첨이라 수군거린다. (판정 ${r} < 9, 명망 -2)`;
   }
   s.flags.jinheonAt = s.t;
   p.wealth -= 30;
