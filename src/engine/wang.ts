@@ -321,7 +321,7 @@ export const WANG_EVENTS: Record<string, EventDef> = {
         text: `승지가 와서 ${kingName(s)}의 말을 전한다.\n\n"근래 경의 처신이 신하의 도리에 어긋남이 많다. 과인이 경을 어찌 보아야 하는가."`,
         choices: [
           { key: 'daejoe', label: '거적을 깔고 대죄(待罪)한다', hint: '명망 -1, 성심 +5' },
-          { key: 'explain', label: '억울함을 조목조목 해명한다', hint: `주사위 + 정치력 ${P(s).politics} ≥ 8. 되면 성심 +3, 안 되면 성심 -5` },
+          { key: 'explain', label: '억울함을 조목조목 해명한다', hint: `주사위 + 학식 ${P(s).learning} ≥ 8. 되면 성심 +3, 안 되면 성심 -5` },
           { key: 'resign', label: '사직을 청한다', hint: '관직을 내려놓는다. 명망 +2. 임금의 노여움이 가라앉는다 (성심 +4)' },
         ],
       };
@@ -334,7 +334,7 @@ export const WANG_EVENTS: Record<string, EventDef> = {
         return '대궐 앞에 엎드려 대죄했다. 사흘 만에 "대죄하지 말라"는 명이 내렸다. (성심 +5)';
       }
       if (key === 'explain') {
-        const r = d6(s) + p.politics;
+        const r = d6(s) + p.learning;
         if (r >= 8) {
           fav(p, 3);
           return `해명이 이치에 닿았다. 임금이 "과인이 잘못 들었구나" 했다. (판정 ${r}, 성심 +3)`;

@@ -74,13 +74,54 @@ export function rollHarvest(s: GameState) {
     const pl = s.player;
     const hid = Math.min(pl.hiddenLand, pl.land);
     // 전장마다 소작료 4, 은결은 세를 내지 않아 2를 더 남긴다 (대동법이면 그 이득이 반으로 준다)
-    const rent = Math.round((pl.land * 4 + hid * (s.laws?.daedong?.on ? 1 : 2)) * (MULT[home] ?? 1));
+    const rent = Math.round((rentBase(pl.land) + hid * (s.laws?.daedong?.on ? 1 : 2)) * (MULT[home] ?? 1));
     p.wealth += rent;
     if (p.home === 'hanseong') return;
+    // 큰 지주는 흉년에 소작인의 원성을 산다. 의장이 있으면 의장이 곡식을 푼다
+    if (home <= -1) {
+      if (pl.house?.uijang) {
+        s.regions[p.home].minsim = clamp(s.regions[p.home].minsim + 5, 0, 100);
+        pres(p, 1);
+        log(s, `흉년이 들자 ${p.name} 집안의 의장이 곡식을 풀었다. 고향 사람들이 칭송한다.`, 'player');
+      } else if (pl.land >= 20 && s.pending.length < 3) pushEvent(s, 'tenant_grief', { rent });
+    }
     if (home === -2) notice(s, '고향의 대흉', `고향 ${REGION_META[p.home].short}에 대흉년이 들었다. 전장(田莊)에서 올라온 소출이 재산 +${rent}에 그쳤다. 고향 사람들이 굶주린다.`, 'personal');
     else log(s, `고향 ${REGION_META[p.home].short}의 작황은 ${HARVEST_LABEL[home]}. 전장 ${pl.land}결의 소작료 재산 +${rent}${hid ? ` (은결 ${hid}결 포함)` : ''}.`, 'player');
   }
 }
+
+/** 땅이 넓을수록 마름과 관리에 새는 몫이 커진다: 15결까지 결마다 4, 30결까지 3, 그 위는 2 */
+export const rentBase = (land: number) => Math.min(land, 15) * 4 + Math.max(0, Math.min(land, 30) - 15) * 3 + Math.max(0, land - 30) * 2;
+
+export const TENANT_EVENTS: Record<string, EventDef> = {
+  tenant_grief: {
+    build(s, c) {
+      const p = P(s);
+      return {
+        title: '소작인들의 하소연',
+        kind: 'personal',
+        text: `고향 ${REGION_META[p.home].short}에 흉년이 들었다. 전장 ${s.player.land}결을 부치는 소작인들이 마름을 앞세워 찾아왔다. 올해 도조(소작료)를 다 바치면 겨울을 넘길 수 없다고 한다. 이웃 고을에서는 큰 지주의 곳간이 털렸다는 말도 들린다. (올해 소작료 ${c.rent})`,
+        choices: [
+          { key: 'cut', label: '올해 도조를 절반으로 줄여 준다', hint: `재산 −${Math.round(c.rent / 2)}, 고향 민심 +3, 명망 +2` },
+          { key: 'take', label: '정한 대로 받는다', hint: '고향 민심 −5. 25%로 숨은 흠결 「흉년의 가혹한 도조」' },
+        ],
+      };
+    },
+    resolve(s, c, key) {
+      const p = P(s);
+      const r = s.regions[p.home];
+      if (key === 'cut') {
+        p.wealth -= Math.round(c.rent / 2);
+        r.minsim = clamp(r.minsim + 3, 0, 100);
+        pres(p, 2);
+        return `도조를 절반으로 줄여 주었다. 소작인들이 절을 하고 돌아갔다. (재산 −${Math.round(c.rent / 2)}, 명망 +2)`;
+      }
+      r.minsim = clamp(r.minsim - 5, 0, 100);
+      if (chance(s, 0.25)) addFlaw(s, p, '흉년의 가혹한 도조', false);
+      return '정한 대로 받았다. 마을에 원망이 쌓인다. (고향 민심 −5)';
+    },
+  },
+};
 
 /* ───────── 다른 도의 소식 ───────── */
 

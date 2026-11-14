@@ -226,7 +226,46 @@ export function startOksa(s: GameState, accused: Character, by?: string, fabrica
   else if (isP(s, accused)) pushEvent(s, 'oksa_accused', {});
 }
 
+/** 괘서로 연 옥사는 뒷날 그 당이 다시 일어서면 신원을 청해 재조사된다 */
+function tickBeonan(s: GameState) {
+  const list = s.player.framed;
+  if (!list?.length) return;
+  for (const r of [...list]) {
+    if (s.t - r.t < 24) continue;
+    const share = powerShare(s);
+    const top = Object.entries(share).sort((a, b) => b[1] - a[1])[0]?.[0];
+    const risen = (s.factions[r.faction]?.active && (top === r.faction || (s.king.lean[r.faction] ?? 0) >= 15)) || false;
+    if (!risen || !chance(s, 0.03)) continue;
+    s.player.framed = list.filter((x) => x !== r);
+    const victim = s.chars[r.target];
+    const vname = victim?.name ?? '그';
+    log(s, `[신원] ${FACTION_META[r.faction].name}이 다시 일어서자 ${vname}의 옛 옥사가 괘서로 꾸며 낸 무고였다며 신원(伸冤)을 청하는 상소가 잇따랐다.`, 'history');
+    // 세월이 흐를수록 증인이 죽고 기억이 흐려진다
+    if (!chance(s, clamp(0.6 - ((s.t - r.t) / 12) * 0.03, 0.2, 0.6))) {
+      notice(s, '신원 상소', `${FACTION_META[r.faction].name}이 ${vname}의 옥사를 다시 캐자고 한다. 괘서를 붙인 이는 끝내 드러나지 않았다. 가슴을 쓸어내린다.`, 'danger');
+      continue;
+    }
+    const p = P(s);
+    if (victim && alive(victim) && victim.status === 'exiled') victim.exileLevel = 1;
+    if (r.by === p.id && alive(p)) {
+      addFlaw(s, p, '괘서 무고', true);
+      pres(p, -10);
+      if (p.status !== 'exiled') exile(s, p);
+      p.exileLevel = 2;
+      s.player.deeds.push(`옛 괘서의 무고가 드러나 위리안치`);
+      notice(s, '번안(翻案)', `${vname}의 옛 옥사가 다시 캐어져, 괘서를 붙인 겸인의 자백이 나왔다. 몇 해가 지났지만 죄는 그대로다. 위리안치되었다. (명망 −10, 드러난 흠 「괘서 무고」)`, 'danger');
+    } else {
+      pres(p, -8);
+      if (p.faction !== 'none') swayFaction(s, p.faction, p.id, -5, '선대의 무고', 0.05);
+      notice(s, '번안(翻案)', `${vname}의 옛 옥사가 다시 캐어져, 선대가 괘서를 붙였다는 자백이 나왔다. 선대는 관작이 추탈되고 가문이 욕을 입었다. (명망 −8)`, 'danger');
+    }
+    if (r.faction) swayFaction(s, r.faction, p.id, -10, '옛 무고', 0.03);
+    break;
+  }
+}
+
 function tickOksa(s: GameState) {
+  tickBeonan(s);
   // 긴장이 높고 왕이 한 당을 몹시 꺼리면, 그 당에서 역모 고변이 나오기도 한다
   if (!s.oksa && s.t >= 24 && s.tension >= 35 && monthsSince(s, 'oksaAt') >= 72 && chance(s, 0.004 + (s.tension - 35) / 2500)) {
     const f = activeFactions(s).sort((a, b) => (s.king.lean[a] ?? 0) - (s.king.lean[b] ?? 0))[0];
@@ -278,8 +317,10 @@ function tickOksa(s: GameState) {
   const sev = o.sev ?? 1;
   o.month = (o.month ?? 0) + 1;
   const lines: string[] = [];
-  const cap = [0, 4, 9, 15][sev];
-  const maxDepth = sev;
+  // 꾸며 낸 고변에서 비롯된 옥사는 캘 것이 적어 한 단계 덜 번진다 (정국이 몹시 격앙되면 예외)
+  const thin = o.fabricated && s.tension < 70;
+  const cap = [0, 4, 9, 15][thin ? Math.max(1, sev - 1) : sev];
+  const maxDepth = thin ? sev - 1 : sev;
   const taken = () => Object.keys(o.done ?? {}).length + (o.queue?.length ?? 0);
   const n = Math.min(o.queue!.length, 1 + sev);
   const batch = o.queue!.splice(0, n);
@@ -366,6 +407,7 @@ function tickOksa(s: GameState) {
   }
   // 국청이 끝난다
   s.oksa = undefined;
+  if (o.fabricated && o.by === s.player.charId) (s.player.framed ??= []).push({ target: o.accused, faction: o.faction, t: s.t, by: o.by });
   const done = Object.values(o.done ?? {});
   const dead = done.filter((x) => x === '물고' || x === '사형').length;
   const exiled = done.filter((x) => x === '유배').length;

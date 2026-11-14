@@ -180,6 +180,15 @@ export type MemorialTopic = 'sipye' | 'jojae' | 'recall' | 'law';
 export type ProjectKind = 'seowon' | 'munjip';
 
 /** 여러 달에 걸친 논핵. 그동안 양쪽이 동조자와 구원자를 모은다. */
+/** 제 뜻을 품고 움직이는 거물 */
+export interface Grandee {
+  goal: 'place' | 'topple' | 'marry' | 'favor';
+  /** 끌어내릴 사람, 밀어 올릴 사람, 사돈 맺을 집안의 사람 */
+  target?: string;
+  step: number;
+  since: number;
+}
+
 export interface Case {
   id: string;
   /** impeach: 관직에 있는 이를 논핵, aggravate: 유배 중인 이에게 죄를 더하자는 논의 */
@@ -189,6 +198,8 @@ export interface Case {
   /** 처음부터 관직이 없던 이를 논핵했다 */
   offOffice?: boolean;
   attacker: string;
+  /** 대간을 시켜 논핵하게 한 배후의 대신 (사주) */
+  backer?: string;
   target: string;
   opened: number;
   due: number;
@@ -256,6 +267,10 @@ export interface PlayerState {
   path?: 'office' | 'sallim' | 'wealth';
   /** 숙적: 플레이어를 노리는 다른 당의 인물 */
   rival?: string;
+  /** 가문 사업: 족보(간행한 대), 종가 중건, 의장, 자제 교육(시킨 대) */
+  house?: { jokbo?: number; jongga?: boolean; uijang?: boolean; eduGen?: number };
+  /** 괘서로 연 옥사들: 뒷날 신원으로 무고가 드러날 수 있다 */
+  framed?: { target: string; faction: FactionId; t: number; by: string }[];
   /** 이 판에서 이룬 업적 */
   achv?: string[];
   /** 수령으로 있는 고을의 원성 */
@@ -525,6 +540,8 @@ export interface GameState {
   t: number;
   chars: Record<string, Character>;
   marriages: { a: string; b: string; t: number }[];
+  /** 거물들의 뜻 (인물 id → 목표) */
+  grandees?: Record<string, Grandee>;
   mods: OpinionMod[];
   factions: Record<FactionId, FactionState>;
   regions: Record<RegionId, RegionState>;

@@ -250,7 +250,7 @@ export const SITUATION_EVENTS: Record<string, EventDef> = {
         kind: 'danger',
         text: `당신의 「${x.data.label}」 이야기가 도성에 퍼졌다. 누가 흘렸는지는 모르나, 대간이 붓을 들기 전에 손을 써야 한다.`,
         choices: [
-          { key: 'explain', label: '상소를 올려 해명한다', hint: `정치력 판정 (주사위 + ${p.politics} ≥ 8). 성공하면 명망 -1, 실패하면 명망 -5, 성심 -5.` },
+          { key: 'explain', label: '상소를 올려 해명한다', hint: `학식 판정 (주사위 + ${p.learning} ≥ 8). 성공하면 명망 -1, 실패하면 명망 -5, 성심 -5.` },
           { key: 'humble', label: '대문을 닫고 근신한다', hint: '명망 -3. 말이 빨리 잦아든다.' },
           { key: 'resign', label: '사직하고 물러난다', hint: '관직을 내놓고 낙향한다. 명망 +1, 성심 +2.' },
         ],
@@ -260,7 +260,7 @@ export const SITUATION_EVENTS: Record<string, EventDef> = {
       const p = P(s);
       const x = activeSit(s, 'scandal');
       if (key === 'explain') {
-        const r = d6(s) + p.politics;
+        const r = d6(s) + p.learning;
         if (r >= 8) {
           pres(p, -1);
           if (x) x.until = s.t + 1;

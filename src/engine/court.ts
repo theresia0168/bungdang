@@ -149,8 +149,10 @@ export interface ScorePart {
 /** 임용 점수. 이조판서와 이조전랑의 호감이 크게 작용한다. */
 export function appointParts(s: GameState, c: Character, o: OfficeDef, hm = holderMap(s)): ScorePart[] {
   const parts: ScorePart[] = [];
-  parts.push({ label: '정치력', value: c.politics * 2 });
-  parts.push({ label: '학식', value: c.learning * (o.literary ? 3 : o.samsa || o.cheongyo ? 2 : 1) });
+  const pen = o.literary || o.samsa || o.cheongyo;
+  // 청요직은 글로 뽑고, 당상관의 실무직은 수완으로 뽑는다
+  parts.push({ label: '정치력', value: c.politics * (pen ? 1 : o.rank <= 3 ? 2.5 : 2) });
+  parts.push({ label: '학식', value: c.learning * (o.literary ? 3 : pen ? 2.5 : o.rank <= 3 ? 0.5 : 1) });
   parts.push({ label: '명망', value: c.prestige / 12 });
   parts.push({ label: '성심', value: c.favor / 15 });
   parts.push({ label: '경력', value: Math.min(3, c.tenure / 12) });

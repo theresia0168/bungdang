@@ -26,6 +26,7 @@ import { WANG_EVENTS } from '../wang';
 import { COUP_EVENTS } from '../coup';
 import { BOKSANG_EVENTS } from '../court';
 import { COUNTY_EVENTS } from '../county';
+import { TENANT_EVENTS } from '../regions';
 
 export const EVENTS: Record<string, EventDef> = {
   ...SUCCESSION_EVENTS,
@@ -43,6 +44,7 @@ export const EVENTS: Record<string, EventDef> = {
   ...COUP_EVENTS,
   ...BOKSANG_EVENTS,
   ...COUNTY_EVENTS,
+  ...TENANT_EVENTS,
   ...GENERIC_EVENTS,
   ...HISTORY_EVENTS,
   ...PERSONAL_EVENTS,

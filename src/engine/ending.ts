@@ -22,7 +22,7 @@ export const PATH_NAME = { office: '벼슬길', sallim: '산림', wealth: '가�
 export const PATH_DESC = {
   office: '조정에서 높이 오른다. 정승에 오르면 +45, 판서급이면 +25.',
   sallim: '벼슬보다 학문과 명망. 명망 70 이상이면 +25, 문인 급제·서원·문집이 셋 이상이면 +20 더. 2품 이상에 오르면 뜻을 굽힌 셈이라 절반만 친다.',
-  wealth: '땅과 혼맥으로 가세를 키운다. 전장 30결 이상이면 +25, 혼맥 셋 이상이면 +20 더.',
+  wealth: '땅과 혼맥과 문중으로 가세를 키운다. 전장 25결 이상이면 +25, 혼맥 셋 이상이면 +15, 가문 사업(족보·종가·의장·자제 교육) 둘 이상이면 +10 더.',
 } as const;
 
 /** 이 대가 고른 가문의 길을 얼마나 이루었는가 */
@@ -35,7 +35,12 @@ export function pathBonus(s: GameState): number {
     const v = (p.prestige >= 70 ? 25 : 0) + (works >= 3 ? 20 : 0);
     return pl.peakRank <= 2 ? Math.round(v / 2) : v;
   }
-  if (pl.path === 'wealth') return (pl.land >= 30 ? 25 : 0) + (pl.stats.marriages >= 3 ? 20 : 0);
+  if (pl.path === 'wealth') {
+    const h = pl.house ?? {};
+    const gen = pl.lineage.length;
+    const works = [h.jokbo === gen, !!h.jongga, !!h.uijang, h.eduGen === gen].filter(Boolean).length;
+    return (pl.land >= 25 ? 25 : 0) + (pl.stats.marriages >= 3 ? 15 : 0) + (works >= 2 ? 10 : 0);
+  }
   return 0;
 }
 
@@ -67,6 +72,7 @@ function breakdownOf(s: GameState, withLineage = true) {
     { label: '서원·문집', value: pl.built.length * 8 },
     { label: '드러난 흠결', value: -pubFlaws * 6 },
     { label: '유배', value: -pl.stats.exiled * 5 },
+    ...(pl.land >= 3 ? [{ label: `가산 (전장 ${pl.land}결)`, value: Math.min(12, Math.round(pl.land / 3)) }] : []),
     ...(pl.path ? [{ label: `가문의 뜻 (${PATH_NAME[pl.path]})`, value: pathBonus(s) }] : []),
   ];
   const out = [...own];

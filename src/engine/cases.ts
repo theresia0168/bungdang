@@ -1,11 +1,12 @@
 import type { Case, Character, GameState } from './types';
 import { chance, d6 } from './rng';
-import { alive, atSeat, clamp, collect, impeachEtiquette, inCourt, isP, josa, log, notice, officeTitle, owe, P, people, pushEvent, seatName, uid } from './state';
+import { addFlaw, alive, atSeat, clamp, collect, impeachEtiquette, inCourt, isP, josa, log, notice, officeTitle, owe, P, people, pushEvent, seatName, uid } from './state';
 import { activeFactions, members } from './factions';
 import { FACTION_META } from './data/meta';
+import { OFFICE_MAP } from './data/offices';
 import type { EventDef } from './events/types';
 import { addMod, opinion, sway, swayFaction, topOf } from './opinion';
-import { impeach, kill, OUTCOME_LABEL, SUCCESS, type ImpeachReport, type RollPart } from './conflict';
+import { impeach, kill, OUTCOME_LABEL, statParts, statPower, SUCCESS, type ImpeachReport, type RollPart } from './conflict';
 import { vacate } from './court';
 import { shortDate } from './calendar';
 import { betray, fulfillAgainst, sworn } from './relations';
@@ -17,7 +18,7 @@ export const caseOn = (s: GameState, targetId: string) => s.cases.find((c) => c.
 export const caseById = (s: GameState, id: string) => s.cases.find((c) => c.id === id);
 
 export function sideOf(cs: Case, id: string): 'attacker' | 'target' | 'pro' | 'con' | null {
-  if (cs.attacker === id) return 'attacker';
+  if (cs.attacker === id || cs.backer === id) return 'attacker';
   if (cs.target === id) return 'target';
   if (cs.pros.includes(id)) return 'pro';
   if (cs.cons.includes(id)) return 'con';
@@ -34,7 +35,7 @@ export function openCase(
   s: GameState,
   atk: Character,
   tgt: Character,
-  opt: { bonus?: number; byMemorial?: boolean; pros?: string[] } = {},
+  opt: { bonus?: number; byMemorial?: boolean; pros?: string[]; backer?: string } = {},
 ): Case | undefined {
   const ex = caseOn(s, tgt.id);
   if (ex) {
@@ -55,6 +56,7 @@ export function openCase(
     cons: [],
     bonus: opt.bonus ?? 0,
     byMemorial: opt.byMemorial,
+    backer: opt.backer,
     offOffice: kind === 'impeach' && (tgt.status !== 'active' || !tgt.office) ? true : undefined,
   };
   s.cases.push(cs);
@@ -69,6 +71,61 @@ export function openCase(
   sway(s, tgt, atk.id, -10, '논핵', { clan: 0.3, decay: 0.2 });
   if (isP(s, tgt)) pushEvent(s, kind === 'impeach' ? 'impeached' : 'aggravated', { caseId: cs.id });
   return cs;
+}
+
+/* ───────── 대간 사주 ─────────
+ * 중량급 대신은 몸소 논핵하지 않는다. 같은 당의 가까운 대간에게 흠을 넘겨주고 논핵하게 한 뒤 뒤에서 힘을 싣는다.
+ * 일이 틀어지면 「대간을 사주했다」는 말이 새어 나온다.
+ */
+
+const isSamsaC = (c: Character) => !!(c.office && OFFICE_MAP[c.office]?.samsa);
+
+/** 대신이 몸소 나서지 않고 대간을 부리는가 */
+export const usesProxy = (c: Character) => c.rank <= 3 && !isSamsaC(c);
+
+/** 배후의 뜻을 받아 논핵할 대간을 고른다 (없으면 undefined). withPlayer면 대간인 플레이어도 후보다 */
+export function proxyFor(s: GameState, backer: Character, tgt: Character, withPlayer = false): Character | undefined {
+  if (backer.faction === 'none') return undefined;
+  const mine = isP(s, backer);
+  const pool = people(s).filter((c) => {
+    if (c.id === backer.id || c.id === tgt.id || c.status !== 'active' || !isSamsaC(c) || !atSeat(s, c)) return false;
+    if (isP(s, c) && !withPlayer) return false;
+    if (topOf(c.faction) !== topOf(backer.faction) || c.faction === 'none') return false;
+    if (s.cases.some((x) => x.attacker === c.id) || caseOn(s, c.id)) return false;
+    // 플레이어가 부리려면 신세를 졌거나 가까워야 한다
+    if (mine) return (s.player.debts[c.id] ?? 0) > 0 || opinion(s, c, backer) >= 15;
+    return isP(s, c) || opinion(s, c, backer) >= 5;
+  });
+  const score = (c: Character) => opinion(s, c, backer) - opinion(s, c, tgt) / 2 + statPower(c) * 2 + (mine && s.player.debts[c.id] ? 30 : 0) + (isP(s, c) ? 5 : 0);
+  return pool.sort((a, b) => score(b) - score(a))[0];
+}
+
+/** 대간을 시켜 논핵을 연다. 배후가 아는 흠을 대간에게 넘겨준다 */
+export function openByProxy(s: GameState, backer: Character, proxy: Character, tgt: Character, opt: { bonus?: number } = {}): Case | undefined {
+  for (const f of tgt.flaws) if (!f.public && f.knownBy.includes(backer.id) && !f.knownBy.includes(proxy.id)) f.knownBy.push(proxy.id);
+  const cs = openCase(s, proxy, tgt, { bonus: opt.bonus, backer: backer.id });
+  if (cs) {
+    const mine = isP(s, backer) || isP(s, proxy);
+    if (mine || isP(s, tgt)) log(s, `[사주] ${josa(proxy.name, '이/가')} 앞장섰지만, 뒤에는 ${officeTitle(backer)} ${josa(backer.name, '이/가')} 있다${isP(s, tgt) ? '는 말이 들린다' : ''}.`, 'player');
+  }
+  return cs;
+}
+
+/** 판정이 난 뒤: 일이 틀어질수록 사주가 드러나기 쉽다 */
+function exposeBacker(s: GameState, cs: Case, rep: ImpeachReport) {
+  if (!cs.backer) return;
+  const b = s.chars[cs.backer];
+  const tgt = s.chars[cs.target];
+  if (!alive(b)) return;
+  const bad = rep.outcome === 'severe_backfire' ? 0.6 : rep.outcome === 'backfire' ? 0.4 : rep.outcome === 'rejected' || rep.outcome === 'shielded' ? 0.2 : 0.08;
+  if (!chance(s, bad)) return;
+  addFlaw(s, b, '대간 사주', true);
+  b.favor = clamp(b.favor - 4, -100, 100);
+  b.prestige = clamp(b.prestige - 2, 0, 100);
+  if (alive(tgt)) sway(s, tgt, b.id, -15, '대간을 사주함', { clan: 0.3, decay: 0.1 });
+  const mine = isP(s, b);
+  log(s, `[사주] ${tgt?.name ?? ''} 논핵의 배후에 ${josa(b.name, '이/가')} 있었다는 말이 퍼졌다. 「대신이 대간을 부려 사사로운 원한을 갚는다」는 비난이 인다.`, mine || isP(s, tgt) ? 'player' : 'court');
+  if (mine) notice(s, '사주가 드러나다', `${tgt?.name ?? ''} 논핵을 대간에게 시킨 것이 드러났다. (드러난 흠 「대간 사주」, 성심 −4, 명망 −2)`, 'danger');
 }
 
 export function closeCase(s: GameState, cs: Case) {
@@ -93,7 +150,8 @@ function recruit(s: GameState, cs: Case) {
   for (const c of people(s)) {
     if (isP(s, c) || sideOf(cs, c.id) || !inCourt(c) || !atSeat(s, c)) continue;
     const l = lean(s, c, atk, tgt);
-    if (!l || !chance(s, 0.15)) continue;
+    // 수완 있는 이는 마음이 기운 사람들을 실제로 움직여 끌어온다
+    if (!l || !chance(s, 0.09 + (l > 0 ? atk : tgt).politics * 0.015)) continue;
     if (l > 0 && cs.pros.length < 6) cs.pros.push(c.id);
     else if (l < 0 && cs.cons.length < 6) cs.cons.push(c.id);
   }
@@ -147,7 +205,10 @@ function resolveImpeach(s: GameState, cs: Case) {
   if (hap) bonus.push({ label: hap >= 3 ? '삼사 합계' : '양사 합계', value: hap >= 3 ? 3 : 1 });
   const defBonus = cs.cons.length ? [sidePart('구원', cs.cons.length)] : [];
   if (cs.resigned) defBonus.push({ label: '스스로 물러남', value: 1 });
+  const backer = cs.backer ? s.chars[cs.backer] : undefined;
+  if (alive(backer)) bonus.push({ label: `배후의 ${officeTitle(backer)} ${backer.name}`, value: backer.rank <= 1 ? 2 : 1 });
   const rep = impeach(s, atk, tgt, { bonus, defBonus, response: cs.response, hapgye: hap, charges: cs.charges, pungmun: cs.pungmun });
+  exposeBacker(s, cs, rep);
   const success = SUCCESS.includes(rep.outcome);
   if (rep.outcome === 'rejected' || rep.outcome === 'shielded') pihyeom(s, cs, rep);
   const p = P(s);
@@ -167,7 +228,8 @@ function resolveAggravate(s: GameState, cs: Case): ImpeachReport {
   const tgt = s.chars[cs.target];
   const lv = tgt.exileLevel ?? 1;
   const toDeath = lv >= 2;
-  const aParts: RollPart[] = [{ label: '정치력', value: atk.politics }];
+  // 가죄는 거듭 올리는 상소의 글과 막후의 힘이 반씩이다
+  const aParts: RollPart[] = statParts(atk, 0.5, '가죄 상소', '막후');
   if (cs.pros.length) aParts.push(prosPart(cs.pros.length, tgt));
   const hap = hapgyeOf(s, cs);
   if (hap) aParts.push({ label: hap >= 3 ? '삼사 합계' : '양사 합계', value: hap >= 3 ? 3 : 1 });
@@ -376,7 +438,7 @@ function stepDown(s: GameState, cs: Case): boolean {
   // 이미 물러난 이(다시 열린 논핵)는 또 물러날 자리가 없다
   if (isP(s, tgt) || tgt.rank > 3 || cs.kind !== 'impeach' || cs.resigned || !tgt.office) return false;
   const atk = s.chars[cs.attacker];
-  const edge = atk.politics + prosPart(cs.pros.length, tgt).value - (tgt.politics + Math.min(SIDE_CAP, cs.cons.length) + (tgt.favor >= 50 ? 2 : 0));
+  const edge = statPower(atk) + prosPart(cs.pros.length, tgt).value - (statPower(tgt) + Math.min(SIDE_CAP, cs.cons.length) + (tgt.favor >= 50 ? 2 : 0));
   if (edge < 3 || !chance(s, tgt.traits.includes('upright') || tgt.traits.includes('mild') ? 0.6 : 0.35)) return false;
   const title = officeTitle(tgt);
   vacate(s, tgt);
@@ -420,6 +482,40 @@ function pihyeom(s: GameState, cs: Case, rep: ImpeachReport) {
 }
 
 export const CASE_EVENTS: Record<string, EventDef> = {
+  saju_request: {
+    build(s, c) {
+      const b = s.chars[c.backer];
+      const t = s.chars[c.target];
+      const p = P(s);
+      const known = t ? t.flaws.filter((f) => !f.public && f.knownBy.includes(b?.id ?? '')).length : 0;
+      return {
+        title: '대신의 부탁',
+        kind: 'court',
+        text: `${officeTitle(b)} ${josa(b?.name ?? '', '이/가')} 사람을 보내 조용히 만나자고 한다. 술상을 물리자 그가 말한다. 「${officeTitle(t)} ${josa(t?.name ?? '', '은/는')} 조정을 어지럽히는 자요. 대간의 붓으로 바로잡아 주시오.」${known ? ` 그가 ${t?.name}의 숨은 허물 ${known}가지를 적은 쪽지를 건넨다.` : ''}\n\n대신은 몸소 논핵하지 않는다. 앞에 서는 것은 대간인 당신이다. 이기면 그가 신세를 지지만, 지면 무고의 허물은 당신이 진다.`,
+        choices: [
+          { key: 'accept', label: '붓을 든다', hint: `${t?.name}을 논핵한다. 대신이 뒤에서 힘을 싣고(+${(b?.rank ?? 9) <= 1 ? 2 : 1}) 당신에게 신세를 진다. 같은 당의 호감 +3` },
+          { key: 'refuse', label: '「언관의 붓은 대신의 칼이 아니오」 하고 물리친다', hint: `명망 +2. ${b?.name}의 호감 −12, 같은 당의 호감 −3` },
+        ],
+      };
+    },
+    resolve(s, c, key) {
+      const p = P(s);
+      const b = s.chars[c.backer];
+      const t = s.chars[c.target];
+      if (!alive(b) || !alive(t) || p.status !== 'active' || caseOn(s, t.id) || s.cases.some((x) => x.attacker === p.id)) return '때를 놓쳐 일이 흐지부지되었다.';
+      if (key === 'refuse') {
+        p.prestige = clamp(p.prestige + 2, 0, 100);
+        sway(s, b, p.id, -12, '부탁을 물리침', { decay: 0.1 });
+        if (p.faction !== 'none') swayFaction(s, p.faction, p.id, -3, '당의 일을 외면함', 0.1);
+        return `${b.name}의 부탁을 물리쳤다. 곧은 언관이라는 말이 돈다. (명망 +2)`;
+      }
+      const cs = openByProxy(s, b, p, t, { bonus: c.bonus ?? 0 });
+      if (!cs) return '논핵을 열지 못했다.';
+      owe(s, b.id);
+      if (p.faction !== 'none') swayFaction(s, p.faction, p.id, 3, '당의 일에 앞장섬', 0.1);
+      return `${josa(t.name, '을/를')} 논핵하는 계사를 올렸다. 뒤에는 ${b.name}이 있다. (그가 신세를 졌다)`;
+    },
+  },
   party_rally: {
     build(s, c) {
       const cs = caseById(s, c.caseId);

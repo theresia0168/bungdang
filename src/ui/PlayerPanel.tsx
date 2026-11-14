@@ -195,7 +195,20 @@ export function PlayerPanel() {
                   </>
                 ) : (
                   <>
-                    <b>{side === 'attacker' ? '논핵을 이끄는 중' : side === 'pro' ? '동조 중' : '구원 중'}</b> <CharLink id={tg.id} /> · {left}달 뒤 판정 · 동조 {cs.pros.length} · 구원 {cs.cons.length}
+                    <b>{side === 'attacker' ? (cs.backer === p.id ? '대간을 시켜 논핵 중' : '논핵을 이끄는 중') : side === 'pro' ? '동조 중' : '구원 중'}</b> <CharLink id={tg.id} />
+                    {cs.backer === p.id && (
+                      <span className="small muted">
+                        {' '}
+                        (앞장선 대간 <CharLink id={cs.attacker} />)
+                      </span>
+                    )}
+                    {cs.backer && cs.attacker === p.id && (
+                      <span className="small muted">
+                        {' '}
+                        (배후 <CharLink id={cs.backer} />)
+                      </span>
+                    )}{' '}
+                    · {left}달 뒤 판정 · 동조 {cs.pros.length} · 구원 {cs.cons.length}
                     {side === 'attacker' && <div className="small">인물 창에서 「연명·구원 요청」으로 동조를 모으라.</div>}
                   </>
                 )}
@@ -290,6 +303,7 @@ export function PlayerPanel() {
             return (
               <button key={a.id} className={`fbtn ${done ? 'on' : ''}`} disabled={!!err} title={err ? `${err}\n\n${a.desc}` : a.desc} onClick={() => act((g) => runMonthly(g, a.id))}>
                 {a.name}
+                {a.note?.(s) ? <small className="muted"> {a.note(s)}</small> : null}
                 <span className="cost">{done ? '✓' : '●'.repeat(a.cost)}</span>
               </button>
             );

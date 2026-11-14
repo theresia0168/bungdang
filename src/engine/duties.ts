@@ -66,7 +66,7 @@ const DUTIES: Duty[] = [
         key: 'ming',
         label: '명에 군량 원조를 청한다',
         roll: {
-          stat: 'politics',
+          stat: 'learning',
           need: 8,
           ok: { say: '명이 요동의 곡식을 보내 주기로 했다.', favor: 3, note: '국고 +110', run: (s) => void (s.realm.treasury += 110) },
           fail: { say: '명은 "속국이 제 군량도 못 대느냐"며 거절했다.', favor: -2, mood: -4 },
@@ -339,7 +339,7 @@ const DUTIES: Duty[] = [
         key: 'expose',
         label: '은결을 찾아내 장부에 올린다',
         roll: {
-          stat: 'politics',
+          stat: 'learning',
           need: 8,
           ok: { say: '은결을 장부에 올리자 가난한 이들의 결세가 줄었다.', prestige: 3, minsim: 4, others: -2, note: '고을의 원성 −15, 토호와 그 뒷배의 원망', run: (g) => countyHarm(g, -15, 1) },
           fail: { say: '토호들이 한성에 줄을 대어 「수령이 양반을 능멸한다」는 말이 돌았다.', favor: -3, prestige: -1, note: '고을의 원성 −4', run: (g) => countyHarm(g, -4) },

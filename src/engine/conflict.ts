@@ -102,6 +102,20 @@ export function recall(s: GameState, c: Character) {
   if (isP(s, c)) s.player.deeds.push(`${shortDate(s.t)} 해배`);
 }
 
+/** 학식과 정치력을 w : 1-w로 섞어 판정 항목 둘로 만든다 (0.5 단위) */
+export function statParts(c: Character, w: number, lLabel: string, pLabel: string): RollPart[] {
+  const half = (v: number) => Math.round(v * 2) / 2;
+  const l = half(c.learning * w);
+  const p = half(c.politics * (1 - w));
+  const out: RollPart[] = [];
+  if (l) out.push({ label: `${lLabel} (학식)`, value: l });
+  if (p) out.push({ label: `${pLabel} (정치력)`, value: p });
+  return out;
+}
+
+/** 공론에서 보는 한 사람의 힘: 학식과 정치력의 평균 */
+export const statPower = (c: Character) => (c.learning + c.politics) / 2;
+
 /**
  * 기획안 4.1 탄핵: 1d6 + 정치력 + 상대 흠결 vs 1d6 + 정치력. 격차로 결과가 갈린다.
  * 탄핵만으로는 죽지 않는다. 사사는 유배 뒤 가죄(加罪) 논의나 옥사에서만 나온다.
@@ -113,12 +127,15 @@ export function impeach(
   opt: { bonus?: RollPart[]; defBonus?: RollPart[]; response?: 'explain' | 'endure'; quiet?: boolean; hapgye?: number; charges?: string[]; pungmun?: boolean } = {},
 ): ImpeachReport {
   const noOffice = !tgt.office;
-  const aParts: RollPart[] = [{ label: '정치력', value: atk.politics }];
+  const atkSamsa = !!(atk.office && OFFICE_MAP[atk.office]?.samsa);
+  // 언관의 논핵은 글로 싸운다(학식). 언관이 아닌 이는 줄을 대고 사람을 움직여 싸운다(정치력).
+  const aParts: RollPart[] = statParts(atk, atkSamsa ? 0.7 : 0.35, '논핵문', '막후');
   // 고른 죄목만 쓴다. 고르지 않은 흠결은 다음을 위해 남는다
   const flaws = chargeable(s, tgt, atk.id).filter((f) => !opt.charges || opt.charges.includes(f.id));
   if (flaws.length) aParts.push({ label: `흠결 ${flaws.length}개`, value: flaws.length });
-  const atkSamsa = !!(atk.office && OFFICE_MAP[atk.office]?.samsa);
   if (atkSamsa) aParts.push({ label: '삼사 언관', value: 1 });
+  // 대신이 몸소 상소로 논핵하는 것은 체모에 어긋난다. 대개는 대간을 시킨다
+  if (!atkSamsa && atk.rank <= 3) aParts.push({ label: '대신이 몸소 논함 (체모를 잃음)', value: -1 });
   // 대간이 대신을 논하는 것은 공론의 몫이다
   const tgtSamsa = !!(tgt.office && OFFICE_MAP[tgt.office]?.samsa);
   if (atkSamsa && !tgtSamsa && tgt.rank <= 3) aParts.push({ label: tgt.rank <= 1 ? '대간이 정승을 논함' : '대간이 대신을 논함', value: tgt.rank <= 1 ? 2 : 1 });
@@ -137,11 +154,12 @@ export function impeach(
     if (n > 0) aParts.push({ label: `잦은 탄핵 (2년 새 ${n + 2}번째)`, value: -Math.min(2, n) });
   }
   // 한참 아래 사람을 몰아치면 공론이 등을 돌린다
-  const bully = atk.politics - tgt.politics >= 3 && tgt.rank >= atk.rank;
+  const bully = statPower(atk) - statPower(tgt) >= 3 && tgt.rank >= atk.rank;
   if (bully) aParts.push({ label: '힘없는 이를 몰아침 (공론이 외면)', value: -2 });
   for (const b of opt.bonus ?? []) if (b.value) aParts.push(b);
 
-  const dParts: RollPart[] = [{ label: '정치력', value: tgt.politics }];
+  // 해명 상소로 버티면 글이, 묵묵히 버티며 줄을 대면 사람이 지켜 준다
+  const dParts: RollPart[] = statParts(tgt, opt.response === 'explain' ? 0.7 : opt.response === 'endure' ? 0.3 : 0.5, '변명의 글', '버팀목');
   const pr = Math.floor(tgt.prestige / 25);
   if (pr) dParts.push({ label: '명망', value: pr });
   const fv = tgt.favor >= 50 ? 2 : tgt.favor >= 20 ? 1 : tgt.favor <= -30 ? -1 : 0;
@@ -347,9 +365,11 @@ export function memorial(
   }
 
   const parts: RollPart[] = [];
-  const n = Math.min(3, cosigners.length);
+  // 연명을 많이 모아도 셋까지만 친다. 수완 있는 이(정치력 6 이상)는 넷째 사람까지 무게를 싣는다
+  const n = Math.min(init.politics >= 6 ? 4 : 3, cosigners.length);
   if (n) parts.push({ label: `연명 ${cosigners.length}인`, value: n });
-  if (init.learning >= 5) parts.push({ label: '학식', value: 1 });
+  const lv = init.learning >= 8 ? 3 : init.learning >= 6 ? 2 : init.learning >= 4 ? 1 : init.learning <= 2 ? -1 : 0;
+  if (lv) parts.push({ label: lv > 0 ? '상소문의 무게 (학식)' : '서툰 글 (학식)', value: lv });
   if (init.traits.includes('writer')) parts.push({ label: '문장가', value: 1 });
   if ((powerShare(s)[init.faction] ?? 0) > 0.5 && init.faction !== 'none') parts.push({ label: '당세 우위', value: 1 });
   if (topic === 'jojae' && init.traits.includes('mediator')) parts.push({ label: '조제의 인품', value: 1 });

@@ -4,7 +4,7 @@ import { addPrep } from './realm';
 import { OFFICE_MAP } from './data/offices';
 import { REGION_META } from './data/meta';
 import { chance, randInt } from './rng';
-import { addFlaw, alive, atSeat, clamp, collect, impeachEtiquette, inCourt, josa, log, monthsSince, notice, owe, P, pres, pushEvent, seat, seatName } from './state';
+import { addFlaw, alive, atSeat, clamp, collect, fav, impeachEtiquette, inCourt, isP, josa, log, monthsSince, notice, owe, P, people, pres, pushEvent, seat, seatName, officeTitle } from './state';
 import { LAW_MAP, lawCooldown } from './laws';
 import { startOksa, tongmun, tongmunError } from './strife';
 import { exile } from './conflict';
@@ -14,7 +14,7 @@ import { lawStance } from './laws';
 import { inLaws, opinion, sway, swayFaction, topOf } from './opinion';
 import { memorial, TOPIC_LABEL } from './conflict';
 import { vacate } from './court';
-import { caseOn, openCase, sideOf, withdraw } from './cases';
+import { caseOn, openCase, sideOf, withdraw, openByProxy, proxyFor, usesProxy } from './cases';
 import { shortDate } from './calendar';
 import { addBond, betray, bondCount, bondWith, contactMult, fulfill, learnWant, MAX_BONDS, noteContact } from './relations';
 import { humbleEffects } from './plots';
@@ -72,8 +72,8 @@ export function apParts(s: GameState): { label: string; value: number }[] {
   if (p.status === 'exiled') return [{ label: '유배 중 (서신만)', value: 1 }];
   if (isAbroad(s)) return [{ label: '사행 중 (서신만)', value: 1 }];
   const parts = [{ label: '기본', value: 3 }];
-  if (p.politics >= 5) parts.push({ label: '정치력 5 이상', value: 1 });
-  if (p.politics >= 7) parts.push({ label: '정치력 7 이상', value: 1 });
+  if (p.politics >= 5) parts.push({ label: '정치력 5 이상 (일을 부림)', value: 1 });
+  if (p.learning >= 6) parts.push({ label: '학식 6 이상 (글이 빠름)', value: 1 });
   if (s.player.disciples >= 4) parts.push({ label: '문인 4명 이상', value: 1 });
   if (s.player.retainers >= 2) parts.push({ label: '식객', value: 1 });
   if (p.status === 'retired') parts.push({ label: '낙향 중', value: -1 });
@@ -139,7 +139,7 @@ const schemer = (c: Character) => c.traits.includes('schemer');
 /** 내가 쥐고 있는, 그의 숨은 흠결 */
 export const heldFlaws = (s: GameState, t: Character) => t.flaws.filter((f) => !f.public && f.knownBy.includes(s.player.charId));
 /** 내가 공격하는 논핵 */
-const myAttack = (s: GameState) => s.cases.find((c) => c.attacker === s.player.charId);
+const myAttack = (s: GameState) => s.cases.find((c) => c.attacker === s.player.charId || c.backer === s.player.charId);
 
 /** 두 가문을 혼인으로 잇는다 */
 export function marry(s: GameState, t: Character, cost: number): string {
@@ -212,13 +212,13 @@ export const TARGET_ACTIONS: TargetAction[] = [
     id: 'gift',
     name: '선물',
     cost: () => 1,
-    desc: '재산 20을 들여 선물을 보낸다. 사람마다 받는 법이 다르다. 탐욕스러운 이는 크게 기뻐하지만 약점이 되기 쉽고, 청렴한 이는 부담스러워하며, 강직한 이는 돌려보낸다. 학자에게는 서책을 보낸다.',
+    desc: '선물을 보낸다. 값은 받는 이의 품계를 따른다(정승 40, 당상관 30, 그 아래 20). 사람마다 받는 법이 다르다. 탐욕스러운 이는 크게 기뻐하지만 약점이 되기 쉽고, 청렴한 이는 부담스러워하며, 강직한 이는 돌려보낸다. 학자에게는 서책을 보낸다.',
     check(s, t) {
-      return basic(s, t) ?? (P(s).wealth < 20 ? '재산이 20 이상 있어야 한다' : null) ?? cdMsg(s, `gift:${t.id}`);
+      return basic(s, t) ?? (P(s).wealth < giftCost(t) ? `재산이 ${giftCost(t)} 이상 있어야 한다` : null) ?? cdMsg(s, `gift:${t.id}`);
     },
     run(s, t) {
       const p = P(s);
-      p.wealth -= 20;
+      p.wealth -= giftCost(t);
       setCd(s, `gift:${t.id}`, 6);
       if (t.traits.includes('upright') && t.clan !== p.clan) {
         const fx = sway(s, t, p.id, -6, '뇌물로 여김', {});
@@ -353,15 +353,16 @@ export const TARGET_ACTIONS: TargetAction[] = [
     id: 'impeach',
     name: '탄핵',
     cost: (s) => (isSamsa(P(s)) ? 'authority' : 1),
-    desc: `논핵을 시작한다. 2개월 동안 양쪽이 동조자와 구원자를 모은 뒤 판정한다. 삼사 언관이면 직권으로, 아니면 상소로(-1) 한다. 알고 있는 흠결 1개당 +1. 한 번 하면 ${IMPEACH_COOLDOWN}개월 쉬어야 하고, 2년 안에 세 번째부터는 공격이 1씩 약해진다(최대 -2).`,
+    desc: `논핵을 시작한다. 2개월 동안 양쪽이 동조자와 구원자를 모은 뒤 판정한다. 삼사 언관이면 직권으로, 아니면 상소로(-1) 한다. 당상관 이상 대신은 몸소 나서지 않고, 같은 당에서 신세를 졌거나 가까운(호감 15 이상) 대간을 시켜 논핵하게 한다(사주): 내가 아는 흠을 넘겨주고 뒤에서 힘을 싣는다(정승 +2, 그 밖 +1). 일이 틀어지면 사주가 드러나 흠이 된다. 시킬 대간이 없으면 몸소 상소하되 체모를 잃는다(-1). 알고 있는 흠결 1개당 +1. 한 번 하면 ${IMPEACH_COOLDOWN}개월 쉬어야 하고, 2년 안에 세 번째부터는 공격이 1씩 약해진다(최대 -2).`,
     check(s, t) {
       const p = P(s);
       if (basic(s, t)) return basic(s, t);
       if (!['active', 'idle', 'retired', 'exiled'].includes(t.status)) return '탄핵할 수 없는 사람이다';
       if (!inCourt(p) || !atSeat(s, p)) return `${seatName(s)}에 있어야 한다`;
       if (!isSamsa(p) && p.politics < 3) return '삼사 언관이 아니면 정치력 3 이상이 필요하다';
-      const etq = impeachEtiquette(p, t, isSamsa(p));
-      if (etq) return etq;
+      const proxy = usesProxy(p) ? proxyFor(s, p, t) : undefined;
+      const etq = proxy ? null : impeachEtiquette(p, t, isSamsa(p));
+      if (etq) return `${etq}. 대간을 시키려면 같은 당 대간과 가까워야 한다`;
       if (caseOn(s, t.id)) return '이미 논핵이 벌어지고 있다. 조정 공방에서 동조할 수 있다';
       if (myAttack(s)) return '이미 다른 논핵을 이끌고 있다';
       return cdMsg(s, 'impeach');
@@ -369,6 +370,16 @@ export const TARGET_ACTIONS: TargetAction[] = [
     run(s, t) {
       const p = P(s);
       const broke = betray(s, t);
+      const proxy = usesProxy(p) ? proxyFor(s, p, t) : undefined;
+      if (proxy) {
+        const owed = collect(s, proxy.id);
+        const cs = openByProxy(s, p, proxy, t);
+        if (cs && s.player.draftCharges) cs.charges = s.player.draftCharges;
+        s.player.draftCharges = null;
+        setCd(s, 'impeach', IMPEACH_COOLDOWN);
+        s.player.impeachAt = [...s.player.impeachAt.filter((x) => s.t - x <= 24), s.t];
+        return `${officeTitle(proxy)} ${proxy.name}에게 ${t.name}의 흠을 넘겨주고 논핵하게 했다${owed ? ' (그가 진 신세를 갚았다)' : ''}. 당신은 뒤에서 힘을 싣는다. 2개월 동안 '연명 요청'으로 동조자를 모으라. 일이 틀어지면 사주가 드러날 수 있다.${broke}`;
+      }
       const cs = openCase(s, p, t, { byMemorial: !isSamsa(p) });
       const draft = s.player.draftCharges;
       s.player.draftCharges = null;
@@ -703,7 +714,7 @@ export const TARGET_ACTIONS: TargetAction[] = [
     id: 'bribe',
     name: '뇌물',
     cost: () => 1,
-    desc: '이조판서나 전랑에게 재산 30을 건네 반년 동안 당신의 인사를 밀어 달라고 한다. 서로의 숨은 흠결이 생기고, 강직한 이는 거절하며 소문을 낼 수 있다.',
+    desc: '이조판서(재산 45)나 이조전랑(재산 30)에게 뇌물을 건네 반년 동안 당신의 인사를 밀어 달라고 한다. 서로의 숨은 흠결이 생기고, 강직한 이는 거절하며 소문을 낼 수 있다.',
     check(s, t) {
       const p = P(s);
       if (basic(s, t)) return basic(s, t);
@@ -711,12 +722,13 @@ export const TARGET_ACTIONS: TargetAction[] = [
       const no = traitForbids(p, 'greed');
       if (no) return no;
       if (!inCourt(p)) return '조정에 있어야 한다';
-      if (p.wealth < 30) return '재산이 30 이상 있어야 한다';
+      const cost = t.office === 'ijo' ? 45 : 30;
+      if (p.wealth < cost) return `재산이 ${cost} 이상 있어야 한다`;
       return cdMsg(s, 'bribe');
     },
     run(s, t) {
       const p = P(s);
-      p.wealth -= 30;
+      p.wealth -= t.office === 'ijo' ? 45 : 30;
       setCd(s, 'bribe', 12);
       if (t.traits.includes('upright') || (t.traits.includes('clean') && chance(s, 0.6))) {
         const fx = sway(s, t, p.id, -12, '뇌물을 내밂', { decay: 0.1 });
@@ -866,34 +878,60 @@ TARGET_ACTIONS.push(
     id: 'placard',
     name: '괘서',
     cost: () => 2,
-    desc: '재산 20을 들여 그가 역모를 꾀한다는 익명서를 도성에 붙인다. 통하면 국청이 열려 그와 그의 당이 쑥대밭이 된다. 위관이 진위를 캐거나 운이 나쁘면 무고가 드러나 당신이 위리안치된다. 가장 위험한 공작이다.',
+    desc: '재산 40과 겸인을 써서 그가 역모를 꾀한다는 익명서를 도성에 붙인다. 그럴듯해야 통한다: 왕의 눈 밖에 난 당, 과격하거나 낙향해 불만을 품은 이, 흠이 드러난 이, 격앙된 정국일수록 쉽고, 정승이나 왕이 아끼는 이는 어렵다. 통하면 국청이 열리지만, 꾸며 낸 고변은 멀리 번지지 않는다. 실패하면 배후로 의심받고, 거듭할수록 들키기 쉽다. 성공해도 뒷날 그 당이 다시 일어서면 신원(伸冤)을 청해 무고가 드러날 수 있다. 가장 위험한 공작이다.',
     check(s, t) {
       const p = P(s);
       if (basic(s, t)) return basic(s, t);
       if (s.oksa) return '이미 국청이 열려 있다';
       if (t.faction === 'none' || topOf(t.faction) === topOf(p.faction)) return '다른 당 사람이어야 한다';
-      if (p.wealth < 20) return '재산이 20 이상 있어야 한다';
+      if (p.wealth < 40) return '재산이 40 이상 있어야 한다';
       if (!inCourt(p)) return '조정에 있어야 한다';
+      if (s.player.retainers < 1) return '괘서를 붙일 겸인(식객)이 있어야 한다';
       return traitForbids(p, 'deceit') ?? traitForbids(p, 'cruel') ?? cdMsg(s, 'placard');
     },
     run(s, t) {
       const p = P(s);
-      p.wealth -= 20;
-      setCd(s, 'placard', 24);
-      const ch = clamp(0.4 + p.politics * 0.03 + (schemer(p) ? 0.15 : 0) - t.favor / 300, 0.1, 0.8);
+      p.wealth -= 40;
+      setCd(s, 'placard', 36);
+      const n = Number(s.flags.placardN ?? 0);
+      s.flags.placardN = n + 1;
+      const { ch, why } = placardOdds(s, p, t);
       if (chance(s, ch)) {
         startOksa(s, t, p.id, true);
-        return `도성 곳곳에 붙은 괘서가 왕에게 들어갔다. ${t.name}을 두고 국청이 열린다.`;
+        return `도성 곳곳에 붙은 괘서가 왕에게 들어갔다. ${t.name}을 두고 국청이 열린다. (확률 ${Math.round(ch * 100)}%: ${why})`;
       }
-      if (chance(s, 0.35)) {
+      // 실패해도 흔적이 남는다. 거듭할수록 꼬리가 잡힌다
+      if (chance(s, clamp(0.3 + n * 0.1, 0.3, 0.7))) {
         addFlaw(s, p, '괘서 무고', true);
         exile(s, p);
-        return '괘서를 붙이다 겸인이 붙잡혔다. 배후가 드러나 당신이 유배되었다.';
+        return `괘서를 붙이다 겸인이 붙잡혔다. 배후가 드러나 당신이 유배되었다. (확률 ${Math.round(ch * 100)}%: ${why})`;
       }
-      return `괘서가 금세 뜯겨 나갔다. 아무 일도 일어나지 않았다. (확률 ${Math.round(ch * 100)}%)`;
+      const fx = sway(s, t, p.id, -12, '괘서의 배후로 의심', { clan: 0.3, decay: 0.05 });
+      if (t.faction !== 'none') swayFaction(s, t.faction, p.id, -5, '괘서의 배후로 의심', 0.05);
+      return `괘서가 금세 뜯겨 나갔다. 그러나 「누가 붙였나」 하는 말이 돌아, ${t.name}과 그의 당이 당신을 의심한다.${joined(fx)} (확률 ${Math.round(ch * 100)}%: ${why})`;
     },
   },
 );
+
+/** 괘서가 통할 확률: 고변이 그럴듯할수록 높다 */
+export function placardOdds(s: GameState, p: Character, t: Character): { ch: number; why: string } {
+  const parts: [string, number][] = [['기본', 0.25], ['정치력', p.politics * 0.02]];
+  if (schemer(p)) parts.push(['꾀', 0.1]);
+  const lean = t.faction !== 'none' ? (s.king.lean[t.faction] ?? 0) : 0;
+  if (lean <= -5) parts.push(['왕의 눈 밖에 난 당', Math.min(0.15, -lean / 100)]);
+  if (lean >= 5) parts.push(['왕이 기운 당', -Math.min(0.15, lean / 100)]);
+  if (t.traits.includes('radical') || t.status === 'retired') parts.push(['불만을 품을 만한 이', 0.1]);
+  if (t.flaws.some((f) => f.public)) parts.push(['드러난 흠', 0.05]);
+  if (s.tension >= 50) parts.push(['격앙된 정국', 0.08]);
+  if (t.rank <= 1) parts.push(['정승', -0.15]);
+  else if (t.rank <= 3) parts.push(['당상관', -0.05]);
+  if (t.favor > 0) parts.push(['왕이 아낌', -t.favor / 250]);
+  const n = Number(s.flags.placardN ?? 0);
+  if (n) parts.push([`거듭된 괘서 (${n}번째)`, -n * 0.05]);
+  const ch = clamp(parts.reduce((a, [, v]) => a + v, 0), 0.05, 0.7);
+  const why = parts.filter(([, v]) => Math.abs(v) >= 0.01).map(([k, v]) => `${k} ${v > 0 ? '+' : ''}${Math.round(v * 100)}`).join(', ');
+  return { ch, why };
+}
 
 /* ───────── 행동 통폐합 ─────────
  * 비슷한 행동을 하나로 묶는다. 옛 행동의 처리는 그대로 두고, 상황에 따라 알맞은 쪽으로 나뉜다.
@@ -1084,13 +1122,15 @@ export const PROJECTS: Record<ProjectKind, { months: number; cost: number }> = {
  * 행동력을 들여 하는 일. 한 달에 같은 일은 한 번만 한다.
  */
 
-export type MonthlyId = 'work' | 'study' | 'teach' | 'rest' | 'seowon' | 'munjip' | 'buy_land' | 'sell_land' | 'usury' | 'hide_land';
+export type MonthlyId = 'work' | 'study' | 'teach' | 'rest' | 'seowon' | 'munjip' | 'buy_land' | 'sell_land' | 'usury' | 'hide_land' | 'jokbo' | 'jongga' | 'uijang' | 'jinhyul' | 'heir_edu';
 
 export interface MonthlyAction {
   id: MonthlyId;
   name: string;
   /** 가산을 다루는 일인가 */
   estate?: boolean;
+  /** 버튼에 붙는 짧은 값 (땅값 따위) */
+  note?(s: GameState): string;
   cost: number;
   desc: string;
   check(s: GameState): string | null;
@@ -1111,6 +1151,15 @@ export function traitForbids(c: Character, kind: 'greed' | 'cruel' | 'deceit' | 
 }
 
 export const LAND_PRICE = 25;
+/** 땅이 늘수록 좋은 땅은 귀해진다: 25 + 가진 결 수 × 2 */
+export const landPrice = (s: GameState) => LAND_PRICE + s.player.land * 2;
+/** 팔 때는 지금 값의 7할 */
+export const landSale = (s: GameState) => Math.round((LAND_PRICE + Math.max(0, s.player.land - 1) * 2) * 0.7);
+export const LAND_MAX = 40;
+/** 선물 값은 받는 이의 품계를 따른다 */
+export const giftCost = (t: Character) => (t.rank <= 1 ? 40 : t.rank <= 3 ? 30 : 20);
+/** 지금 몇째 대인가 */
+const genOf = (s: GameState) => s.player.lineage.length;
 export const LOAN_SIZE = 20;
 
 export const MONTHLY: MonthlyAction[] = [
@@ -1242,13 +1291,15 @@ export const MONTHLY: MonthlyAction[] = [
     name: '전장 매입',
     estate: true,
     cost: 1,
-    desc: `재산 ${LAND_PRICE}으로 고향에 땅 1결을 사서 소작을 준다. 해마다 가을에 결마다 소작료 4쯤이 들어온다 (작황을 탄다).`,
-    check: (s) => (P(s).wealth < LAND_PRICE ? `재산 ${LAND_PRICE}이 있어야 한다` : s.player.land >= 12 ? '땅이 이미 넉넉하다' : null),
+    desc: `고향에 땅 1결을 사서 소작을 준다. 값은 가진 땅이 늘수록 오른다(25 + 가진 결 수×2). 해마다 가을에 소작료가 들어온다(15결까지 결마다 4, 30결까지 3, 그 위는 2. 작황을 탄다). ${LAND_MAX}결까지. 땅이 20결을 넘는 큰 지주는 흉년에 소작인의 원성을 산다.`,
+    note: (s) => `값 ${landPrice(s)}`,
+    check: (s) => (P(s).wealth < landPrice(s) ? `재산 ${landPrice(s)}이 있어야 한다` : s.player.land >= LAND_MAX ? '더 살 만한 땅이 없다' : null),
     run(s) {
       const p = P(s);
-      p.wealth -= LAND_PRICE;
+      const price = landPrice(s);
+      p.wealth -= price;
       s.player.land++;
-      return `${REGION_META[p.home].short}에 땅을 사들여 소작을 주었다. (전장 ${s.player.land}결)`;
+      return `${REGION_META[p.home].short}에 땅을 사들여 소작을 주었다. (재산 −${price}, 전장 ${s.player.land}결)`;
     },
   },
   {
@@ -1256,14 +1307,16 @@ export const MONTHLY: MonthlyAction[] = [
     name: '전장 처분',
     estate: true,
     cost: 1,
-    desc: '급히 돈이 필요할 때 땅 1결을 판다. 재산 +18. 은결부터 판다.',
+    desc: '급히 돈이 필요할 때 땅 1결을 판다. 지금 땅값의 7할을 받는다. 은결부터 판다.',
+    note: (s) => (s.player.land > 0 ? `+${landSale(s)}` : ''),
     check: (s) => (s.player.land > 0 ? null : '팔 땅이 없다'),
     run(s) {
       const pl = s.player;
-      P(s).wealth += 18;
+      const v = landSale(s);
+      P(s).wealth += v;
       pl.land--;
       if (pl.hiddenLand > 0) pl.hiddenLand--;
-      return `땅 1결을 팔았다. (재산 +18, 전장 ${pl.land}결)`;
+      return `땅 1결을 팔았다. (재산 +${v}, 전장 ${pl.land}결)`;
     },
   },
   {
@@ -1315,6 +1368,96 @@ export const MONTHLY: MonthlyAction[] = [
         extra = ' 아전 하나가 이 일을 알고 있다.';
       }
       return `전장 1결을 장부에서 뺐다. (은결 ${s.player.hiddenLand}결)${extra}`;
+    },
+  },
+  {
+    id: 'jokbo',
+    name: '족보 간행',
+    estate: true,
+    cost: 1,
+    desc: '재산 100으로 문중의 족보를 새로 펴낸다. 흩어진 일가가 한 뿌리임을 확인하니 같은 본관 사람들의 마음이 모이고 가문의 이름이 선다. 명망 +3, 같은 성씨 사람들의 호감 +8. 한 대에 한 번.',
+    check: (s) => (s.player.house?.jokbo === genOf(s) ? '이 대에 이미 족보를 펴냈다' : P(s).wealth < 100 ? '재산 100이 든다' : null),
+    run(s) {
+      const p = P(s);
+      p.wealth -= 100;
+      s.player.house = { ...(s.player.house ?? {}), jokbo: genOf(s) };
+      pres(p, 3);
+      let n = 0;
+      for (const c of people(s)) if (c.clan === p.clan && !isP(s, c)) (sway(s, c, p.id, 8, '족보 간행', { decay: 0.03 }), n++);
+      s.player.deeds.push(`${shortDate(s.t)} ${p.clan} 족보 간행`);
+      return `${p.clan}의 족보를 펴냈다. 일가 ${n}명이 반가워한다. (재산 −100, 명망 +3)`;
+    },
+  },
+  {
+    id: 'jongga',
+    name: '종가 중건',
+    estate: true,
+    cost: 1,
+    desc: '재산 150으로 고향의 종가(宗家)와 사당을 크게 다시 짓는다. 가문의 뿌리가 단단해져, 대를 이을 때 땅은 더 남고(85%→95%) 재산도 더 물려준다. 명망 +2. 한 판에 한 번.',
+    check: (s) => (s.player.house?.jongga ? '이미 종가를 중건했다' : P(s).wealth < 150 ? '재산 150이 든다' : null),
+    run(s) {
+      const p = P(s);
+      p.wealth -= 150;
+      s.player.house = { ...(s.player.house ?? {}), jongga: true };
+      pres(p, 2);
+      s.player.deeds.push(`${shortDate(s.t)} ${REGION_META[p.home].short}의 종가를 중건`);
+      return `${REGION_META[p.home].short}의 종가와 사당을 다시 지었다. 대를 이을 때 가산이 덜 흩어진다. (재산 −150, 명망 +2)`;
+    },
+  },
+  {
+    id: 'uijang',
+    name: '의장 설치',
+    estate: true,
+    cost: 1,
+    desc: '재산 80과 전장 3결을 떼어 의장(義莊)을 둔다. 그 소출로 가난한 일가와 고을 사람을 돕는다. 고향 민심 +6, 명망 +3. 그 뒤로 고향에 흉년이 들면 의장이 저절로 곡식을 풀어 민심과 명망이 오르고, 큰 지주로서 소작인의 원성을 사지 않는다. 한 판에 한 번.',
+    check: (s) => (s.player.house?.uijang ? '이미 의장을 두었다' : s.player.land < 10 ? '전장이 10결 이상 있어야 한다' : P(s).wealth < 80 ? '재산 80이 든다' : null),
+    run(s) {
+      const p = P(s);
+      p.wealth -= 80;
+      s.player.land -= 3;
+      s.player.hiddenLand = Math.min(s.player.hiddenLand, s.player.land);
+      s.player.house = { ...(s.player.house ?? {}), uijang: true };
+      pres(p, 3);
+      const r = s.regions[p.home];
+      r.minsim = clamp(r.minsim + 6, 0, 100);
+      s.player.deeds.push(`${shortDate(s.t)} 고향에 의장을 둠`);
+      return `전장 3결을 떼어 의장을 두었다. 고향 사람들이 칭송한다. (재산 −80, 전장 ${s.player.land}결, 고향 민심 +6, 명망 +3)`;
+    },
+  },
+  {
+    id: 'jinhyul',
+    name: '진휼 기부',
+    estate: true,
+    cost: 1,
+    desc: '흉년이 든 도에 재산 50을 내어 굶주린 이들을 먹인다. 올해 작황이 가장 나쁜 도의 민심 +6, 명망 +2, 성심 +1. 한 해에 한 번, 흉년이 든 도가 있을 때.',
+    check: (s) => {
+      if (!Object.values(s.regions).some((r) => (r.harvest ?? 0) < 0)) return '올해는 흉년이 든 도가 없다';
+      if (P(s).wealth < 50) return '재산 50이 든다';
+      return traitForbids(P(s), 'stingy') ?? cdMsg(s, 'jinhyul');
+    },
+    run(s) {
+      const p = P(s);
+      p.wealth -= 50;
+      setCd(s, 'jinhyul', 12);
+      const r = Object.values(s.regions).sort((a, b) => (a.harvest ?? 0) - (b.harvest ?? 0) || a.minsim - b.minsim)[0];
+      r.minsim = clamp(r.minsim + 6, 0, 100);
+      pres(p, 2);
+      fav(p, 1);
+      return `${REGION_META[r.id].short}에 곡식을 실어 보내 굶주린 이들을 먹였다. (재산 −50, 그 도 민심 +6, 명망 +2, 성심 +1)`;
+    },
+  },
+  {
+    id: 'heir_edu',
+    name: '자제 교육',
+    estate: true,
+    cost: 1,
+    desc: '재산 80으로 이름난 스승을 모셔 맏아들을 가르친다. 가문을 이을 때 아들의 학식 +1. 한 대에 한 번.',
+    check: (s) => (s.player.house?.eduGen === genOf(s) ? '이미 스승을 모셨다' : P(s).wealth < 80 ? '재산 80이 든다' : null),
+    run(s) {
+      const p = P(s);
+      p.wealth -= 80;
+      s.player.house = { ...(s.player.house ?? {}), eduGen: genOf(s) };
+      return '이름난 선비를 집에 모셔 맏아들을 가르치게 했다. 가문을 이을 때 아들의 학식이 한 단계 높다. (재산 −80)';
     },
   },
 ];

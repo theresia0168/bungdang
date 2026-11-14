@@ -10,6 +10,7 @@ import { SIT_META, sitLine } from '../engine/situations';
 import { CharLink } from './common';
 import { liveOmens, nudgeError, nudgeOmen } from '../engine/later';
 import { rivalOf } from '../engine/rival';
+import { grandeeRumors } from '../engine/grandees';
 import { harmLabel } from '../engine/county';
 import { opinion } from '../engine/opinion';
 
@@ -25,6 +26,7 @@ export function Briefing() {
   const susp = Math.round(s.player.suspicion);
   const omens = liveOmens(s);
   const rival = rivalOf(s);
+  const moves = grandeeRumors(s);
 
   return (
     <section className="cp-sec brief">
@@ -68,6 +70,19 @@ export function Briefing() {
             <span>
               <CharLink id={rival.id} /> ({FACTION_META[rival.faction].name}, {officeTitle(rival)}) · 나를 보는 마음 {Math.round(opinion(s, rival, p))}
               <span className="muted small"> — 뒤를 캐고 비방하고 논핵을 꾸민다. 그가 몰락하거나 죽어야 끝난다.</span>
+            </span>
+          </li>
+        )}
+        {moves.length > 0 && (
+          <li className={moves.some((m) => m.danger) ? 'warn' : ''} title="당 영수·정승·숙적·당신의 원수 같은 거물들은 제 뜻을 품고 여러 달에 걸쳐 움직인다. 들리는 소문이다.">
+            <span className="b-k">거물</span>
+            <span>
+              {moves.map((m, i) => (
+                <span key={m.id} className={m.danger ? 'bad-text' : ''}>
+                  {i > 0 && ' · '}
+                  <CharLink id={m.id} /> {m.text}
+                </span>
+              ))}
             </span>
           </li>
         )}

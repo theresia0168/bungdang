@@ -6,7 +6,7 @@ import { alive, atSeat, chargeable, clamp, impeachEtiquette, inCourt, isP, josa,
 import { opinion } from './opinion';
 import { diffOf } from './diff';
 import { bondWith } from './relations';
-import { caseOn, openCase } from './cases';
+import { caseOn, openByProxy, openCase, proxyFor, usesProxy } from './cases';
 
 /** 플레이어를 노리는 정적이 바로 논핵하지 않고 몇 달 동안 준비한다 */
 export function startPlot(s: GameState, by: Character): boolean {
@@ -88,7 +88,9 @@ export function tickPlots(s: GameState) {
     if (s.t < pl.due) continue;
     drop();
     if (p.status !== 'active' || !p.office || caseOn(s, p.id)) continue;
-    openCase(s, by, p, { bonus: pl.softened ? -2 : 1 });
+    const proxy = usesProxy(by) ? proxyFor(s, by, p) : undefined;
+    if (proxy) openByProxy(s, by, proxy, p, { bonus: pl.softened ? -2 : 1 });
+    else openCase(s, by, p, { bonus: pl.softened ? -2 : 1 });
   }
 }
 

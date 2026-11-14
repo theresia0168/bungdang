@@ -11,7 +11,7 @@ import { inLaws, opinion, topOf } from './opinion';
 import { activeFactions, members } from './factions';
 import { memorial, recall } from './conflict';
 import { holderOf } from './court';
-import { caseOn, openCase, sideOf } from './cases';
+import { caseOn, openCase, sideOf, openByProxy, proxyFor, usesProxy } from './cases';
 import { bondWith } from './relations';
 import { startPlot } from './plots';
 
@@ -58,17 +58,30 @@ function pickTarget(s: GameState, atk: Character, sameFaction: boolean): Charact
   );
 }
 
+/** NPC가 논핵을 연다. 대신이면 같은 당 대간을 시키고, 그 대간이 플레이어면 부탁해 온다 */
+export function npcOpen(s: GameState, atk: Character, tgt: Character, opt: { bonus?: number } = {}) {
+  if (!usesProxy(atk)) return openCase(s, atk, tgt, opt);
+  const proxy = proxyFor(s, atk, tgt, true);
+  if (!proxy) return impeachEtiquette(atk, tgt, false) ? undefined : openCase(s, atk, tgt, opt);
+  if (isP(s, proxy)) {
+    if (s.pending.length < 3 && !s.pending.some((e) => e.def === 'saju_request')) pushEvent(s, 'saju_request', { backer: atk.id, target: tgt.id, bonus: opt.bonus ?? 0 });
+    return undefined;
+  }
+  return openByProxy(s, atk, proxy, tgt, opt);
+}
+
 function npcImpeachments(s: GameState) {
   const war = s.war.active ? 0.4 : 1;
   for (const f of activeFactions(s)) {
     const line = 1 + (s.line[f] ?? 0) / 200;
-    if (!chance(s, (0.03 + s.tension / 800) * war * line)) continue;
+    // 거물들이 제 뜻으로 치는 논핵이 따로 있으니, 무작위로 생기는 논핵은 그만큼 줄인다
+    if (!chance(s, (0.03 + s.tension / 800) * war * line * 0.8)) continue;
     const atk = pickAttacker(s, f);
     if (!atk) continue;
     const tgt = pickTarget(s, atk, false);
     if (!tgt) continue;
     if (isP(s, tgt)) startPlot(s, atk);
-    else openCase(s, atk, tgt);
+    else npcOpen(s, atk, tgt);
   }
   const dong = s.factions.dong;
   if (dong.active && dong.division > 8 && chance(s, dong.division / 500)) {
@@ -76,7 +89,7 @@ function npcImpeachments(s: GameState) {
     const tgt = atk && pickTarget(s, atk, true);
     if (atk && tgt) {
       if (isP(s, tgt)) startPlot(s, atk);
-      else openCase(s, atk, tgt);
+      else npcOpen(s, atk, tgt);
       dong.division += 2;
     }
   }

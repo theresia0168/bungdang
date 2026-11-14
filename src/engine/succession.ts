@@ -50,7 +50,10 @@ function makeHeir(s: GameState, f: Character): Character {
   c.vigor = randInt(s, 3, 5);
   c.prestige = Math.round(10 + f.prestige * 0.3 + (rank <= 7 ? 5 : 0));
   // 재산과 전장은 아우들에게도 나누어 준다(분재)
-  c.wealth = Math.round(Math.min(f.wealth, 400) * 0.5 + Math.max(0, f.wealth - 400) * 0.2);
+  const jongga = !!s.player.house?.jongga;
+  c.wealth = Math.round(Math.min(f.wealth, 400) * (jongga ? 0.65 : 0.5) + Math.max(0, f.wealth - 400) * (jongga ? 0.35 : 0.2));
+  // 스승을 모셔 가르친 아들은 학식이 한 단계 높다
+  if (s.player.house?.eduGen === s.player.lineage.length) c.learning = clamp(c.learning + 1, 1, 8);
   c.favor = Math.round(Math.max(0, f.favor) * 0.3);
   c.lean = f.lean;
   c.flaws = [];
@@ -86,7 +89,8 @@ function takeOver(s: GameState, heirId: string, cause: string) {
       .filter(([, n]) => n > 0),
   );
   pl.charId = h.id;
-  pl.land = Math.max(2, Math.round(pl.land * 0.6));
+  // 전장은 종손에게 대부분 남는다 (종가를 중건했으면 더)
+  pl.land = Math.max(2, Math.round(pl.land * (pl.house?.jongga ? 0.95 : 0.85)));
   pl.hiddenLand = Math.min(pl.hiddenLand, pl.land);
   pl.examPrep = 0;
   pl.focus = null;

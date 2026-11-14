@@ -2,7 +2,7 @@ import type { GameState } from './types';
 import { END_T, monthOf, tOf, yearOf } from './calendar';
 import { OFFICE_MAP, salaryOf } from './data/offices';
 import { chance, d6, randInt } from './rng';
-import { alive, clamp, isP, josa, log, notice, P, pushEvent } from './state';
+import { alive, clamp, isP, josa, log, notice, P, pushEvent, addFlaw } from './state';
 import { decayMods } from './opinion';
 import { activeFactions, checkSplit, updateLeaders } from './factions';
 import { fillVacancies, holderOf, settleRaces, tickRaces, turnover } from './court';
@@ -29,6 +29,7 @@ import { rollDuty } from './duties';
 import { rollTalent } from './events/intrigue';
 import { tickCases } from './cases';
 import { tickRival } from './rival';
+import { tickGrandees } from './grandees';
 import { tickCounty } from './county';
 import { checkAchv } from './achv';
 import { rollAgenda } from './agenda';
@@ -37,6 +38,32 @@ import { EVENTS, rollPersonal, runHistory, viewEvent } from './events';
 import { genChar, pickHome, regionFaction } from './generate';
 import { checkSuccession } from './succession';
 import { updateGuide } from './tutorial';
+
+/** 위리안치되면 가산 일부가 적몰(籍沒)된다. 풀려나면 다시 걸릴 수 있다 */
+function jeokmol(s: GameState) {
+  const p = P(s);
+  if (!alive(p)) return;
+  if (p.status !== 'exiled') {
+    delete s.flags.jeokmol;
+    return;
+  }
+  if (s.flags.jeokmol || (p.exileLevel ?? 1) < 2) return;
+  s.flags.jeokmol = true;
+  const pl = s.player;
+  const lost = Math.max(pl.land > 0 ? 1 : 0, Math.round(pl.land * 0.35));
+  const cash = Math.round(p.wealth * 0.3);
+  pl.land -= lost;
+  pl.hiddenLand = Math.min(pl.hiddenLand, pl.land);
+  p.wealth -= cash;
+  notice(s, '적몰(籍沒)', `위리안치의 명과 함께 가산을 적몰하라는 영이 내렸다. 전장 ${lost}결과 재산 ${cash}을 빼앗겼다. (전장 ${pl.land}결)`, 'danger');
+}
+
+/** 달마다 드는 품위 유지비 */
+export function livingCost(s: GameState): number {
+  const p = P(s);
+  if (p.status === 'exiled' || p.status === 'retired') return 0;
+  return p.rank <= 1 ? 2.5 : p.rank <= 2 ? 2 : p.rank <= 3 ? 1.2 : 0;
+}
 
 function income(s: GameState) {
   const p = P(s);
@@ -54,8 +81,16 @@ function income(s: GameState) {
       notice(s, '떠나는 식객', `살림이 어려워 식객 하나가 떠났다. (식객 ${pl.retainers}명)`, 'personal');
     }
   }
-  // 큰 살림은 체면 유지에 돈이 든다
-  if (p.wealth > 300) p.wealth -= (p.wealth - 300) * 0.004;
+  // 벼슬이 높을수록 품위를 지키는 데 돈이 든다 (청지기·가마·손님 대접)
+  const keep = livingCost(s);
+  if (keep) p.wealth = Math.max(0, p.wealth - keep);
+  // 쌓아 둔 재물은 일가 부양과 체면치레로 새어 나간다. 크게 쌓일수록 더 빨리
+  if (p.wealth > 300) p.wealth -= (p.wealth - 300) * 0.01 + Math.max(0, p.wealth - 800) * 0.02;
+  // 재물이 너무 많으면 「축재」 소문이 돈다
+  if (p.wealth > 1000 && !p.flaws.some((f) => f.label === '축재(蓄財)') && chance(s, 0.01)) {
+    addFlaw(s, p, '축재(蓄財)', false);
+    notice(s, '축재의 소문', '곳간에 쌓인 재물을 두고 「벼슬을 팔아 모은 것」이라는 말이 돈다. 누군가 캐면 탄핵의 죄목이 된다. (숨은 흠결 「축재」)', 'danger');
+  }
   p.wealth = Math.round(p.wealth * 10) / 10;
   if (p.favor > 0) p.favor = Math.max(0, p.favor - 0.15);
 }
@@ -176,6 +211,7 @@ export function advanceMonth(s: GameState) {
   const m = monthOf(s.t);
   runHistory(s);
   income(s);
+  jeokmol(s);
   tickFocus(s);
   // 청렴한 이름은 벼슬살이 동안 조금씩 쌓이고, 늘그막에 청백리(淸白吏)로 뽑히기도 한다
   {
@@ -244,6 +280,7 @@ export function advanceMonth(s: GameState) {
   if (s.t >= tOf(1591, 6)) s.flags.splitReady = true;
   tickStrife(s);
   tickRival(s);
+  tickGrandees(s);
   tickCounty(s);
   tickLater(s);
   tickGukbon(s);
