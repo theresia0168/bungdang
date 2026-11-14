@@ -32,6 +32,7 @@ import { OFFICE_MAP } from '../engine/data/offices';
 import { BOND } from '../engine/relations';
 import { TOPIC_LABEL } from '../engine/conflict';
 import { standing } from '../engine/factions';
+import { LEAD_ACTIONS, leadError, lineOf, partyRank, runLead } from '../engine/party';
 import { playerCases, sideOf } from '../engine/cases';
 import { GOALS, GOAL_REWARD, goalKey, reconsiderGoal } from '../engine/goals';
 import { GUIDE, guideOn } from '../engine/tutorial';
@@ -220,7 +221,7 @@ export function PlayerPanel() {
 
       <Fold id="month" title="이달의 행동" extra={<span className="muted small">행동력 {pl.ap} 남음 · 같은 일은 한 달에 한 번</span>} open>
         <div className="focus-grid">
-          {MONTHLY.filter((a) => !a.estate).map((a) => {
+          {MONTHLY.filter((a) => !a.estate && (!a.id.startsWith('exile_') || p.status === 'exiled')).map((a) => {
             const err = monthlyError(s, a);
             const done = pl.done.includes(a.id);
             const prog = a.id === 'seowon' || a.id === 'munjip' ? pl.projects[a.id] ?? 0 : 0;
@@ -310,6 +311,45 @@ export function PlayerPanel() {
           })}
         </div>
       </Fold>
+
+      {p.faction !== 'none' && (() => {
+        const pr = partyRank(s);
+        if (!pr) return null;
+        const leader = pr.leader === p.id;
+        return (
+          <Fold
+            id="lead"
+            title={leader ? '당 운영 (영수)' : '당내 서열'}
+            extra={
+              <span className="muted small">
+                {FACTION_META[p.faction].name} {pr.rank}위/{pr.total}명 · 당론 {lineOf(s, p.faction)} · 평판 {standing(s, p.faction)}
+              </span>
+            }
+          >
+            {!leader && (
+              <div className="small">
+                영수 {pr.leader ? <CharLink id={pr.leader} /> : '없음'} · 영향력 당신 {pr.mine} : 영수 {pr.his}
+                <div className="muted">영향력은 관직의 무게, 명망, 정치력, 학식, 문인으로 정해진다. 영수의 8할을 넘으면 자리를 다툴 기회가 온다.</div>
+              </div>
+            )}
+            {leader && (
+              <div className="focus-grid">
+                {LEAD_ACTIONS.map((a) => {
+                  const err = leadError(s, a.id);
+                  return (
+                    <button key={a.id} className="fbtn" disabled={!!err} title={err ? `${err}
+
+${a.desc}` : a.desc} onClick={() => act((g) => runLead(g, a.id))}>
+                      {a.name}
+                      <span className="cost">●</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </Fold>
+        );
+      })()}
 
       <Fold id="party" title="당적" extra={<span className="muted small">한평생 {MAX_SWITCHES}번까지 · 지금까지 {pl.factionChanges}번</span>}>
         <div className="focus-grid">

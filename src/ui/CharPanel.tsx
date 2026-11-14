@@ -15,6 +15,17 @@ import { ApPips, CharLink, FactionBadge, Opinion, Portrait, Stat } from './commo
 import { Tip } from './guide';
 
 /** 조건이 맞을 때만 보이는 행동 */
+/** 인물 창의 행동 묶음 */
+const ACT_GROUPS: { name: string; ids: TargetActionId[] }[] = [
+  { name: '사귄다', ids: ['visit', 'gift', 'marriage', 'pact', 'reconcile', 'sponsor', 'recruit', 'persuade'] },
+  { name: '청한다', ids: ['cosign', 'ask_recommend', 'recall', 'hush'] },
+  { name: '친다', ids: ['investigate', 'impeach', 'blackmail', 'alienate', 'placard'] },
+];
+/** 설명의 첫 문장 */
+const firstLine = (t: string) => {
+  const i = t.search(/[.。](\s|$)/);
+  return i > 0 ? t.slice(0, i + 1) : t;
+};
 const CONTEXTUAL: TargetActionId[] = ['ask_recommend', 'cosign', 'recall', 'blackmail', 'reconcile', 'hush', 'sponsor', 'persuade'];
 
 /** 이 사람이 나에게 어떤 쓸모가 있는가 */
@@ -217,25 +228,45 @@ export function CharPanel({ id }: { id: string }) {
           <h4>
             교유와 공작 <ApPips />
           </h4>
-          <div className="act-grid">
-            {TARGET_ACTIONS.map((a) => {
-              const own = a.check(s, c);
-              if (own && CONTEXTUAL.includes(a.id) && /이어야|없다|아니다|않다|당사자/.test(own)) return null;
-              const err = actionError(s, a, c);
+          {ACT_GROUPS.map((g) => {
+            const rows = g.ids
+              .map((id) => TARGET_ACTIONS.find((a) => a.id === id))
+              .filter((a): a is (typeof TARGET_ACTIONS)[number] => !!a)
+              .filter((a) => {
+                const own = a.check(s, c);
+                return !(own && CONTEXTUAL.includes(a.id) && /이어야|없다|아니다|않다|당사자/.test(own));
+              })
+              .map((a) => ({ a, err: actionError(s, a, c) }));
+            const open = rows.filter((r) => !r.err);
+            const shut = rows.filter((r) => r.err);
+            if (!rows.length) return null;
+            const btn = ({ a, err }: (typeof rows)[number]) => {
               const cost = a.cost(s);
               return (
-                <button key={a.id} className="abtn" disabled={!!err} onClick={() => (a.id === 'impeach' ? setDrafting(c.id) : act((g) => runTargetAction(g, a.id, c.id)))} title={a.desc}>
+                <button key={a.id} className="abtn" disabled={!!err} onClick={() => (a.id === 'impeach' ? setDrafting(c.id) : act((gg) => runTargetAction(gg, a.id, c.id)))} title={a.desc}>
                   <b>
                     {a.name}
                     <span className={`cost ${cost === 'authority' ? 'auth' : cost === 0 ? 'free' : ''}`}>
                       {cost === 'authority' ? '직권' : cost === 0 ? '상소' : '●'.repeat(cost)}
                     </span>
                   </b>
-                  <span>{err ?? a.desc}</span>
+                  <span>{err ?? firstLine(a.desc)}</span>
                 </button>
               );
-            })}
-          </div>
+            };
+            return (
+              <div key={g.name} className="act-group">
+                <div className="act-group-h">{g.name}</div>
+                <div className="act-grid">{open.map(btn)}</div>
+                {shut.length > 0 && (
+                  <details className="act-shut">
+                    <summary className="muted small">지금 할 수 없는 일 {shut.length}가지</summary>
+                    <div className="act-grid">{shut.map(btn)}</div>
+                  </details>
+                )}
+              </div>
+            );
+          })}
           {drafting === c.id && !actionError(s, TARGET_ACTIONS.find((x) => x.id === 'impeach')!, c) && <ImpeachComposer c={c} onClose={() => setDrafting(null)} />}
         </section>
       )}

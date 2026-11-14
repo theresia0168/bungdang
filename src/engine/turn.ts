@@ -30,6 +30,8 @@ import { rollTalent } from './events/intrigue';
 import { tickCases } from './cases';
 import { tickRival } from './rival';
 import { tickGrandees } from './grandees';
+import { tickExile } from './exile';
+import { tickSallimPool } from './sallimPool';
 import { tickCounty } from './county';
 import { checkAchv } from './achv';
 import { rollAgenda } from './agenda';
@@ -281,6 +283,8 @@ export function advanceMonth(s: GameState) {
   tickStrife(s);
   tickRival(s);
   tickGrandees(s);
+  tickExile(s);
+  tickSallimPool(s);
   tickCounty(s);
   tickLater(s);
   tickGukbon(s);

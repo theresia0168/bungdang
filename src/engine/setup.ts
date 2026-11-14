@@ -12,6 +12,7 @@ import { updateLeaders } from './factions';
 import { randInt, weighted } from './rng';
 import { initRoyal } from './royal';
 import { log, pushEvent } from './state';
+import { seedSallim } from './sallimPool';
 import { refreshAp } from './actions';
 import type { Diff } from './diff';
 import { seedWants } from './relations';
@@ -165,6 +166,8 @@ export function newGame(choice: StartChoice, seed = Date.now(), diff: Diff = 'no
   }
   for (let i = 0; i < 14; i++) genChar(s, { rank: randInt(s, 6, 9), age: randInt(s, 25, 40), status: 'active', office: 'nanggwan' });
   for (let i = 0; i < 4; i++) genChar(s, { rank: randInt(s, 3, 5), age: randInt(s, 38, 55), status: 'idle' });
+  // 팔도의 산림을 처음부터 채워 둔다
+  seedSallim(s);
   for (let i = 0; i < 3; i++) genChar(s, { rank: 2, age: randInt(s, 50, 62), status: 'idle' });
   for (const c of Object.values(holderMap(s))) {
     const o = OFFICE_MAP[c.office!];

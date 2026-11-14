@@ -1122,7 +1122,7 @@ export const PROJECTS: Record<ProjectKind, { months: number; cost: number }> = {
  * 행동력을 들여 하는 일. 한 달에 같은 일은 한 번만 한다.
  */
 
-export type MonthlyId = 'work' | 'study' | 'teach' | 'rest' | 'seowon' | 'munjip' | 'buy_land' | 'sell_land' | 'usury' | 'hide_land' | 'jokbo' | 'jongga' | 'uijang' | 'jinhyul' | 'heir_edu';
+export type MonthlyId = 'work' | 'study' | 'teach' | 'rest' | 'seowon' | 'munjip' | 'buy_land' | 'sell_land' | 'usury' | 'hide_land' | 'jokbo' | 'jongga' | 'uijang' | 'jinhyul' | 'heir_edu' | 'exile_write' | 'exile_teach' | 'exile_appeal';
 
 export interface MonthlyAction {
   id: MonthlyId;
@@ -1150,6 +1150,7 @@ export function traitForbids(c: Character, kind: 'greed' | 'cruel' | 'deceit' | 
   return null;
 }
 
+import { EXILE_MONTHLY } from './exile';
 export const LAND_PRICE = 25;
 /** 땅이 늘수록 좋은 땅은 귀해진다: 25 + 가진 결 수 × 2 */
 export const landPrice = (s: GameState) => LAND_PRICE + s.player.land * 2;
@@ -1460,12 +1461,13 @@ export const MONTHLY: MonthlyAction[] = [
       return '이름난 선비를 집에 모셔 맏아들을 가르치게 했다. 가문을 이을 때 아들의 학식이 한 단계 높다. (재산 −80)';
     },
   },
+  ...EXILE_MONTHLY,
 ];
 
 export function monthlyError(s: GameState, a: MonthlyAction): string | null {
   const p = P(s);
   if (s.player.done.includes(a.id)) return '이번 달에 이미 했다';
-  if (p.status === 'exiled' && !['study', 'rest', 'munjip'].includes(a.id)) return '유배 중이다';
+  if (p.status === 'exiled' && !['study', 'rest', 'munjip', 'exile_write', 'exile_teach', 'exile_appeal'].includes(a.id)) return '유배 중이다';
   const err = a.check(s);
   if (err) return err;
   if (a.cost > s.player.ap) return `행동력이 부족하다 (필요 ${a.cost}, 남은 ${s.player.ap})`;

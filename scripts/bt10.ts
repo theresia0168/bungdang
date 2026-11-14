@@ -7,7 +7,9 @@ import { runMonthly, startMemorial } from '../src/engine/actions';
 import { yearOf } from '../src/engine/calendar';
 import { computeEnding } from '../src/engine/ending';
 import { lawToPush } from '../src/engine/laws';
-const [id, seedS] = process.argv.slice(2);
+import { botMonth, PREF, type Profile } from './bot';
+const [id, seedS, profS] = process.argv.slice(2);
+const prof = (profS ?? 'passive') as Profile;
 const s = newGame({ kind: 'historical', id }, Number(seedS));
 const t0 = Date.now();
 let overlapMonths = 0, vetoSame = 0, vetoes = 0, disabledByTrait = 0;
@@ -19,14 +21,13 @@ while (!s.over) {
     const e = s.pending[0]; const v = viewEvent(s, e);
     for (const c of v.choices) if (c.disabled && /성품이 허락하지/.test(c.disabled)) { disabledByTrait++; const k = c.disabled.split(' ')[0]; traitBlock[k] = (traitBlock[k] ?? 0) + 1; }
     const ok = v.choices.filter(c => !c.disabled);
-    const pref = ['follow', 'accept', 'explain', 'yes', 'silent', 'calm', 'obey', 'king', 'hold', 'sit'];
+    const pref = PREF[prof];
     resolveEvent(s, e.id, (ok.find(c => pref.includes(c.key)) ?? ok[0] ?? v.choices[0]).key);
     if (s.over) break;
   }
   if (s.over) break;
   const p = P(s);
-  runMonthly(s, p.status === 'active' ? 'work' : p.status === 'retired' ? 'teach' : 'study');
-  runMonthly(s, 'study');
+  botMonth(s, prof);
   if (s.t % 12 === 5 && !s.player.focus && p.faction !== 'none') { const push = lawToPush(s, p.faction); if (push) startMemorial(s, 'law', push); }
   advanceMonth(s);
   if (s.player.rival && s.player.rival !== prevRival) rivals++;
@@ -52,7 +53,7 @@ const live = people(s);
 const traitCount: Record<string, number> = {};
 for (const c of Object.values(s.chars)) for (const t of c.traits) traitCount[t] = (traitCount[t] ?? 0) + 1;
 console.log(JSON.stringify({
-  id, seed: seedS, end: s.over?.reason, year: yearOf(s.t), score: e.score, gens: s.player.lineage.length + 1,
+  id, seed: seedS, prof, land: s.player.land, wealth: Math.round(P(s).wealth), impeachW: s.player.stats.impeachWins, impeachL: s.player.stats.impeachFails, marriages: s.player.stats.marriages, peakRank: s.player.peakRank, end: s.over?.reason, year: yearOf(s.t), score: e.score, gens: s.player.lineage.length + 1,
   peaks: [...s.player.lineage.map(a => a.peakOffice ?? '-'), s.player.peakOffice ?? '-'],
   hwanguk: cnt(/^\[환국\] 왕이/), oksa: cnt(/\[옥사\] 국청이 끝/), coup: cnt(/\[반정\]|\[역모\]/), minran: cnt(/^\[민란\]/), laws: cnt(/^\[국법\]/),
   gukbon: cnt(/^\[국본\].*갈렸다/),

@@ -27,6 +27,7 @@ import { COUP_EVENTS } from '../coup';
 import { BOKSANG_EVENTS } from '../court';
 import { COUNTY_EVENTS } from '../county';
 import { TENANT_EVENTS } from '../regions';
+import { EXILE_EVENTS } from '../exile';
 
 export const EVENTS: Record<string, EventDef> = {
   ...SUCCESSION_EVENTS,
@@ -45,6 +46,7 @@ export const EVENTS: Record<string, EventDef> = {
   ...BOKSANG_EVENTS,
   ...COUNTY_EVENTS,
   ...TENANT_EVENTS,
+  ...EXILE_EVENTS,
   ...GENERIC_EVENTS,
   ...HISTORY_EVENTS,
   ...PERSONAL_EVENTS,

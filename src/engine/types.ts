@@ -267,6 +267,10 @@ export interface PlayerState {
   path?: 'office' | 'sallim' | 'wealth';
   /** 숙적: 플레이어를 노리는 다른 당의 인물 */
   rival?: string;
+  /** 유배지에서 쌓은 저술의 달수 */
+  exileWork?: number;
+  /** 이 대가 지은 저서 수 */
+  books?: number;
   /** 가문 사업: 족보(간행한 대), 종가 중건, 의장, 자제 교육(시킨 대) */
   house?: { jokbo?: number; jongga?: boolean; uijang?: boolean; eduGen?: number };
   /** 괘서로 연 옥사들: 뒷날 신원으로 무고가 드러날 수 있다 */

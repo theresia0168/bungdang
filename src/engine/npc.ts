@@ -1,3 +1,4 @@
+import { appealBoost } from './exile';
 import type { Character, FactionId, GameState } from './types';
 import { OFFICE_MAP } from './data/offices';
 import { FLAW_POOL } from './data/meta';
@@ -241,7 +242,8 @@ function npcMovement(s: GameState) {
       // 귀양살이가 길어질수록 사면 논의가 잦아진다 (1년마다 +50%)
       const years = Math.max(0, s.t - (c.exiledAt ?? s.t)) / 12;
       const p = ((isP(s, c) ? 0.015 : 0.012) / ((c.exileLevel ?? 1) >= 2 ? 2 : 1)) * (1 + years * 0.5);
-      if (chance(s, s.war.active ? p * 2.5 : p)) {
+      const boost = isP(s, c) ? appealBoost(s) : 1;
+      if (chance(s, (s.war.active ? p * 2.5 : p) * boost)) {
         recall(s, c);
         if (isP(s, c)) notice(s, '해배', '왕의 은사로 유배에서 풀려났다. 한성으로 돌아왔다.');
       }

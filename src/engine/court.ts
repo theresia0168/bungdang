@@ -1,3 +1,4 @@
+import { summonSallim } from './sallimPool';
 import type { Character, GameState, RegionId, Status } from './types';
 import { OFFICES, OFFICE_MAP, type OfficeDef } from './data/offices';
 import { REGION_META } from './data/meta';
@@ -298,7 +299,8 @@ export function fillVacancies(s: GameState, max = 6) {
           best = c;
         }
       }
-    if (!best) best = fallbackFor(s, o);
+    // 사람이 모자라면 먼저 지방의 산림을 불러 올리고, 그래도 없을 때만 새 사람을 들인다
+    if (!best) best = summonSallim(s, o) ?? fallbackFor(s, o);
     if (vetoed && best.id !== vetoed && o.rank <= 2) {
       const ijo = hm['ijo'];
       log(s, `[인사] ${ijo ? `이조판서 ${josa(ijo.name, '이/가')}` : '이조가'} ${o.name}에 ${josa(s.chars[vetoed]?.name ?? '', '을/를')} 의망했으나 왕이 물리치고, 특지(特旨)로 ${josa(best.name, '을/를')} 골랐다.`, 'court');

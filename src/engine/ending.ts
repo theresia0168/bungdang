@@ -21,7 +21,7 @@ export const ANCESTOR_WEIGHT = 0.5;
 export const PATH_NAME = { office: '벼슬길', sallim: '산림', wealth: '가세' } as const;
 export const PATH_DESC = {
   office: '조정에서 높이 오른다. 정승에 오르면 +45, 판서급이면 +25.',
-  sallim: '벼슬보다 학문과 명망. 명망 70 이상이면 +25, 문인 급제·서원·문집이 셋 이상이면 +20 더. 2품 이상에 오르면 뜻을 굽힌 셈이라 절반만 친다.',
+  sallim: '벼슬보다 학문과 명망. 명망 70 이상이면 +25, 문인·서원·문집·저서가 합쳐 셋 이상이면 +20 더. 2품 이상에 오르면 뜻을 굽힌 셈이라 절반만 친다.',
   wealth: '땅과 혼맥과 문중으로 가세를 키운다. 전장 25결 이상이면 +25, 혼맥 셋 이상이면 +15, 가문 사업(족보·종가·의장·자제 교육) 둘 이상이면 +10 더.',
 } as const;
 
@@ -31,7 +31,7 @@ export function pathBonus(s: GameState): number {
   const p = P(s);
   if (pl.path === 'office') return pl.peakRank <= 1 ? 45 : pl.peakRank <= 2 ? 25 : 0;
   if (pl.path === 'sallim') {
-    const works = Object.values(s.chars).filter((c) => c.teacher === p.id).length + pl.built.length;
+    const works = Object.values(s.chars).filter((c) => c.teacher === p.id).length + pl.built.length + (pl.books ?? 0);
     const v = (p.prestige >= 70 ? 25 : 0) + (works >= 3 ? 20 : 0);
     return pl.peakRank <= 2 ? Math.round(v / 2) : v;
   }
