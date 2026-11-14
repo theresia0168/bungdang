@@ -8,6 +8,8 @@ import { Ctx } from './ui/ctx';
 import { StartScreen } from './ui/StartScreen';
 import { GameScreen } from './ui/GameScreen';
 import { EndScreen } from './ui/EndScreen';
+import { mergeAchv } from './ui/achvStore';
+import type { Diff } from './engine/diff';
 
 const SAVE_KEY = 'joseon-bungdang/save/v3';
 const OLD_KEYS = ['joseon-bungdang/save/v1', 'joseon-bungdang/save/v2'];
@@ -54,6 +56,7 @@ export default function App() {
     saveTimer.current = window.setTimeout(() => {
       const s = game.current;
       if (!s) return;
+      mergeAchv(s.player.achv);
       if (s.over) localStorage.removeItem(SAVE_KEY);
       else localStorage.setItem(SAVE_KEY, JSON.stringify(s));
       setHasSave(!s.over);
@@ -80,8 +83,8 @@ export default function App() {
     [refresh, toast],
   );
 
-  const start = (choice: StartChoice) => {
-    game.current = newGame(choice);
+  const start = (choice: StartChoice, diff: Diff = 'normal') => {
+    game.current = newGame(choice, Date.now(), diff);
     setSelected(null);
     setSince(0);
     setScreen('play');

@@ -13,6 +13,7 @@ import { randInt, weighted } from './rng';
 import { initRoyal } from './royal';
 import { log, pushEvent } from './state';
 import { refreshAp } from './actions';
+import type { Diff } from './diff';
 import { seedWants } from './relations';
 
 export interface CustomSpec {
@@ -145,13 +146,15 @@ function buildCustom(s: GameState, spec: CustomSpec): Character {
   return c;
 }
 
-export function newGame(choice: StartChoice, seed = Date.now()): GameState {
+export function newGame(choice: StartChoice, seed = Date.now(), diff: Diff = 'normal'): GameState {
   const s = blankState(seed);
+  s.flags.diff = diff;
   for (const r of ROSTER) if (!r.arrive) fromRoster(s, r);
 
   const player = choice.kind === 'historical' ? s.chars[choice.id] : buildCustom(s, choice.spec);
   s.player.charId = player.id;
   s.player.peakRank = player.office ? player.rank : 10;
+  if (diff === 'easy') player.wealth += 30;
 
   const hm = holderMap(s);
   for (const o of openOffices(s)) {
@@ -178,6 +181,7 @@ export function newGame(choice: StartChoice, seed = Date.now()): GameState {
   refreshAp(s);
   log(s, '선조 8년 을해년이 밝았다.', 'history');
   pushEvent(s, 'intro');
+  pushEvent(s, 'house_path');
   pushEvent(s, 'goal_pick');
   syncReigns(s);
   return s;

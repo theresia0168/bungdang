@@ -4,6 +4,7 @@ import { influence, MAIN_FACTIONS, members } from './factions';
 import { formatDate, yearOf } from './calendar';
 import { josa, P } from './state';
 import { GOAL_REWARD } from './goals';
+import { DIFF_META, diffOf } from './diff';
 
 export interface Ending {
   title: string;
@@ -17,6 +18,27 @@ export interface Ending {
 export const ANCESTOR_WEIGHT = 0.5;
 
 /** 선대를 뺀, 지금 사람 자신의 업적 */
+export const PATH_NAME = { office: '벼슬길', sallim: '산림', wealth: '가세' } as const;
+export const PATH_DESC = {
+  office: '조정에서 높이 오른다. 정승에 오르면 +45, 판서급이면 +25.',
+  sallim: '벼슬보다 학문과 명망. 명망 70 이상이면 +25, 문인 급제·서원·문집이 셋 이상이면 +20 더. 2품 이상에 오르면 뜻을 굽힌 셈이라 절반만 친다.',
+  wealth: '땅과 혼맥으로 가세를 키운다. 전장 30결 이상이면 +25, 혼맥 셋 이상이면 +20 더.',
+} as const;
+
+/** 이 대가 고른 가문의 길을 얼마나 이루었는가 */
+export function pathBonus(s: GameState): number {
+  const pl = s.player;
+  const p = P(s);
+  if (pl.path === 'office') return pl.peakRank <= 1 ? 45 : pl.peakRank <= 2 ? 25 : 0;
+  if (pl.path === 'sallim') {
+    const works = Object.values(s.chars).filter((c) => c.teacher === p.id).length + pl.built.length;
+    const v = (p.prestige >= 70 ? 25 : 0) + (works >= 3 ? 20 : 0);
+    return pl.peakRank <= 2 ? Math.round(v / 2) : v;
+  }
+  if (pl.path === 'wealth') return (pl.land >= 30 ? 25 : 0) + (pl.stats.marriages >= 3 ? 20 : 0);
+  return 0;
+}
+
 export function ownScore(s: GameState): number {
   return breakdownOf(s, false).reduce((a, b) => a + b.value, 0);
 }
@@ -45,6 +67,7 @@ function breakdownOf(s: GameState, withLineage = true) {
     { label: '서원·문집', value: pl.built.length * 8 },
     { label: '드러난 흠결', value: -pubFlaws * 6 },
     { label: '유배', value: -pl.stats.exiled * 5 },
+    ...(pl.path ? [{ label: `가문의 뜻 (${PATH_NAME[pl.path]})`, value: pathBonus(s) }] : []),
   ];
   const out = [...own];
   if (withLineage && anc.length) {
@@ -67,6 +90,9 @@ export function computeEnding(s: GameState): Ending {
   const rank = pl.peakRank;
 
   const breakdown = breakdownOf(s);
+  const base = breakdown.reduce((a, b) => a + b.value, 0);
+  const dk = DIFF_META[diffOf(s)].score;
+  if (dk) breakdown.push({ label: `난이도 (${DIFF_META[diffOf(s)].name})`, value: Math.round(Math.max(0, base) * dk) });
   const score = breakdown.reduce((a, b) => a + b.value, 0);
 
   let epithet = '사대부';

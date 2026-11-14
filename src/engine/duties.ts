@@ -8,6 +8,8 @@ import { opinion } from './opinion';
 import { vacate } from './court';
 import { HARVEST_LABEL, harvestOf, regionYield } from './regions';
 import { choicesOf, resolveScene, type Scene } from './scenes';
+import { countyHarm, harmLabel } from './county';
+import { yearOf } from './calendar';
 
 /* ───────── 관직의 직무 사건 ─────────
  * 자리마다 가끔 결정할 일이 생긴다. 선택지의 수치는 scenes.ts가 힌트와 결과 문구로 풀어 쓴다.
@@ -287,8 +289,63 @@ const DUTIES: Duty[] = [
     text: (s) =>
       `${rname(s)} 고을의 세곡을 거둘 때다. 아전들이 관례대로 웃돈을 얹어 거두자고 한다. 이 돈은 대개 수령의 주머니로 들어간다.\n\n(올해 ${rname(s)} 작황: ${HARVEST_LABEL[harvestOf(s, region(s))]})`,
     opts: (s) => [
-      { key: 'honest', label: '정해진 만큼만 거둔다', fx: { say: '정해진 만큼만 거두었다. 고을 사람들이 송덕비 이야기를 꺼낸다.', minsim: 4, prestige: 1 } },
-      { key: 'skim', label: '관례대로 거둔다', fx: { say: '관례대로 거두었다.', wealth: skimOf, minsim: harvestOf(s, region(s)) < 0 ? -4 : 0, flaw: { label: '탐학', p: 0.3 } } },
+      { key: 'honest', label: '정해진 만큼만 거둔다', fx: { say: '정해진 만큼만 거두었다. 고을 사람들이 송덕비 이야기를 꺼낸다.', minsim: 4, prestige: 1, note: '고을의 원성 −8', run: (g) => countyHarm(g, -8, 1) } },
+      { key: 'skim', label: '관례대로 거둔다', fx: { say: '관례대로 거두었다.', wealth: skimOf, minsim: harvestOf(s, region(s)) < 0 ? -4 : 0, flaw: { label: '탐학', p: 0.3 }, note: '고을의 원성 +12', run: (g) => countyHarm(g, harvestOf(g, region(g)) < 0 ? 18 : 12) } },
+    ],
+  },
+  {
+    id: 'suryeong_hwangok',
+    when: (_s, o) => o === 'suryeong',
+    title: '환곡의 장부',
+    text: (s) =>
+      late(s)
+        ? `${rname(s)} 고을의 환곡 장부를 펼치니, 창고에 있어야 할 곡식의 절반이 장부에만 있다. 전임 수령과 아전들이 빼돌린 것이다. 감영은 장부대로 채워 놓으라 하고, 아전들은 「늘 하던 대로」 백성에게 이자를 매겨 메우자고 한다. (고을의 원성 ${harmNow(s)})`
+        : `봄이 되어 ${rname(s)} 고을 창고의 환곡을 풀 때다. 아전들이 묵은 곡식에 겨를 섞어 내주고 가을에 햇곡으로 받자고 한다. (고을의 원성 ${harmNow(s)})`,
+    opts: () => [
+      { key: 'clean', label: '장부를 바로잡고 빈 곡식은 감영에 사실대로 보고한다', fx: { say: '빈 장부를 사실대로 보고했다. 감영이 언짢아한다.', favor: -1, prestige: 2, minsim: 3, note: '고을의 원성 −12', run: (g) => countyHarm(g, -12, 1) } },
+      { key: 'fill', label: '백성에게 이자를 더 매겨 메운다', fx: { say: '이자를 더 매겨 장부를 맞추었다. 감영은 흡족하다.', favor: 1, minsim: -3, note: '고을의 원성 +15', run: (g) => countyHarm(g, 15) } },
+      { key: 'pocket', label: '아전들과 나누어 챙긴다', fx: { say: '아전들이 몫을 바쳤다.', wealth: (g) => skimOf(g) + 4, minsim: -4, flaw: { label: '환곡 농간', p: 0.4 }, note: '고을의 원성 +22', run: (g) => countyHarm(g, 22) } },
+    ],
+  },
+  {
+    id: 'suryeong_gunjeong',
+    when: (_s, o) => o === 'suryeong',
+    title: '군포의 머릿수',
+    text: (s) =>
+      `병조에서 ${rname(s)} 고을의 군포를 정해진 머릿수대로 올려 보내라는 공문이 왔다. 그러나 군적에 오른 장정 가운데 여럿은 이미 죽었거나 도망했다. 아전들은 죽은 이에게 그대로 매기고(백골징포), 갓난아이를 군적에 올리고(황구첨정), 도망한 이의 몫은 이웃에게 물리자고 한다(인징). (고을의 원성 ${harmNow(s)})`,
+    opts: () => [
+      { key: 'report', label: '빈 머릿수를 그대로 보고하고 줄여 달라 청한다', fx: { say: '군적의 빈자리를 사실대로 아뢰었다. 병조가 수령을 나무란다.', favor: -2, prestige: 2, minsim: 2, note: '고을의 원성 −10', run: (g) => countyHarm(g, -10, 1) } },
+      {
+        key: 'village',
+        label: '마을마다 공동으로 내게 한다 (동포)',
+        roll: {
+          stat: 'politics',
+          need: 7,
+          ok: { say: '마을 어른들과 의논해 공동으로 군포를 내게 했다. 원망이 고르게 나뉘었다.', prestige: 1, note: '고을의 원성 −6', run: (g) => countyHarm(g, -6, 1) },
+          fail: { say: '양반들이 「우리가 왜 상놈의 군포를 내느냐」며 들고일어났다.', prestige: -1, note: '고을의 원성 +6', run: (g) => countyHarm(g, 6) },
+        },
+      },
+      { key: 'custom', label: '아전들 말대로 채운다', fx: { say: '머릿수를 채워 올려 보냈다. 고을에 곡소리가 난다.', favor: 1, minsim: -4, note: '고을의 원성 +16', run: (g) => countyHarm(g, 16) } },
+    ],
+  },
+  {
+    id: 'suryeong_eungyeol',
+    when: (_s, o) => o === 'suryeong',
+    title: '장부에 없는 땅',
+    text: (s) =>
+      `양전 장부를 대조하다가 ${rname(s)} 고을 토호들의 땅 상당수가 장부에 없는 은결(隱結)임을 알았다. 그 땅의 결세는 가난한 이들의 땅에 얹혀 있다. 토호 가운데 하나는 한성의 세도가와 사돈이다. (고을의 원성 ${harmNow(s)})`,
+    opts: () => [
+      {
+        key: 'expose',
+        label: '은결을 찾아내 장부에 올린다',
+        roll: {
+          stat: 'politics',
+          need: 8,
+          ok: { say: '은결을 장부에 올리자 가난한 이들의 결세가 줄었다.', prestige: 3, minsim: 4, others: -2, note: '고을의 원성 −15, 토호와 그 뒷배의 원망', run: (g) => countyHarm(g, -15, 1) },
+          fail: { say: '토호들이 한성에 줄을 대어 「수령이 양반을 능멸한다」는 말이 돌았다.', favor: -3, prestige: -1, note: '고을의 원성 −4', run: (g) => countyHarm(g, -4) },
+        },
+      },
+      { key: 'gift', label: '토호의 예물을 받고 덮는다', fx: { say: '토호가 귀한 예물을 보냈다.', wealth: (g) => skimOf(g) + 6, flaw: { label: '은결 묵인', p: 0.3 }, note: '고을의 원성 +10', run: (g) => countyHarm(g, 10) } },
     ],
   },
 ];
@@ -317,13 +374,15 @@ function grab(s: GameState, id: string): string {
 }
 
 const dutyOf = (id: string) => DUTIES.find((d) => d.id === id);
+const late = (s: GameState) => yearOf(s.t) >= 1800;
+const harmNow = (s: GameState) => `${Math.round(s.player.county?.harm ?? 0)}, ${harmLabel(s.player.county?.harm ?? 0)}`;
 
 export function rollDuty(s: GameState) {
   const p = P(s);
   if (p.status !== 'active' || !p.office || s.pending.length >= 2) return;
-  if (monthsSince(s, 'dutyAt') < 3) return;
+  if (monthsSince(s, 'dutyAt') < 4) return;
   const keen = monthsSince(s, 'workAt') <= 1;
-  if (!chance(s, keen ? 0.3 : 0.15)) return;
+  if (!chance(s, keen ? 0.25 : 0.12)) return;
   const d = pick(s, DUTIES.filter((x) => x.when(s, p.office!)));
   if (!d) return;
   const ctx = d.setup ? d.setup(s) : {};

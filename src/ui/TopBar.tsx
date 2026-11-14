@@ -1,3 +1,4 @@
+import { politicsSummary } from '../engine/king';
 import { useState, type ReactNode } from 'react';
 import type { GameState } from '../engine/types';
 import { useG } from './ctx';
@@ -19,6 +20,7 @@ export function TopBar({ endTurn }: { endTurn: (months?: number) => void }) {
   const share = powerShare(s);
   const blocked = s.pending.length > 0;
   const destinyNear = y >= p.destiny;
+  const pol = politicsSummary(s);
 
   return (
     <header className="topbar">
@@ -43,8 +45,10 @@ export function TopBar({ endTurn }: { endTurn: (months?: number) => void }) {
           height={8}
           parts={[...activeFactions(s), 'none' as const].map((f) => ({ key: f, value: share[f], color: FACTION_META[f].color, label: FACTION_META[f].name }))}
         />
-        <div className="tb-tension" title="붕당 간 긴장도. 높을수록 탄핵이 잦고 다른 당 사람의 호감이 낮다.">
-          긴장 {Math.round(s.tension)}
+        <div className="tb-tension" title={`${pol.detail}
+
+긴장이 높을수록 탄핵·옥사가 잦고 다른 당 사람의 호감이 낮다.`}>
+          {pol.line}
           {s.war.active && <span className="war-flag">전란</span>}
         </div>
       </div>

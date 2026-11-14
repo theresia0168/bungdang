@@ -112,6 +112,7 @@ export function impeach(
   tgt: Character,
   opt: { bonus?: RollPart[]; defBonus?: RollPart[]; response?: 'explain' | 'endure'; quiet?: boolean; hapgye?: number; charges?: string[]; pungmun?: boolean } = {},
 ): ImpeachReport {
+  const noOffice = !tgt.office;
   const aParts: RollPart[] = [{ label: '정치력', value: atk.politics }];
   // 고른 죄목만 쓴다. 고르지 않은 흠결은 다음을 위해 남는다
   const flaws = chargeable(s, tgt, atk.id).filter((f) => !opt.charges || opt.charges.includes(f.id));
@@ -135,6 +136,9 @@ export function impeach(
     const n = recentImpeachments(s) - 2;
     if (n > 0) aParts.push({ label: `잦은 탄핵 (2년 새 ${n + 2}번째)`, value: -Math.min(2, n) });
   }
+  // 한참 아래 사람을 몰아치면 공론이 등을 돌린다
+  const bully = atk.politics - tgt.politics >= 3 && tgt.rank >= atk.rank;
+  if (bully) aParts.push({ label: '힘없는 이를 몰아침 (공론이 외면)', value: -2 });
   for (const b of opt.bonus ?? []) if (b.value) aParts.push(b);
 
   const dParts: RollPart[] = [{ label: '정치력', value: tgt.politics }];
@@ -201,10 +205,16 @@ export function impeach(
       s.tension = clamp(s.tension + 2, 0, 100);
       break;
     case 'dismiss':
+      // 이미 관직이 없으면 관작을 깎고 한 해 동안 서용하지 않는다(삭탈관직)
+      if (!tgt.office) tgt.banUntil = Math.max(tgt.banUntil ?? 0, s.t + 12);
       vacate(s, tgt);
       tgt.prestige = clamp(tgt.prestige - 5, 0, 100);
       break;
     case 'strip':
+      if (!tgt.office) {
+        tgt.status = 'retired';
+        tgt.location = tgt.home;
+      }
       vacate(s, tgt, 'retired');
       tgt.banUntil = s.t + 12;
       tgt.prestige = clamp(tgt.prestige - 6, 0, 100);
@@ -215,6 +225,7 @@ export function impeach(
       break;
   }
 
+  if (success && bully) atk.prestige = clamp(atk.prestige - 2, 0, 100);
   if (success) {
     sway(s, tgt, atk.id, -40, '탄핵의 원한', { clan: 0.6, decay: 0.1 });
     if (!sameTop && tgt.faction !== 'none') {
@@ -237,8 +248,9 @@ export function impeach(
     s.player.deeds.push(`${shortDate(s.t)} ${tgt.name} 탄핵 — ${OUTCOME_LABEL[outcome]}`);
   }
 
+  const label = outcome === 'dismiss' && noOffice ? '삭탈관직' : OUTCOME_LABEL[outcome];
   const text =
-    `${josa(atk.name, '이/가')} ${josa(tgt.name, '을/를')} 탄핵했다 — ${OUTCOME_LABEL[outcome]}` +
+    `${josa(atk.name, '이/가')} ${josa(tgt.name, '을/를')} 탄핵했다 — ${label}` +
     (exposed ? `. 내세운 혐의가 날조였음이 드러났다` : '');
   if (!opt.quiet) log(s, text, isP(s, atk) || isP(s, tgt) ? 'player' : 'court');
   return { attacker: atk.id, target: tgt.id, aParts, dParts, aRoll, dRoll, aTotal, dTotal, outcome, text };

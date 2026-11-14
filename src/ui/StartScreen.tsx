@@ -8,6 +8,9 @@ import { CLAN_POOL, GIVEN_1, GIVEN_2 } from '../engine/data/names';
 import { josa } from '../engine/state';
 import { fcolor } from './common';
 import { STAT_GUIDE, Tip, type StatKey } from './guide';
+import { ACHIEVEMENTS } from '../engine/achv';
+import { DIFF_META, type Diff } from '../engine/diff';
+import { loadAchv } from './achvStore';
 
 const PICKABLE_TRAITS: TraitId[] = ['upright', 'mild', 'radical', 'scholar', 'writer', 'schemer', 'clean', 'greedy', 'ambitious', 'mediator'];
 const CONFLICTS: [TraitId, TraitId][] = [
@@ -42,8 +45,25 @@ function randomSpec(): CustomSpec {
   };
 }
 
-export function StartScreen({ onStart, onResume }: { onStart: (c: StartChoice) => void; onResume?: () => void }) {
-  const [mode, setMode] = useState<'list' | 'custom'>('list');
+export function StartScreen({ onStart: start, onResume }: { onStart: (c: StartChoice, d: Diff) => void; onResume?: () => void }) {
+  const [mode, setMode] = useState<'list' | 'custom' | 'achv'>('list');
+  const [diff, setDiff] = useState<Diff>(() => {
+    try {
+      return (localStorage.getItem('joseon-bungdang/diff') as Diff) || 'normal';
+    } catch {
+      return 'normal';
+    }
+  });
+  const pickDiff = (d: Diff) => {
+    setDiff(d);
+    try {
+      localStorage.setItem('joseon-bungdang/diff', d);
+    } catch {
+      /* 무시 */
+    }
+  };
+  const onStart = (c: StartChoice) => start(c, diff);
+  const got = loadAchv();
   const [pick, setPick] = useState<string>(PLAYABLE[0]?.id);
   const [spec, setSpec] = useState<CustomSpec>(randomSpec);
   const sorted = [...PLAYABLE].sort((a, b) => DIFF_ORDER.indexOf(a.playable!.difficulty) - DIFF_ORDER.indexOf(b.playable!.difficulty));
@@ -77,12 +97,40 @@ export function StartScreen({ onStart, onResume }: { onStart: (c: StartChoice) =
         <button className={mode === 'custom' ? 'on' : ''} onClick={() => setMode('custom')}>
           가상 인물 만들기
         </button>
+        <button className={mode === 'achv' ? 'on' : ''} onClick={() => setMode('achv')}>
+          업적 {got.length}/{ACHIEVEMENTS.length}
+        </button>
         {onResume && (
           <button className="resume" onClick={onResume}>
             이어하기
           </button>
         )}
       </div>
+
+      {mode !== 'achv' && (
+        <div className="start-diff">
+          <span className="sd-k">난이도</span>
+          {(['easy', 'normal', 'hard'] as Diff[]).map((d) => (
+            <button key={d} className={diff === d ? 'on' : ''} title={DIFF_META[d].desc} onClick={() => pickDiff(d)}>
+              {DIFF_META[d].name}
+            </button>
+          ))}
+          <span className="muted small">{DIFF_META[diff].desc}</span>
+        </div>
+      )}
+
+      {mode === 'achv' && (
+        <div className="start-body achv-list">
+          <ul>
+            {ACHIEVEMENTS.map((a) => (
+              <li key={a.id} className={got.includes(a.id) ? 'on' : ''}>
+                <b>{got.includes(a.id) ? '◆' : '◇'} {a.name}</b>
+                <span className="muted small">{a.desc}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {mode === 'list' && (
         <div className="start-body">

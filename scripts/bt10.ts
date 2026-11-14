@@ -13,6 +13,7 @@ const t0 = Date.now();
 let overlapMonths = 0, vetoSame = 0, vetoes = 0, disabledByTrait = 0;
 const traitBlock: Record<string, number> = {};
 let prevLog = 0;
+let rivals = 0, rivalEnds = 0, prevRival: string | undefined;
 while (!s.over) {
   while (s.pending.length) {
     const e = s.pending[0]; const v = viewEvent(s, e);
@@ -28,6 +29,9 @@ while (!s.over) {
   runMonthly(s, 'study');
   if (s.t % 12 === 5 && !s.player.focus && p.faction !== 'none') { const push = lawToPush(s, p.faction); if (push) startMemorial(s, 'law', push); }
   advanceMonth(s);
+  if (s.player.rival && s.player.rival !== prevRival) rivals++;
+  if (!s.player.rival && prevRival && s.flags.rivalEndAt === s.t) rivalEnds++;
+  prevRival = s.player.rival;
   // 검사 1: 한 사람이 두 자리 경쟁에 동시에 거론되는가
   const ids = s.races.flatMap(r => r.candidates);
   if (ids.length !== new Set(ids).size) overlapMonths++;
@@ -56,5 +60,6 @@ console.log(JSON.stringify({
   hwangukAfter: cnt(/^\[환국\] 여파/), cheongbaek: s.player.deeds.filter(d => d.includes('청백리')).length, vetoes, vetoSame, overlapMonths, disabledByTrait, traitBlock,
   traits: Object.fromEntries(['eloquent','martial','cautious','loyal','timid','arrogant','sickly'].map(t => [t, traitCount[t] ?? 0])),
   playerTraits: P(s).traits, minsim: Math.round(Object.values(s.regions).reduce((a, r) => a + r.minsim, 0) / 9), treasury: Math.round(s.realm.treasury),
+  rivals, rivalEnds, achv: (s.player.achv ?? []).length, achvIds: s.player.achv, county: cnt(/^\[고을\]/), horan: s.player.deeds.filter(d => /호란|남한산성|강화도|심양/.test(d)).length,
   sec: Math.round((Date.now() - t0) / 1000),
 }));

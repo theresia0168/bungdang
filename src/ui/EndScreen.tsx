@@ -2,6 +2,7 @@ import { useG } from './ctx';
 import { computeEnding } from '../engine/ending';
 import { P } from '../engine/state';
 import { Paras, Portrait } from './common';
+import { ACHIEVEMENTS } from '../engine/achv';
 
 export function EndScreen({ onRestart }: { onRestart: () => void }) {
   const { s } = useG();
@@ -41,6 +42,18 @@ export function EndScreen({ onRestart }: { onRestart: () => void }) {
             </tbody>
           </table>
         </div>
+        {!!s.player.achv?.length && (
+          <div className="end-deeds">
+            <h3>이 판의 업적</h3>
+            <ul>
+              {ACHIEVEMENTS.filter((a) => s.player.achv!.includes(a.id)).map((a) => (
+                <li key={a.id}>
+                  ◆ {a.name} <span className="muted small">— {a.desc}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         {s.player.deeds.length > 0 && (
           <div className="end-deeds">
             <h3>행장(行狀)</h3>

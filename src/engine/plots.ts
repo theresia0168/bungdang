@@ -4,13 +4,15 @@ import { OFFICE_MAP } from './data/offices';
 import { chance, randInt } from './rng';
 import { alive, atSeat, chargeable, clamp, impeachEtiquette, inCourt, isP, josa, knownFlaws, notice, officeTitle, P, people, uid } from './state';
 import { opinion } from './opinion';
+import { diffOf } from './diff';
 import { bondWith } from './relations';
 import { caseOn, openCase } from './cases';
 
 /** 플레이어를 노리는 정적이 바로 논핵하지 않고 몇 달 동안 준비한다 */
 export function startPlot(s: GameState, by: Character): boolean {
   if (bondWith(s, by.id) || s.plots.some((x) => x.by === by.id) || s.plots.length >= 2) return false;
-  const plot: Plot = { id: uid(s, 'plot'), by: by.id, due: s.t + randInt(s, 2, 4), known: false };
+  if (diffOf(s) === 'easy' && !chance(s, 0.6)) return false;
+  const plot: Plot = { id: uid(s, 'plot'), by: by.id, due: s.t + (diffOf(s) === 'hard' ? randInt(s, 1, 3) : randInt(s, 2, 4)), known: false };
   s.plots.push(plot);
   const tip = s.player.bonds.map((b) => s.chars[b.with]).find((c) => alive(c) && inCourt(c) && c.faction === by.faction);
   if (tip) revealPlot(s, plot, `맹약을 맺은 ${josa(tip.name, '이/가')} 몰래 귀띔해 왔다`);

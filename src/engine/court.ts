@@ -63,6 +63,7 @@ export function appoint(s: GameState, c: Character, officeId: string, quiet = fa
   c.office = officeId;
   c.status = 'active';
   c.tenure = 0;
+  if (o.rank === 1 && !c.tags.includes('wonim')) c.tags.push('wonim');
   if (o.rank < c.rank) {
     c.rank = o.rank;
     c.promotedAt = s.t;
@@ -151,7 +152,7 @@ export function appointParts(s: GameState, c: Character, o: OfficeDef, hm = hold
   parts.push({ label: '정치력', value: c.politics * 2 });
   parts.push({ label: '학식', value: c.learning * (o.literary ? 3 : o.samsa || o.cheongyo ? 2 : 1) });
   parts.push({ label: '명망', value: c.prestige / 12 });
-  parts.push({ label: '성심', value: c.favor / (o.rank === 1 ? 10 : 15) });
+  parts.push({ label: '성심', value: c.favor / 15 });
   parts.push({ label: '경력', value: Math.min(3, c.tenure / 12) });
   const gap = Math.max(0, c.rank - o.rank);
   if (gap) parts.push({ label: '품계 차이', value: -gap * 1.2 });
@@ -216,6 +217,17 @@ export function appointParts(s: GameState, c: Character, o: OfficeDef, hm = hold
   if (isP(s, c) && s.heir && s.royal?.backing === s.heir) parts.push({ label: '세자의 사람', value: 2 });
   const pub = c.flaws.filter((f) => f.public).length;
   if (pub) parts.push({ label: '드러난 흠결', value: -pub * 1.5 });
+  // 정승은 오래 대신을 지낸 원로, 당의 영수, 왕이 깊이 믿는 이가 맡는다
+  if (o.rank === 1) {
+    const a = age(s, c);
+    if (a < 50) parts.push({ label: '정승에 오르기엔 이른 나이', value: -4 });
+    else if (a >= 60) parts.push({ label: '조정의 원로', value: 2 });
+    if (c.faction !== 'none' && s.factions[c.faction]?.leader === c.id) parts.push({ label: '당의 영수', value: 4 });
+    if ((c.seniority ?? 0) < 24) parts.push({ label: '대신의 경력이 짧음', value: -3 });
+    if (c.favor < 30) parts.push({ label: '왕의 신임이 얕음', value: -3 });
+    // 정승을 지낸 원임대신(原任大臣)은 다시 불려 나오기 쉽다
+    if (c.tags.includes('wonim')) parts.push({ label: '원임대신', value: 5 });
+  }
   return parts;
 }
 

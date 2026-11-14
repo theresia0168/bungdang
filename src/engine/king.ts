@@ -1,6 +1,7 @@
 import type { Character, FactionId, GameState } from './types';
 import { kingProfile, vsText, ZEAL_FREQ } from './kingstat';
-import { authorityBase } from './kwanje';
+import { authorityBase, bibyeonPower, bibyeonStage } from './kwanje';
+import { legitName, legitOf } from './legit';
 import type { EventDef } from './events/types';
 import { OFFICE_MAP } from './data/offices';
 import { FACTION_META } from './data/meta';
@@ -195,11 +196,12 @@ export function audienceEligible(s: GameState): boolean {
 
 export function rollAudience(s: GameState) {
   if (!audienceEligible(s) || s.pending.length >= 2 || s.flags.kingCaptive) return;
-  if (monthsSince(s, 'audienceAt') < 3) return;
+  // 경연은 잦으면 지루하다: 다섯 달에 한 번꼴까지
+  if (monthsSince(s, 'audienceAt') < 5) return;
   const p = P(s);
   // 지난달 업무에 힘썼으면 왕의 눈에 띈다
   const keen = monthsSince(s, 'workAt') <= 1 ? 0.12 : 0;
-  if (!chance(s, ((HONGMUN.includes(p.office!) ? 0.25 : 0.12) + keen) * ZEAL_FREQ[kingProfile(s).zeal])) return;
+  if (!chance(s, ((HONGMUN.includes(p.office!) ? 0.2 : 0.1) + keen * 0.7) * ZEAL_FREQ[kingProfile(s).zeal])) return;
   const pool = TOPICS.filter((x) => (!x.from || s.t >= tOf(...x.from)) && (!x.to || s.t <= tOf(...x.to)));
   const topic = pool[randInt(s, 0, pool.length - 1)];
   s.flags.audienceAt = s.t;
@@ -394,4 +396,17 @@ export function kingSummary(s: GameState): string {
   const wary = activeFactions(s).filter((f) => (s.king.lean[f] ?? 0) <= WARY_WARN);
   if (wary.length) parts.push(`${wary.map((f) => FACTION_META[f].name).join('·')}의 독주를 경계한다`);
   return parts.join(' · ');
+}
+/** 정국을 한 줄로: 왕이 어느 쪽에 기울었는지, 왕권은 어떤지, 조정은 어떤지 */
+export function politicsSummary(s: GameState): { line: string; detail: string } {
+  const fav = favoredFaction(s);
+  const lg = legitOf(s).score;
+  const auth = s.king.mood + authorityBase(s) + (lg - 55) * 0.5;
+  const king = fav ? `${FACTION_META[fav[0]].name} 쪽으로 기운 왕` : '어느 당에도 기울지 않은 왕';
+  const power = auth >= 30 ? '굳건한 왕권' : auth >= 0 ? '무난한 왕권' : auth >= -30 ? '흔들리는 왕권' : '땅에 떨어진 왕권';
+  const t = s.tension;
+  const court = t >= 70 ? '피바람이 부는 조정' : t >= 50 ? '격앙된 조정' : t >= 30 ? '술렁이는 조정' : '잠잠한 조정';
+  const line = `${king} · ${power} · ${court}`;
+  const detail = `용안 ${moodLabel(s.king.mood)}(${Math.round(s.king.mood)}) · 정통성 ${legitName(lg)}(${lg}) · 긴장 ${Math.round(t)} · ${bibyeonStage(bibyeonPower(s)).name}(비변사 위상 ${Math.round(bibyeonPower(s))})`;
+  return { line, detail };
 }

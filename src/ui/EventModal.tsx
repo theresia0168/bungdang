@@ -1,7 +1,9 @@
 import { useG } from './ctx';
 import type { PendingEvent } from '../engine/types';
 import { viewEvent } from '../engine/events';
-import { resolveEvent } from '../engine/turn';
+import { AUTO_NAMES, resolveEvent } from '../engine/turn';
+import { josa } from '../engine/state';
+import { useState } from 'react';
 import { OUTCOME_LABEL, type RollPart } from '../engine/conflict';
 import { formatDate } from '../engine/calendar';
 import { CharLink, Paras } from './common';
@@ -46,6 +48,8 @@ export function EventModal({ ev, more }: { ev: PendingEvent; more: number }) {
   const v = viewEvent(s, ev);
   const r = v.report;
   const m = v.memorial;
+  const autoName = AUTO_NAMES[ev.def];
+  const [remember, setRemember] = useState(false);
 
   return (
     <div className="modal-back">
@@ -88,13 +92,26 @@ export function EventModal({ ev, more }: { ev: PendingEvent; more: number }) {
               className="choice"
               disabled={!!c.disabled}
               title={c.disabled}
-              onClick={() => act((g) => resolveEvent(g, ev.id, c.key))}
+              onClick={() =>
+                act((g) => {
+                  if (remember && autoName) {
+                    g.player.auto = { ...(g.player.auto ?? {}), [ev.def]: c.key };
+                    g.player.autoLabel = { ...(g.player.autoLabel ?? {}), [ev.def]: c.label };
+                  }
+                  return resolveEvent(g, ev.id, c.key);
+                })
+              }
             >
               <b>{c.label}</b>
               {(c.hint || c.disabled) && <span>{c.disabled ?? c.hint}</span>}
             </button>
           ))}
         </div>
+        {autoName && (
+          <label className="modal-auto">
+            <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} /> 다음부터 {josa(autoName, '은/는')} 이 선택으로 알아서 처리한다 <span className="muted small">(왼쪽 「거취」에서 해제)</span>
+          </label>
+        )}
         {more > 0 && <div className="modal-more">이어서 {more}건이 더 있다</div>}
       </div>
     </div>

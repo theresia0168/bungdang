@@ -763,6 +763,10 @@ button.trait.on {
   font-size: 12px;
   color: var(--muted);
   margin-top: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: help;
 }
 .war-flag {
   margin-left: 6px;
@@ -2719,3 +2723,30 @@ button.mini:disabled {
   display: block;
   margin: 10px auto;
 }
+
+/* 알아서 처리 */
+.modal-auto {
+  display: block;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.modal-auto input {
+  vertical-align: middle;
+  margin-right: 4px;
+}
+.auto-list {
+  margin-top: 8px;
+}
+
+/* 시작 화면: 난이도와 업적 */
+.start-diff { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 12px; }
+.start-diff .sd-k { font-weight: 600; margin-right: 4px; }
+.start-diff button { padding: 3px 12px; border: 1px solid var(--line); background: transparent; border-radius: 4px; cursor: pointer; color: inherit; }
+.start-diff button.on { background: var(--gold); color: var(--bg); border-color: transparent; }
+.start-diff .muted { flex-basis: 100%; }
+.start-body.achv-list { display: block; }
+.achv-list ul { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 8px; width: 100%; }
+.achv-list li { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; opacity: .55; }
+.achv-list li.on { opacity: 1; border-color: var(--gold); }

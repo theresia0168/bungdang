@@ -84,21 +84,36 @@ function npcImpeachments(s: GameState) {
 
 /** 원수를 유배 보낸 것으로는 모자라 죄를 더하자고 청한다 */
 function npcAggravate(s: GameState) {
-  if (!chance(s, 0.08)) return;
   const exiles = people(s).filter((c) => c.status === 'exiled' && !caseOn(s, c.id));
-  for (const c of exiles) {
-    const lv = c.exileLevel ?? 1;
-    if (lv >= 2 && !(c.tags.includes('royalWrath') || c.favor <= -30)) continue;
-    if (lv >= 2 && s.tension < 50) continue;
-    if (!chance(s, lv >= 2 ? 0.12 : 0.3)) continue;
-    const foes = people(s)
+  const foeOf = (c: (typeof exiles)[number], line: number) =>
+    people(s)
       .filter((x) => !isP(s, x) && inCourt(x) && atSeat(s, x) && x.politics >= 3 && topOf(x.faction) !== topOf(c.faction))
       .map((x) => [x, opinion(s, x, c)] as const)
-      .filter(([, v]) => v <= -40)
-      .sort((a, b) => a[1] - b[1]);
-    if (!foes.length) continue;
-    openCase(s, foes[0][0], c);
-    return;
+      .filter(([, v]) => v <= line)
+      .sort((a, b) => a[1] - b[1])[0]?.[0];
+  // 위리안치된 거물(당상관 이상 출신·영수·왕의 진노를 산 이)에게는 반대 당이 뿌리를 뽑으려 사사를 청한다.
+  // 판이 뒤집힌 직후(환국 뒤 한 해)나 정국이 격앙되었을 때만이다
+  if (s.tension >= 35 || monthsSince(s, 'lastHwanguk') <= 12) {
+    for (const c of exiles) {
+      if ((c.exileLevel ?? 1) < 2) continue;
+      if (!(c.tags.includes('royalWrath') || c.favor <= -30 || c.rank <= 3 || Object.values(s.factions).some((f) => f.leader === c.id))) continue;
+      if (!chance(s, 0.05)) continue;
+      const foe = foeOf(c, -20);
+      if (foe) {
+        openCase(s, foe, c);
+        return;
+      }
+    }
+  }
+  // 그 밖에는 원수를 유배 보낸 것으로 모자라 위리안치를 청한다
+  if (!chance(s, 0.08)) return;
+  for (const c of exiles) {
+    if ((c.exileLevel ?? 1) >= 2 || !chance(s, 0.3)) continue;
+    const foe = foeOf(c, -40);
+    if (foe) {
+      openCase(s, foe, c);
+      return;
+    }
   }
 }
 

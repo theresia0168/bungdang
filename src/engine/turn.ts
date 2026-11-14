@@ -28,9 +28,12 @@ import { tickParty } from './party';
 import { rollDuty } from './duties';
 import { rollTalent } from './events/intrigue';
 import { tickCases } from './cases';
+import { tickRival } from './rival';
+import { tickCounty } from './county';
+import { checkAchv } from './achv';
 import { rollAgenda } from './agenda';
 import { checkGoal } from './goals';
-import { EVENTS, rollPersonal, runHistory } from './events';
+import { EVENTS, rollPersonal, runHistory, viewEvent } from './events';
 import { genChar, pickHome, regionFaction } from './generate';
 import { checkSuccession } from './succession';
 import { updateGuide } from './tutorial';
@@ -166,6 +169,7 @@ export function advanceMonth(s: GameState) {
   if (s.t > END_T) {
     s.t = END_T;
     s.over = { reason: 'timeline', t: s.t };
+    checkAchv(s);
     return;
   }
   const y = yearOf(s.t);
@@ -239,6 +243,8 @@ export function advanceMonth(s: GameState) {
   if (s.factions.dong.active && y >= 1589) s.factions.dong.division += 0.15;
   if (s.t >= tOf(1591, 6)) s.flags.splitReady = true;
   tickStrife(s);
+  tickRival(s);
+  tickCounty(s);
   tickLater(s);
   tickGukbon(s);
   tickDept(s);
@@ -248,9 +254,12 @@ export function advanceMonth(s: GameState) {
   checkSplit(s);
   s.tension = clamp(s.tension - (0.3 + s.tension * 0.012), 10, 100);
   // 명성은 잊힌다: 50을 넘는 몫이 다달이 2.5%씩 바랜다. 꾸준히 이름을 내야 높은 명망을 지킨다.
-  for (const c of Object.values(s.chars)) if (c.prestige > 50) c.prestige -= (c.prestige - 50) * 0.025;
+  for (const c of Object.values(s.chars)) if (c.prestige > 50) c.prestige -= (c.prestige - 50) * 0.025 + Math.max(0, c.prestige - 75) * 0.03;
+  // 왕의 총애도 시든다: 50을 넘는 몫이 다달이 3%씩 식는다. 높은 성심은 꾸준히 공을 세워야 지킨다.
+  for (const c of Object.values(s.chars)) if (c.favor > 50) c.favor -= (c.favor - 50) * 0.03;
   // 벼슬에 있는 이들은 자리에 걸맞은 명망과 성심을 천천히 쌓는다 (플레이어는 스스로 쌓는다)
   for (const c of Object.values(s.chars)) {
+    if (c.status === 'active' && c.office && (OFFICE_MAP[c.office]?.rank ?? 9) <= 2) c.seniority = (c.seniority ?? 0) + 1;
     if (c.id === p.id || c.status !== 'active' || !c.office) continue;
     const o = OFFICE_MAP[c.office];
     if (!o) continue;
@@ -268,8 +277,34 @@ export function advanceMonth(s: GameState) {
   }
   refreshAp(s);
   updateGuide(s);
+  autoResolve(s);
   checkSuccession(s);
+  checkAchv(s);
   if (s.over) s.pending = [];
+}
+
+/** 되풀이되는 일 가운데 플레이어가 맡겨 둔 것은 정해 둔 선택으로 알아서 처리한다 */
+export const AUTO_NAMES: Record<string, string> = {
+  audience: '경연',
+  audience_follow: '경연의 후속 하문',
+  appointment_offer: '제수',
+  cosign_request: '연명 요청',
+  party_council: '당론 회의',
+};
+function autoResolve(s: GameState) {
+  const auto = s.player.auto;
+  if (!auto) return;
+  const done: string[] = [];
+  for (const e of [...s.pending]) {
+    const key = auto[e.def];
+    if (!key || !AUTO_NAMES[e.def]) continue;
+    const v = viewEvent(s, e);
+    const c = v.choices.find((x) => x.key === key && !x.disabled);
+    if (!c) continue;
+    const msg = resolveEvent(s, e.id, c.key);
+    done.push(`${AUTO_NAMES[e.def]}: ${c.label}${msg ? ` — ${msg}` : ''}`);
+  }
+  if (done.length) log(s, `[알아서 처리] ${done.join(' / ')}`.slice(0, 400), 'player');
 }
 
 export function resolveEvent(s: GameState, eventId: string, key: string): string {

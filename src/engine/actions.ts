@@ -266,7 +266,7 @@ export const TARGET_ACTIONS: TargetAction[] = [
     id: 'probe',
     name: '탐문',
     cost: () => 1,
-    desc: '겸인을 풀어 그의 행실을 알아본다. 숨기는 것이 있는지, 무엇을 바라는지 알 수 있고, 운이 좋으면 약점을 바로 잡는다.',
+    desc: '겸인을 풀어 그의 행실을 알아본다. 숨기는 것이 있는지, 무엇을 바라는지 알 수 있고, 운이 좋으면 약점을 바로 잡는다. (바로 해 보고 운에 맡긴다. 확실히 캐려면 재산을 들인 「뒷조사」)',
     check: (s, t) => basic(s, t) ?? cdMsg(s, `probe:${t.id}`),
     run(s, t) {
       const p = P(s);
@@ -298,7 +298,7 @@ export const TARGET_ACTIONS: TargetAction[] = [
     id: 'investigate',
     name: '뒷조사',
     cost: () => 1,
-    desc: `재산 ${INVESTIGATE_COST}을 들여 겸인에게 몇 달 동안 그의 뒤를 캐게 한다. 다른 행동과 따로 진행된다. 한 번에 한 사람만.`,
+    desc: `재산 ${INVESTIGATE_COST}을 들여 겸인에게 몇 달 동안 그의 뒤를 캐게 한다. 다른 행동과 따로 진행된다. 한 번에 한 사람만. (「탐문」보다 느리지만 숨긴 약점을 확실히 찾아낸다)`,
     check(s, t) {
       const p = P(s);
       const sc = s.player.scheme;
@@ -357,7 +357,7 @@ export const TARGET_ACTIONS: TargetAction[] = [
     check(s, t) {
       const p = P(s);
       if (basic(s, t)) return basic(s, t);
-      if (t.status !== 'active' || !t.office) return '관직에 있지 않다';
+      if (!['active', 'idle', 'retired', 'exiled'].includes(t.status)) return '탄핵할 수 없는 사람이다';
       if (!inCourt(p) || !atSeat(s, p)) return `${seatName(s)}에 있어야 한다`;
       if (!isSamsa(p) && p.politics < 3) return '삼사 언관이 아니면 정치력 3 이상이 필요하다';
       const etq = impeachEtiquette(p, t, isSamsa(p));
@@ -762,7 +762,7 @@ export const TARGET_ACTIONS: TargetAction[] = [
         t.faction = p.faction;
         t.switched = (t.switched ?? 0) + 1;
         const fx = swayFaction(s, p.faction, p.id, 4, '동지를 끌어들임', 0.06);
-        log(s, `${josa(t.name, '이/가')} ${josa(p.name, '의')} 권유로 ${FACTION_META[p.faction].name}에 들었다.`, 'player');
+        log(s, `${josa(t.name, '이/가')} ${p.name}의 권유로 ${FACTION_META[p.faction].name}에 들었다.`, 'player');
         return `${josa(t.name, '이/가')} 당신의 권유를 받아들여 ${FACTION_META[p.faction].name}에 들었다.${fx ? ` (${fx})` : ''}`;
       }
       const fx = sway(s, t, p.id, -5, '당파로 끌어들이려 함', { decay: 0.2 });
@@ -1525,7 +1525,7 @@ export const SELF_ACTIONS: { id: SelfActionId; name: string; desc: string; check
   {
     id: 'hire',
     name: '겸인 부리기',
-    desc: `재산 ${HIRE_COST}으로 겸인(傔人)을 부려 이번 달 행동력 +1. 한 달에 한 번.`,
+    desc: `재산 ${HIRE_COST}으로 겸인(傔人)을 부려 이번 달 행동력 +1. 한 달에 한 번. (이번 달만이다. 오래 두고 음모·이간·밀서에 쓰려면 「식객」)`,
     check: (s) =>
       P(s).status === 'exiled'
         ? '유배 중이다'

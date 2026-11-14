@@ -42,7 +42,8 @@ export function openCase(
     return ex;
   }
   const kind = tgt.status === 'exiled' ? 'aggravate' : 'impeach';
-  if (kind === 'impeach' && (tgt.status !== 'active' || !tgt.office)) return;
+  // 관직에 있든, 물러나 있든(보직 대기·낙향) 논핵할 수 있다. 물러난 이에게는 삭탈관직·문외출송·유배를 청한다
+  if (kind === 'impeach' && !['active', 'idle', 'retired'].includes(tgt.status)) return;
   const cs: Case = {
     id: uid(s, 'case'),
     kind,
@@ -54,12 +55,14 @@ export function openCase(
     cons: [],
     bonus: opt.bonus ?? 0,
     byMemorial: opt.byMemorial,
+    offOffice: kind === 'impeach' && (tgt.status !== 'active' || !tgt.office) ? true : undefined,
   };
   s.cases.push(cs);
   s.flags[`caseOn_${tgt.id}`] = s.t;
   const mine = isP(s, atk) || isP(s, tgt);
   if (kind === 'impeach') {
-    log(s, `${josa(atk.name, '이/가')} ${officeTitle(tgt)} ${josa(tgt.name, '을/를')} 논핵하기 시작했다.`, mine ? 'player' : 'court');
+    const who = tgt.status === 'active' && tgt.office ? officeTitle(tgt) : tgt.status === 'retired' ? '물러나 있는' : '전직';
+    log(s, `${josa(atk.name, '이/가')} ${who} ${josa(tgt.name, '을/를')} 논핵하기 시작했다.`, mine ? 'player' : 'court');
   } else {
     log(s, `${josa(atk.name, '이/가')} 유배 중인 ${tgt.name}에게 ${nextLevelLabel(tgt)}의 죄를 더하라고 청했다.`, mine ? 'player' : 'court');
   }
@@ -143,6 +146,7 @@ function resolveImpeach(s: GameState, cs: Case) {
   const hap = hapgyeOf(s, cs);
   if (hap) bonus.push({ label: hap >= 3 ? '삼사 합계' : '양사 합계', value: hap >= 3 ? 3 : 1 });
   const defBonus = cs.cons.length ? [sidePart('구원', cs.cons.length)] : [];
+  if (cs.resigned) defBonus.push({ label: '스스로 물러남', value: 1 });
   const rep = impeach(s, atk, tgt, { bonus, defBonus, response: cs.response, hapgye: hap, charges: cs.charges, pungmun: cs.pungmun });
   const success = SUCCESS.includes(rep.outcome);
   if (rep.outcome === 'rejected' || rep.outcome === 'shielded') pihyeom(s, cs, rep);
@@ -164,7 +168,12 @@ function resolveAggravate(s: GameState, cs: Case): ImpeachReport {
   const lv = tgt.exileLevel ?? 1;
   const toDeath = lv >= 2;
   const aParts: RollPart[] = [{ label: '정치력', value: atk.politics }];
-  if (cs.pros.length) aParts.push(sidePart('동조', cs.pros.length));
+  if (cs.pros.length) aParts.push(prosPart(cs.pros.length, tgt));
+  const hap = hapgyeOf(s, cs);
+  if (hap) aParts.push({ label: hap >= 3 ? '삼사 합계' : '양사 합계', value: hap >= 3 ? 3 : 1 });
+  // 한 번에 안 되면 날마다 거듭 청한다: 물리칠수록 상소가 거세진다
+  const tries = Number(s.flags[`aggTry_${tgt.id}`] ?? 0);
+  if (tries) aParts.push({ label: `거듭된 청 (${tries}번째 물리친 뒤)`, value: Math.min(3, tries) });
   if (tgt.tags.includes('royalWrath')) aParts.push({ label: '왕의 진노', value: 2 });
   if (tgt.favor <= -30) aParts.push({ label: '성심 잃음', value: 1 });
   if (s.tension >= 60) aParts.push({ label: '격앙된 정국', value: 1 });
@@ -173,6 +182,10 @@ function resolveAggravate(s: GameState, cs: Case): ImpeachReport {
   if (pr) dParts.push({ label: '명망', value: pr });
   if (cs.cons.length) dParts.push(sidePart('구원', cs.cons.length));
   if (tgt.favor >= 20) dParts.push({ label: '성심', value: 1 });
+  // 왕이 아끼는 이는 차마 죽이지 못한다
+  const kingLeanT = tgt.faction !== 'none' ? (s.king.lean[tgt.faction] ?? 0) : 0;
+  const cherished = tgt.favor >= 30 || kingLeanT >= 15;
+  if (cherished) dParts.push({ label: '왕이 아낌', value: 2 });
   const aRoll = d6(s);
   const dRoll = d6(s);
   const aTotal = aRoll + aParts.reduce((a, x) => a + x.value, 0);
@@ -185,14 +198,21 @@ function resolveAggravate(s: GameState, cs: Case): ImpeachReport {
     log(s, `${josa(tgt.name, '이/가')} 위리안치되었다. 유배지의 집 둘레에 가시울타리가 쳐졌다.`, mine ? 'player' : 'court');
     if (isP(s, tgt)) s.player.deeds.push(`${shortDate(s.t)} 위리안치`);
   } else if (outcome === 'sasa') {
+    if (cherished || tries > 0) {
+      const fname = atk.faction !== 'none' ? FACTION_META[atk.faction].name : '대간';
+      log(s, `[사사] 왕은 「차마 죽일 수 없다」며 ${tries > 0 ? `${tries + 1}번이나 ` : ''}물리쳤으나, 연일 이어지는 ${fname}의 상소를 끝내 이기지 못하고 ${tgt.name}에게 사약을 내렸다.`, mine ? 'player' : 'history');
+      s.king.mood = clamp(s.king.mood - 5, -100, 100);
+    }
     kill(s, tgt, '사약을 받고 죽었다');
     addMod(s, 'clan', tgt.clan, atk.id, '사사의 원한', -45, 0.05);
     if (tgt.faction !== 'none') swayFaction(s, tgt.faction, atk.id, -15, '동지를 죽임', 0.05);
   } else {
     atk.favor = clamp(atk.favor - 3, -100, 100);
-    log(s, `${tgt.name}에게 죄를 더하자는 논의는 왕이 받아들이지 않았다.`, mine ? 'player' : 'court');
+    s.flags[`aggTry_${tgt.id}`] = tries + 1;
+    log(s, `${tgt.name}에게 죄를 더하자는 논의는 왕이 받아들이지 않았다.${tries + 1 >= 2 ? ' 그러나 상소는 그치지 않는다.' : ''}`, mine ? 'player' : 'court');
   }
-  if (outcome !== 'spared') s.tension = clamp(s.tension + (outcome === 'sasa' ? 6 : 2), 0, 100);
+  if (outcome !== 'spared') delete s.flags[`aggTry_${tgt.id}`];
+  if (outcome !== 'spared') s.tension = clamp(s.tension + (outcome === 'sasa' ? 6 : 1), 0, 100);
   const text = `${josa(atk.name, '이/가')} 청한 ${tgt.name}의 가죄 — ${OUTCOME_LABEL[outcome]}`;
   return { attacker: atk.id, target: tgt.id, aParts, dParts, aRoll, dRoll, aTotal, dTotal, outcome, text };
 }
@@ -204,7 +224,8 @@ export function tickCases(s: GameState) {
     const stale =
       !alive(atk) ||
       !alive(tgt) ||
-      (cs.kind === 'impeach' ? tgt.status !== 'active' || !tgt.office : tgt.status !== 'exiled');
+      // 환국 같은 다른 일로 자리를 잃으면 논핵은 거두어진다. 스스로 물러났거나 처음부터 관직이 없던 이는 끝까지 간다
+      (cs.kind === 'impeach' ? !['active', 'idle', 'retired'].includes(tgt.status) || ((tgt.status !== 'active' || !tgt.office) && !cs.resigned && !cs.offOffice) : tgt.status !== 'exiled');
     if (stale) {
       closeCase(s, cs);
       continue;
@@ -264,14 +285,15 @@ export function joinCase(s: GameState, caseId: string, side: 'pro' | 'con'): str
 /** 내가 걸린 공방에서 사직하고 물러난다 */
 export function withdraw(s: GameState, cs: Case) {
   const p = P(s);
-  closeCase(s, cs);
+  // 물러난다고 논핵이 끝나지는 않는다. 다만 스스로 물러난 점이 판정에 참작된다
+  cs.resigned = true;
   vacate(s, p, 'retired');
   p.prestige = clamp(p.prestige + 1, 0, 100);
   p.favor = clamp(p.favor - 3, -100, 100);
   // 스스로 물러나도 탄핵을 시인한 셈이다: 반년 동안 서용되지 않는다
   p.banUntil = Math.max(p.banUntil ?? 0, s.t + 6);
   s.player.deeds.push(`${shortDate(s.t)} 탄핵을 받고 사직`);
-  log(s, `${josa(p.name, '이/가')} ${s.chars[cs.attacker].name}의 논핵을 받고 스스로 물러났다.`, 'player');
+  log(s, `${josa(p.name, '이/가')} ${s.chars[cs.attacker].name}의 논핵을 받고 스스로 물러났다. 그러나 대간은 논핵을 거두지 않았다.`, 'player');
 }
 
 /* ───────── 삼사 합계 ───────── */
@@ -351,14 +373,25 @@ function npcCounter(s: GameState, cs: Case) {
 /** 판정을 앞두고 형세가 크게 기울면 NPC 대신은 스스로 물러난다(인피) */
 function stepDown(s: GameState, cs: Case): boolean {
   const tgt = s.chars[cs.target];
-  if (isP(s, tgt) || tgt.rank > 3 || cs.kind !== 'impeach') return false;
+  // 이미 물러난 이(다시 열린 논핵)는 또 물러날 자리가 없다
+  if (isP(s, tgt) || tgt.rank > 3 || cs.kind !== 'impeach' || cs.resigned || !tgt.office) return false;
   const atk = s.chars[cs.attacker];
   const edge = atk.politics + prosPart(cs.pros.length, tgt).value - (tgt.politics + Math.min(SIDE_CAP, cs.cons.length) + (tgt.favor >= 50 ? 2 : 0));
   if (edge < 3 || !chance(s, tgt.traits.includes('upright') || tgt.traits.includes('mild') ? 0.6 : 0.35)) return false;
+  const title = officeTitle(tgt);
   vacate(s, tgt);
   tgt.prestige = clamp(tgt.prestige + 1, 0, 100);
-  log(s, `${officeTitle(tgt)}였던 ${josa(tgt.name, '이/가')} 논핵의 형세를 보고 스스로 사직하고 물러났다(인피).`, sideOf(cs, P(s).id) ? 'player' : 'court');
-  if (sideOf(cs, P(s).id)) notice(s, '인피 사직', `${josa(tgt.name, '이/가')} 판정을 기다리지 않고 스스로 물러났다. 논핵은 그것으로 끝났다.`, 'court');
+  // 정승이나 원수처럼 여기는 이는 물러나도 놓아주지 않는다: 삭탈관직과 유배를 다시 청한다
+  const chase = tgt.rank <= 1 || atk.grudges.includes(tgt.id);
+  const mine = !!sideOf(cs, P(s).id);
+  log(s, `${title}였던 ${josa(tgt.name, '이/가')} 논핵의 형세를 보고 스스로 사직하고 물러났다(인피).${chase ? ' 그러나 대간은 「물러난 것으로 죄가 덮이지 않는다」며 논핵을 이어 갔다.' : ''}`, mine ? 'player' : 'court');
+  if (chase) {
+    const c2 = openCase(s, atk, tgt, { pros: cs.pros, bonus: (cs.bonus ?? 0) - 1 });
+    if (c2) {
+      c2.resigned = true;
+      c2.cons = cs.cons.filter((id) => id !== atk.id);
+    }
+  } else if (mine) notice(s, '인피 사직', `${josa(tgt.name, '이/가')} 판정을 기다리지 않고 스스로 물러났다. 논핵은 그것으로 끝났다.`, 'court');
   return true;
 }
 

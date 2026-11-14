@@ -3,10 +3,10 @@ import type { EventDef } from './events/types';
 import { FACTION_META, REGION_META } from './data/meta';
 import { formatDate, shortDate, yearOf } from './calendar';
 import { randInt } from './rng';
-import { age, clamp, josa, log, P, uid } from './state';
+import { age, clamp, josa, log, P, uid, pushEvent } from './state';
 import { addMod } from './opinion';
 import { genChar, genName } from './generate';
-import { ANCESTOR_WEIGHT, ownScore } from './ending';
+import { ANCESTOR_WEIGHT, ownScore, PATH_DESC, PATH_NAME } from './ending';
 
 /* ───────── 가문 계승 ─────────
  * 플레이어가 1821년 전에 죽으면 맏아들이 가문을 잇는다. 맏아들은 음서로 나서며, 과거에 급제해야 굴레를 벗는다.
@@ -126,6 +126,23 @@ function takeOver(s: GameState, heirId: string, cause: string) {
 }
 
 export const SUCCESSION_EVENTS: Record<string, EventDef> = {
+  house_path: {
+    build(s) {
+      const p = P(s);
+      const anc = s.player.lineage[s.player.lineage.length - 1];
+      return {
+        title: '가문의 길',
+        kind: 'personal',
+        text: `${anc ? `상복을 입은 ${josa(p.name, '이/가')}` : josa(p.name, '이/가')} 사랑방에 앉아 앞날을 헤아린다. ${anc?.peakOffice ? `선친은 ${anc.peakOffice}까지 올랐다. 같은 길을 걸을 것인가, 다른 길로 가문을 세울 것인가.` : '어떤 길로 가문을 세울 것인가.'}\n\n고른 길을 얼마나 이루었는지가 결말 점수에 「가문의 뜻」으로 더해진다. 길은 이 대에만 해당하고, 다음 대가 다시 고른다.`,
+        choices: (['office', 'sallim', 'wealth'] as const).map((k) => ({ key: k, label: `${josa(PATH_NAME[k], '을/를')} 걷는다`, hint: PATH_DESC[k] })),
+      };
+    },
+    resolve(s, _c, key) {
+      s.player.path = key as 'office' | 'sallim' | 'wealth';
+      s.player.deeds.push(`${shortDate(s.t)} ${josa(PATH_NAME[s.player.path], '을/를')} 가문의 길로 삼다`);
+      return `${josa(PATH_NAME[s.player.path], '을/를')} 가문의 길로 삼았다.`;
+    },
+  },
   succession: {
     build(s, c) {
       const f = P(s);
@@ -157,6 +174,7 @@ export const SUCCESSION_EVENTS: Record<string, EventDef> = {
         return;
       }
       takeOver(s, c.heir, cause);
+      pushEvent(s, 'house_path', {});
       return `${josa(P(s).name, '이/가')} 가문을 이었다. 상을 마치면 「상경」으로 벼슬길에 나서라.`;
     },
   },

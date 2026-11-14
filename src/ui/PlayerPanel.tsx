@@ -1,7 +1,9 @@
+import { PATH_DESC, PATH_NAME, pathBonus } from '../engine/ending';
+import { AUTO_NAMES } from '../engine/turn';
 import { useState, type ReactNode } from 'react';
 import { MemorialComposer } from './Composer';
 import { useG } from './ctx';
-import { P, officeTitle, statusLabel } from '../engine/state';
+import { josa, P, officeTitle, statusLabel } from '../engine/state';
 import { FACTION_META, REGION_META, SCHOOL_META, TRAIT_META } from '../engine/data/meta';
 import {
   MAX_SWITCHES,
@@ -170,6 +172,11 @@ export function PlayerPanel() {
           <div className="muted small">아직 세운 뜻이 없다.</div>
         )}
         {pl.goalsDone.length > 0 && <div className="small good-text">이룬 뜻 {pl.goalsDone.length}: {pl.goalsDone.join(' · ')}</div>}
+        {pl.path && (
+          <div className="small" title={PATH_DESC[pl.path]}>
+            가문의 길 <b>{PATH_NAME[pl.path]}</b> <span className="muted">· 지금 이룬 몫 +{pathBonus(s)}</span>
+          </div>
+        )}
       </section>
 
       {myCases.length > 0 && (
@@ -378,6 +385,29 @@ export function PlayerPanel() {
             );
           })}
         </div>
+        {pl.auto && Object.keys(pl.auto).length > 0 && (
+          <div className="auto-list">
+            <div className="sub-h">알아서 처리하는 일</div>
+            {Object.entries(pl.auto).map(([def, key]) => (
+              <div key={def} className="small">
+                {AUTO_NAMES[def] ?? def} <span className="muted">— {pl.autoLabel?.[def] ?? key}</span>{' '}
+                <button
+                  className="mini"
+                  onClick={() =>
+                    act((g) => {
+                      const a = { ...(g.player.auto ?? {}) };
+                      delete a[def];
+                      g.player.auto = a;
+                      return `${josa(AUTO_NAMES[def] ?? def, '은/는')} 다시 직접 정한다.`;
+                    })
+                  }
+                >
+                  해제
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </Fold>
 
       <Fold id="deeds" title="행장(行狀)" className="deeds">

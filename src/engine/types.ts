@@ -74,6 +74,8 @@ export interface Character {
   /** 마지막으로 품계가 오른 시점. 승진 간격을 제한한다. */
   promotedAt: number;
   tenure: number;
+  /** 2품 이상(판서급) 자리에 있은 달 수: 정승 임용에서 대신의 경력으로 친다 */
+  seniority?: number;
   learning: number;
   politics: number;
   vigor: number;
@@ -182,6 +184,10 @@ export interface Case {
   id: string;
   /** impeach: 관직에 있는 이를 논핵, aggravate: 유배 중인 이에게 죄를 더하자는 논의 */
   kind: 'impeach' | 'aggravate';
+  /** 대상이 스스로 물러났다 (논핵은 이어지되 판정에 참작) */
+  resigned?: boolean;
+  /** 처음부터 관직이 없던 이를 논핵했다 */
+  offOffice?: boolean;
   attacker: string;
   target: string;
   opened: number;
@@ -242,6 +248,18 @@ export interface Focus {
 
 export interface PlayerState {
   charId: string;
+  /** 알아서 처리하는 일: 이벤트 종류 → 고를 선택지 */
+  auto?: Record<string, string>;
+  /** 알아서 처리할 때 고르는 선택지의 이름 (화면 표시용) */
+  autoLabel?: Record<string, string>;
+  /** 이 대가 걷는 가문의 길: 벼슬길·산림·가세 */
+  path?: 'office' | 'sallim' | 'wealth';
+  /** 숙적: 플레이어를 노리는 다른 당의 인물 */
+  rival?: string;
+  /** 이 판에서 이룬 업적 */
+  achv?: string[];
+  /** 수령으로 있는 고을의 원성 */
+  county?: { region: RegionId; harm: number; good: number; since: number };
   focus: Focus | null;
   cooldowns: Record<string, number>;
   exp: { learning: number; politics: number };

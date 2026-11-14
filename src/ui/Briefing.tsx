@@ -8,6 +8,10 @@ import { lineLabel, lineOf } from '../engine/party';
 import { knowsWant, wantName, WANT_META } from '../engine/relations';
 import { SIT_META, sitLine } from '../engine/situations';
 import { CharLink } from './common';
+import { liveOmens, nudgeError, nudgeOmen } from '../engine/later';
+import { rivalOf } from '../engine/rival';
+import { harmLabel } from '../engine/county';
+import { opinion } from '../engine/opinion';
 
 export function Briefing() {
   const { s, act } = useG();
@@ -19,6 +23,8 @@ export function Briefing() {
     .filter((c) => c.id !== p.id && knowsWant(s, c) && c.status !== 'exiled')
     .slice(0, 6);
   const susp = Math.round(s.player.suspicion);
+  const omens = liveOmens(s);
+  const rival = rivalOf(s);
 
   return (
     <section className="cp-sec brief">
@@ -47,6 +53,42 @@ export function Briefing() {
             </span>
           </li>
         ))}
+        {s.player.county && (
+          <li className={s.player.county.harm >= 30 ? 'bad' : s.player.county.harm >= 20 ? 'warn' : ''} title="환곡·군정·전정을 어떻게 다루었는지가 쌓인다. 30을 넘으면 백성이 관아로 몰려올 수 있다.">
+            <span className="b-k">고을</span>
+            <span>
+              원성 {Math.round(s.player.county.harm)} ({harmLabel(s.player.county.harm)})
+              {s.player.county.harm >= 30 && <span className="muted small"> — 백성이 관아로 몰려올 수 있다</span>}
+            </span>
+          </li>
+        )}
+        {rival && (
+          <li className="bad">
+            <span className="b-k">숙적</span>
+            <span>
+              <CharLink id={rival.id} /> ({FACTION_META[rival.faction].name}, {officeTitle(rival)}) · 나를 보는 마음 {Math.round(opinion(s, rival, p))}
+              <span className="muted small"> — 뒤를 캐고 비방하고 논핵을 꾸민다. 그가 몰락하거나 죽어야 끝난다.</span>
+            </span>
+          </li>
+        )}
+        {omens.map((w) => {
+          const err = nudgeError(s, w.id);
+          const n = Number(s.flags[`nudge_${w.id}`] ?? 0);
+          return (
+            <li key={w.id} className="warn" title={w.cancellable ? '거듭 누르면 끝내 일어나지 않을 수도 있다' : '늦출 수는 있어도 막을 수는 없다'}>
+              <span className="b-k">조짐</span>
+              <span>
+                {w.label}의 기운{n ? <span className="muted small"> (지금까지 {n > 0 ? `부추김 ${n}` : `누름 ${-n}`})</span> : null}{' '}
+                <button className="mini" disabled={!!err} title={err ?? '앞당긴다. 긴장 +2, 노려지는 당의 원망'} onClick={() => act((g) => nudgeOmen(g, w.id, 1))}>
+                  부추긴다 ●
+                </button>{' '}
+                <button className="mini" disabled={!!err} title={err ?? '늦춘다. 긴장 -1, 명망·성심 +1'} onClick={() => act((g) => nudgeOmen(g, w.id, -1))}>
+                  누른다 ●
+                </button>
+              </span>
+            </li>
+          );
+        })}
         {susp > 0 && (
           <li className={susp >= 45 ? 'bad' : susp >= 25 ? 'warn' : ''}>
             <span className="b-k">내통 의심</span>

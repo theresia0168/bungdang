@@ -485,6 +485,14 @@ function horan(s: GameState, which: 'jeongmyo' | 'byeongja') {
     }
   }
   if (alive(p) && inCourt(p)) notice(s, which === 'jeongmyo' ? '정묘호란' : '병자호란', `${held ? '북방의 성들이 버텼다.' : '도성이 위태롭다.'} (${dice})\n\n평안·황해·경기·도성의 성곽과 진보, 조련이 다음 호란의 향방을 가른다.`, 'war');
+  if (!held && alive(p) && p.status !== 'exiled') pushEvent(s, 'horan_flight', { which });
+}
+
+/** 남한산성에서 고른 자리가 전란 뒤까지 따라온다 */
+function horanAfter(s: GameState) {
+  const p = P(s);
+  if (!alive(p) || p.status === 'exiled') return;
+  pushEvent(s, 'horan_sokhwan', {});
 }
 
 /* ───────── 민란 ───────── */
@@ -497,6 +505,10 @@ function rebellion(s: GameState, regions: RegionId[], name: string, months: numb
   s.flags.horanEnd = s.t + (quick ? 1 : months);
   for (const r of regions) s.regions[r].minsim = clamp(s.regions[r].minsim - 15, 0, 100);
   log(s, `[민란] ${name}이 일어났다.${quick ? ' 관군이 곧바로 진압에 나섰다.' : ' 관군이 쉽게 누르지 못한다.'}`, 'war');
+  // 플레이어가 다스리는 고을이 난리 한가운데 있으면
+  const p = P(s);
+  if (alive(p) && p.status === 'active' && regions.includes(p.location as RegionId) && (p.office === 'suryeong' || p.office?.startsWith('gamsa_')))
+    pushEvent(s, 'rebel_local', { name, quick });
 }
 
 function tickLaterWar(s: GameState) {
@@ -551,16 +563,23 @@ const windowed = (
     omenAtStart?: boolean;
     /** 이 사건에 쫓겨날 당. 조짐이 보일 때 그 당의 플레이어가 대비할 수 있다 */
     warn?: FactionId[];
+    /** 조짐 목록에 보일 이름 */
+    label?: string;
+    /** 거듭 누르면 끝내 일어나지 않을 수 있는가 (뒤의 역사가 기대는 사건은 늦출 수만 있다) */
+    cancellable?: boolean;
   },
 ): Scheduled => {
   const t1 = tOf(to[0], to[1]);
+  if (o.label) WINDOWS.push({ id, label: o.label, t1, warn: o.warn, cancellable: !!o.cancellable });
   return {
     id,
     at: from,
     window: t1 - tOf(from[0], from[1]),
     cond: (s) => {
       if (o.pre && !o.pre(s)) return false;
-      const r = clamp(o.ripe(s), 0, 0.5);
+      // 플레이어가 부추기면 일찍, 누르면 늦게 무르익는다
+      const nudge = Number(s.flags[`nudge_${id}`] ?? 0);
+      const r = clamp(o.ripe(s) + nudge * 0.03, 0, 0.5);
       if (o.omen) {
         const key = `omen_${id}`;
         if (typeof s.flags[key] !== 'number') {
@@ -578,9 +597,69 @@ const windowed = (
       }
       return s.t >= t1 || chance(s, r);
     },
-    run: (s) => o.run(s, s.t >= t1),
+    run: (s) => {
+      const nudge = Number(s.flags[`nudge_${id}`] ?? 0);
+      if (s.t >= t1 && o.cancellable && nudge <= -2) {
+        s.flags[`skip_${id}`] = true;
+        log(s, `[조짐] ${o.label ?? '그 일'}의 기운이 끝내 가라앉았다. 조정을 달래는 말들이 쌓여 판이 뒤집히지 않았다.`, 'history');
+        return;
+      }
+      o.run(s, s.t >= t1);
+    },
   };
 };
+
+/** 조짐이 보이는 시간 창 사건들 (플레이어가 부추기거나 누를 수 있다) */
+export interface OmenWindow {
+  id: string;
+  label: string;
+  t1: number;
+  warn?: FactionId[];
+  cancellable: boolean;
+}
+export const WINDOWS: OmenWindow[] = [];
+
+/** 지금 조짐이 보이는(아직 터지지 않은) 사건들 */
+export function liveOmens(s: GameState): OmenWindow[] {
+  return WINDOWS.filter((w) => typeof s.flags[`omen_${w.id}`] === 'number' && !s.flags[`h_${w.id}`] && s.t <= w.t1);
+}
+
+export function nudgeError(s: GameState, id: string): string | null {
+  const p = P(s);
+  if (!alive(p) || p.status === 'exiled') return '움직일 수 없다';
+  if (!inCourt(p) || p.rank > 5) return '조정에 있는 5품 이상이어야 한다';
+  if (s.player.ap < 1) return '행동력이 부족하다';
+  const last = s.flags[`nudgeAt_${id}`];
+  if (typeof last === 'number' && s.t - last < 6) return `${6 - (s.t - last)}달 뒤에 다시 움직일 수 있다`;
+  return null;
+}
+
+/** 조짐을 부추기거나(dir 1) 누른다(dir -1) */
+export function nudgeOmen(s: GameState, id: string, dir: 1 | -1): string {
+  const w = WINDOWS.find((x) => x.id === id);
+  if (!w) return '';
+  const err = nudgeError(s, id);
+  if (err) return err;
+  const p = P(s);
+  s.player.ap -= 1;
+  s.flags[`nudgeAt_${id}`] = s.t;
+  s.flags[`nudge_${id}`] = Number(s.flags[`nudge_${id}`] ?? 0) + dir;
+  const mine = p.faction !== 'none' && !!w.warn?.includes(p.faction);
+  if (dir > 0) {
+    s.tension = clamp(s.tension + 2, 0, 100);
+    if (p.faction !== 'none') {
+      if (mine) swayFaction(s, p.faction, p.id, -6, '당을 위태롭게 함', 0.1);
+      else swayFaction(s, p.faction, p.id, 3, '판을 흔듦', 0.1);
+    }
+    for (const f of w.warn ?? []) if (f !== p.faction && s.factions[f]?.active) swayFaction(s, f, p.id, -4, '우리를 노림', 0.1);
+    return `${w.label}의 불씨에 바람을 넣었다. 상소와 사랑방의 말이 거세진다. (긴장 +2)`;
+  }
+  s.tension = clamp(s.tension - 1, 0, 100);
+  pres(p, 1);
+  fav(p, 1);
+  for (const f of w.warn ?? []) if (s.factions[f]?.active) swayFaction(s, f, p.id, 3, '판을 지켜 줌', 0.1);
+  return `${w.label}의 기운을 누르려 양쪽을 달래는 글을 올렸다.${w.cancellable ? ' 거듭 누르면 끝내 일어나지 않을 수도 있다.' : ' 늦출 수는 있어도 막을 수는 없는 흐름이다.'} (긴장 -1, 명망 +1, 성심 +1)`;
+}
 /** 환국의 조짐: 쫓겨날 당의 플레이어가 조정에 있으면 대비할 길을 고른다 */
 function warnPlayer(s: GameState, text: string, fs: FactionId[]) {
   const p = P(s);
@@ -608,6 +687,8 @@ export const LATER_SCHEDULE: Scheduled[] = [
   { id: 'l_daedong_gg', at: at(1608, 5), run: L('이원익의 건의로 경기도에 선혜법(대동법)을 시험 삼아 시행했다.') },
   { id: 'l_giyu', at: at(1609, 6), run: L('일본과 기유약조를 맺어 국교를 다시 열었다.') },
   windowed('l_gyechuk', [1612, 6], [1614, 12], {
+    label: '계축옥사',
+    cancellable: true,
     omen: { text: () => '문경 새재에서 은상을 턴 강도들이 붙잡혔다. 서얼 출신 명문가 자제들이라 국문이 길어지고, 대북이 그 배후를 캐려 한다는 말이 돈다.' },
     pre: (s) => s.factions.buk.active && kingNameNow(s) !== '인조',
     // 대북이 조정을 쥘수록, 긴장이 높을수록 일찍 터진다
@@ -648,6 +729,8 @@ export const LATER_SCHEDULE: Scheduled[] = [
   { id: 'l_sohyeon', at: at(1645, 4), run: Ldyn((s) => `${s.flags.samjeondo ? '볼모에서 돌아온 ' : ''}소현세자가 갑자기 세상을 떠났다. 독살이라는 소문이 돈다.`, (s) => (startGukbon(s, 'wonson'), shakeLegit(s, -3, '세자가 의문의 죽음을 맞았다'))) },
   { id: 'l_hyojong', at: at(1649, 5), run: (s) => (s.flags.wonsonKept ? crownAlt(s, '경선군', 'gyeongseon', s.t + randInt(s, 24, 72)) : crown(s, '효종', s.flags.samjeondo ? {} : { text: '봉림대군이 즉위했다(효종). 호란을 막아 낸 나라의 임금답게 굳센 기상으로 북방의 방비를 다진다.' })) },
   windowed('l_bukbeol', [1650, 1], [1656, 12], {
+    label: '북벌 논의',
+    cancellable: true,
     pre: (s) => kingNameNow(s) === '효종' && !!s.flags.samjeondo,
     // 정통성이 흔들릴수록 명분이 급하다
     ripe: (s) => 0.03 + (legitOf(s).score < 50 ? 0.05 : 0),
@@ -666,6 +749,8 @@ export const LATER_SCHEDULE: Scheduled[] = [
   { id: 'l_sukjong', at: at(1674, 9), run: (s) => crown(s, '숙종') },
   // 경신환국: 남인이 조정을 오래 쥐고 왕의 마음이 식을수록 일찍 터진다
   windowed('l_gyeongsin', [1678, 1], [1684, 12], {
+    label: '경신환국',
+    cancellable: true,
     warn: ['nam'],
     omen: { text: (s) => (figure(s, 'heo_jeok') ? `${josa(figure(s, 'heo_jeok')!.name, '이/가')} 집안 잔치에 궁중의 유악(油幄)을 허락 없이 가져다 썼다는 말에 왕의 낯빛이 굳었다. 남인의 독주를 못마땅해하는 기색이 역력하다.` : '남인 대신들이 군권까지 쥐려 한다는 말에 왕의 낯빛이 굳었다. 남인의 독주를 못마땅해하는 기색이 역력하다.') },
     pre: (s) => kingNameNow(s) === '숙종' && s.factions.nam.active,
@@ -685,6 +770,7 @@ export const LATER_SCHEDULE: Scheduled[] = [
   }),
   // 서인의 분당: 남인을 얼마나 엄히 다스릴지를 두고 다투다 갈라선다. 긴장이 높고 서인이 조정을 쥘수록 빠르다
   windowed('l_seo_split', [1681, 1], [1688, 6], {
+    label: '서인의 분당',
     omen: { text: (s) => `남인을 얼마나 엄히 다스릴지를 두고 서인의 노장과 소장이 얼굴을 붉히는 일이 잦다. ${figure(s, 'song_siyeol') && figure(s, 'yun_jeung') ? '송시열과 제자 윤증 사이에 오가는 편지에 금이 간다.' : '스승과 제자 사이에도 금이 간다.'}` },
     pre: (s) => s.factions.seo.active && !!s.flags.h_l_gyeongsin,
     ripe: (s) => 0.015 + (shareOf(s, 'seo') >= 0.5 ? 0.02 : 0) + s.tension / 2500,
@@ -692,6 +778,8 @@ export const LATER_SCHEDULE: Scheduled[] = [
   }),
   // 기사환국: 원자 정호를 두고 왕의 마음이 남인 쪽으로 기울수록 일찍 터진다
   windowed('l_gisa', [1688, 12], [1691, 12], {
+    label: '기사환국',
+    cancellable: true,
     warn: ['seo', 'noron', 'soron'],
     omen: { at: 0.05, text: () => '희빈 장씨의 아들을 원자로 정한 일을 두고 서인 원로들이 거듭 상소한다. 왕이 노기를 감추지 않는다.' },
     pre: (s) => kingNameNow(s) === '숙종' && shareOf(s, 'seoRoot') > 0,
@@ -712,6 +800,8 @@ export const LATER_SCHEDULE: Scheduled[] = [
   }),
   // 갑술환국: 기사환국 뒤 남인의 독주에 왕이 싫증을 낼수록 일찍 터진다
   windowed('l_gapsul', [1693, 6], [1697, 12], {
+    label: '갑술환국',
+    cancellable: true,
     warn: ['nam'],
     omen: { text: () => '왕이 폐비 민씨를 내친 일을 뉘우친다는 말이 궁중에서 흘러나온다. 남인은 폐비 복위를 꾀하는 서인을 옥사로 엮으려 서두른다.' },
     pre: (s) => kingNameNow(s) === '숙종' && happened(s, 'l_gisa') && s.factions.nam.active,
@@ -754,6 +844,8 @@ export const LATER_SCHEDULE: Scheduled[] = [
   { id: 'l_milpung_end', at: at(1728, 3), cond: (s) => s.flags.altKind === 'milpung', run: (s) => milpungEnd(s) },
   // 을사환국: 영조 즉위 뒤 소론이 조정을 쥐고 있을수록 일찍 터진다
   windowed('l_eulsa', [1724, 10], [1726, 12], {
+    label: '을사환국',
+    cancellable: true,
     warn: ['soron'],
     omen: { at: 0.05, text: () => '즉위한 영조가 경종 때 노론을 친 소론 강경파를 보는 눈길이 차갑다. 「신임년의 일을 바로잡아야 한다」는 노론의 상소가 잇따른다.' },
     pre: (s) => kingNameNow(s) === '영조' && s.factions.soron.active,
@@ -772,6 +864,7 @@ export const LATER_SCHEDULE: Scheduled[] = [
   },
   // 탕평비: 붕당의 다툼이 거셀수록(긴장이 높을수록) 왕이 서둘러 세운다
   windowed('l_tangpyeongbi', [1740, 1], [1744, 12], {
+    label: '탕평비',
     pre: (s) => kingNameNow(s) === '영조',
     ripe: (s) => 0.03 + (s.tension >= 50 ? 0.04 : 0) + (s.tension >= 70 ? 0.04 : 0),
     omen: { at: 0.03, text: () => '노론과 소론이 신임년의 의리를 두고 다시 상소를 주고받는다. 왕이 「이 싸움을 끝내야 한다」며 손수 글을 짓는다는 말이 돈다.' },
@@ -785,6 +878,7 @@ export const LATER_SCHEDULE: Scheduled[] = [
   }),
   // 균역법: 군포 두 필을 견디지 못한 백성의 도망과 인징·족징이 쌓일수록 일찍 논의된다
   windowed('l_gyunyeok', [1749, 1], [1751, 6], {
+    label: '균역 논의',
     pre: (s) => kingNameNow(s) === '영조' && !s.laws.gyunyeok?.on,
     ripe: (s) => 0.04 + (avgMinsim(s) < 60 ? 0.04 : 0) + (avgMinsim(s) < 50 ? 0.04 : 0),
     omenAtStart: true,
@@ -838,6 +932,7 @@ export const LATER_SCHEDULE: Scheduled[] = [
   { id: 'l_seoeol_gyujang', at: at(1779, 3), run: (s) => (log(s, '정조가 박제가·유득공 등 서얼 출신을 규장각 검서관으로 썼다.', 'history'), setLaw(s, 'seoeol', true)) },
   // 신해통공: 시전 상인의 금난전권에 도성의 물가가 치솟고 영세 상인의 원성이 높을수록 일찍 논의된다
   windowed('l_tongong', [1790, 6], [1791, 12], {
+    label: '통공 논의',
     pre: (s) => kingNameNow(s) === '정조' && !s.laws.tongong?.on,
     ripe: (s) => 0.05 + (s.regions.hanseong.minsim < 60 ? 0.05 : 0),
     omenAtStart: true,
@@ -1176,6 +1271,7 @@ LATER_SCHEDULE.push(playerAt('later_bukhak', 1778, 9, (s) => inCourt(P(s)) && P(
 /* ───────── 병자호란에 진 뒤: 삼학사, 환향녀, 김상헌 압송 ───────── */
 const lostByeongja = (s: GameState) => s.flags.byeongjaHeld === false;
 LATER_SCHEDULE.push(
+  { id: 'l_sokhwan', at: at(1637, 6), cond: lostByeongja, run: horanAfter },
   { id: 'l_samhaksa', at: at(1637, 4), cond: lostByeongja, run: L('척화를 끝까지 주장한 홍익한·윤집·오달제가 심양으로 끌려가 죽었다. 사람들이 그들을 삼학사(三學士)라 부르며 기린다.', (s) => (s.tension = clamp(s.tension + 3, 0, 100))) },
   playerAt('later_hwanghyang', 1638, 3, (s) => lostByeongja(s) && inCourt(P(s)), '청에 끌려갔다 돌아온 부녀자들의 이혼 문제로 조정이 시끄러웠다. 왕은 이혼을 허락하지 않았다.'),
   { id: 'l_sangheon', at: at(1640, 11), cond: lostByeongja, run: (s) => {
@@ -1310,6 +1406,8 @@ LATER_SCHEDULE.push(
   },
   // 정미환국: 을사환국 뒤 노론의 보복이 거셀수록(노론이 조정을 쥘수록) 일찍 터진다. 무신년(1728) 봄 전에 끝난다
   windowed('l_jeongmi', [1726, 6], [1728, 1], {
+    label: '정미환국',
+    cancellable: true,
     warn: ['noron'],
     omen: { text: () => '다시 조정을 쥔 노론이 신임옥사의 보복을 그치지 않는다. 탕평을 내세운 왕이 혀를 찬다.' },
     pre: (s) => s.factions.noron.active && s.factions.soron.active && kingNameNow(s) === '영조' && typeof s.flags.eulsaAt === 'number' && s.t - (s.flags.eulsaAt as number) >= 8,
@@ -1481,6 +1579,229 @@ export const LATER_EVENTS: Record<string, EventDef> = {
       const p = P(s);
       p.faction = key as FactionId;
       return `${FACTION_META[p.faction].name}에 섰다.`;
+    },
+  },
+  horan_flight: {
+    build(s, c) {
+      const p = P(s);
+      const jm = c.which === 'jeongmyo';
+      const court = inCourt(p) && p.status === 'active';
+      return {
+        title: jm ? '정묘년의 피란' : '병자년 겨울',
+        kind: 'war',
+        text: jm
+          ? `후금의 기병이 평양을 지나 내려온다. 왕이 강화도로 피란하고, 세자는 전주로 내려가 분조를 이끈다. ${court ? '조정의 신하들은 저마다 갈 곳을 정해야 한다.' : '고향에서도 피란 보따리를 싸는 소리가 들린다.'}`
+          : `청군의 선봉이 엿새 만에 한성 서쪽에 닿았다. 강화도로 가는 길이 끊겨 왕이 남한산성으로 들어간다. 빈궁과 대군들, 종묘의 신주는 먼저 강화도로 떠났다. 강화도는 「물길이 막아 주니 안전하다」며 검찰사 김경징이 술판을 벌인다는 말이 들린다. ${court ? '' : '고향의 선비들 사이에서는 창의(倡義)하자는 말이 나온다.'}`,
+        choices: [
+          {
+            key: 'follow',
+            label: jm ? '어가를 따라 강화도로 간다' : '어가를 따라 남한산성으로 들어간다',
+            hint: jm ? '성심 +4, 명망 +1' : '성심 +5. 성 안에서 척화와 주화 가운데 서게 된다',
+            disabled: court ? undefined : '조정에 있어야 한다',
+          },
+          ...(jm
+            ? []
+            : [{ key: 'ganghwa', label: '빈궁과 대군을 모시고 강화도로 간다', hint: '강화도가 지켜지면(40%) 성심 +6·명망 +3. 함락되면 마지막 길을 골라야 한다' }]),
+          { key: 'uibyeong', label: '고향에서 의병을 모은다', hint: '재산 −20, 정치력으로 판정(무략이 있으면 유리): 되면 명망 +5·이 도 민심 +4, 안 되면 명망 −1. 병을 얻을 수 있다' },
+          { key: 'hide', label: '가족을 데리고 산속으로 피한다', hint: `명망 −3${court ? ', 성심 −4 (난리 때 임금을 버렸다는 말을 듣는다)' : ''}` },
+        ],
+      };
+    },
+    resolve(s, c, key) {
+      const p = P(s);
+      const jm = c.which === 'jeongmyo';
+      const court = inCourt(p) && p.status === 'active';
+      if (key === 'follow' && court) {
+        fav(p, jm ? 4 : 5);
+        if (jm) {
+          pres(p, 1);
+          s.player.deeds.push(`${yearOf(s.t)} 정묘호란 때 강화도로 어가를 호종`);
+          return '어가를 따라 강화도로 건너갔다. (성심 +4, 명망 +1)';
+        }
+        s.player.deeds.push(`${yearOf(s.t)} 병자호란 때 남한산성으로 어가를 호종`);
+        s.flags.namhanP = true;
+        pushEvent(s, 'horan_stance', {});
+        return '어가를 따라 눈보라 속에 남한산성으로 들어갔다. 성 안의 군량은 한 달 반 치다. (성심 +5)';
+      }
+      if (key === 'ganghwa') {
+        if (chance(s, 0.4)) {
+          fav(p, 6);
+          pres(p, 3);
+          return '강화도의 물길을 지켜 빈궁과 대군을 무사히 모셨다. (성심 +6, 명망 +3)';
+        }
+        pushEvent(s, 'horan_ganghwa', {});
+        return '강화도로 건너갔다.';
+      }
+      if (key === 'uibyeong') {
+        p.wealth -= 20;
+        if (chance(s, 0.15)) s.player.sick = true;
+        const home = p.home as RegionId;
+        if (d6(s) + p.politics + (p.traits.includes('martial') ? 2 : 0) >= 6) {
+          pres(p, 5);
+          s.regions[home].minsim = clamp(s.regions[home].minsim + 4, 0, 100);
+          s.player.deeds.push(`${yearOf(s.t)} ${jm ? '정묘' : '병자'}호란 때 의병을 일으킴`);
+          return `${REGION_META[home].short}에서 의병 수백을 모아 북으로 올라갔다. 싸움은 짧았지만 이름이 났다. (재산 −20, 명망 +5)`;
+        }
+        pres(p, -1);
+        return '의병을 모았으나 오합지졸이었다. 길에서 강화 소식을 듣고 흩어졌다. (재산 −20, 명망 −1)';
+      }
+      pres(p, -3);
+      if (court) fav(p, -4);
+      return `가족을 데리고 산속으로 들어갔다.${court ? ' 난리 때 임금을 버렸다는 말이 돈다. (명망 −3, 성심 −4)' : ' (명망 −3)'}`;
+    },
+  },
+  rebel_local: {
+    build(s, c) {
+      const p = P(s);
+      const where = REGION_META[p.location as RegionId].short;
+      return {
+        title: `${c.name} — 내 고을`,
+        kind: 'danger',
+        text: `${c.name}의 무리가 ${where}의 고을들을 차례로 떨어뜨리고 있다. 이웃 고을의 수령은 인부(印符)를 버리고 달아났고, 어떤 고을의 좌수와 아전들은 문을 열어 무리를 맞았다는 말이 들린다. 성 안의 군사는 수백이 안 된다.${c.quick ? ' 감영의 군사가 곧 온다고는 한다.' : ''}`,
+        choices: [
+          { key: 'hold', label: '성문을 닫고 지킨다', hint: '정치력·무략으로 판정. 되면 명망 +5·성심 +4, 안 되면 성이 떨어져 사로잡혔다가 풀려난다(파직, 명망 −2)' },
+          { key: 'flee', label: '인부를 챙겨 감영으로 물러난다', hint: '파직, 한 해 서용 금지, 명망 −6. 절반의 확률로 유배' },
+          { key: 'talk', label: '무리의 우두머리에게 사람을 보내 고을만은 비켜 가 달라 한다', hint: '재산 −15. 60%로 고을이 무사하다. 뒤에 「적과 내통했다」는 탄핵이 올 수 있다(드러난 흠 30%)' },
+        ],
+      };
+    },
+    resolve(s, c, key) {
+      const p = P(s);
+      if (p.status !== 'active') return '이미 고을을 떠난 뒤였다.';
+      const where = REGION_META[p.location as RegionId].short;
+      if (key === 'hold') {
+        if (d6(s) + p.politics + (p.traits.includes('martial') ? 2 : 0) + (c.quick ? 1 : 0) >= 7) {
+          pres(p, 5);
+          fav(p, 4);
+          s.player.deeds.push(`${yearOf(s.t)} ${c.name} 때 ${where}의 성을 지킴`);
+          log(s, `${c.name} 때 ${josa(p.name, '이/가')} 성문을 닫고 끝내 고을을 지켰다.`, 'player');
+          return '성 위에서 열흘을 버텼다. 무리가 물러갔다. (명망 +5, 성심 +4)';
+        }
+        vacate(s, p, 'idle');
+        pres(p, -2);
+        return '성이 떨어져 사로잡혔다가 관군이 오자 풀려났다. 성을 잃은 책임으로 파직되었다. (명망 −2)';
+      }
+      if (key === 'flee') {
+        vacate(s, p, 'idle');
+        p.banUntil = Math.max(p.banUntil ?? 0, s.t + 12);
+        pres(p, -6);
+        if (chance(s, 0.5)) {
+          exile(s, p);
+          return '성을 버리고 달아난 수령이라는 탄핵이 빗발쳐 유배되었다. (명망 −6)';
+        }
+        return '감영으로 물러났다. 성을 버렸다는 탄핵을 받고 파직되었다. (명망 −6)';
+      }
+      p.wealth -= 15;
+      if (chance(s, 0.3)) addFlaw(s, p, '적과 내통', true);
+      if (chance(s, 0.6)) return '무리가 고을을 비켜 갔다. 고을 사람들은 안도했지만 뒷말이 남는다. (재산 −15)';
+      vacate(s, p, 'idle');
+      return '보낸 사람이 돌아오지 않았다. 무리가 고을을 덮쳐 관아가 불탔고, 파직되었다. (재산 −15)';
+    },
+  },
+  horan_ganghwa: {
+    build: () => ({
+      title: '강화도 함락',
+      kind: 'danger',
+      text: '청군이 작은 배들을 엮어 갑곶 나루를 건넜다. 검찰사 김경징은 배를 타고 먼저 달아났다. 성 안은 아수라장이다. 빈궁과 대군들이 사로잡히고, 사대부 집안의 부녀자들이 바다에 몸을 던진다. 늙은 대신 김상용은 남문루에 화약을 쌓았다.',
+      choices: [
+        { key: 'die', label: '남문루에 올라 함께 순절한다', hint: '이 대가 끝난다. 명망 +15가 가문에 남고, 다음 대가 잇는다' },
+        { key: 'fight', label: '남은 군사를 모아 끝까지 맞서다 사로잡힌다', hint: '명망 +3. 심양에 끌려가 여덟 달 뒤 속환되어 돌아온다. 병을 얻을 수 있다' },
+        { key: 'run', label: '작은 배를 얻어 홀로 달아난다', hint: '살아남는다. 명망 −8, 성심 −4, 드러난 흠 「강화도에서 달아남」' },
+      ],
+    }),
+    resolve(s, _c, key) {
+      const p = P(s);
+      if (key === 'die') {
+        pres(p, 15);
+        s.player.deeds.push(`${yearOf(s.t)} 강화도가 함락되자 순절`);
+        log(s, `강화도가 함락되자 ${josa(p.name, '이/가')} 김상용과 함께 남문루에서 순절했다.`, 'player');
+        kill(s, p, '강화도에서 순절했다');
+        return '남문루에 불길이 일었다. 사람들이 그 이름을 오래 기억할 것이다.';
+      }
+      if (key === 'fight') {
+        pres(p, 3);
+        s.player.abroadUntil = s.t + 8;
+        if (chance(s, 0.3)) s.player.sick = true;
+        s.player.deeds.push(`${yearOf(s.t)} 강화도에서 맞서다 사로잡혀 심양으로 끌려감`);
+        return '마지막까지 칼을 들었으나 사로잡혔다. 심양으로 끌려가 여덟 달 뒤에 속환되어 돌아온다. (명망 +3)';
+      }
+      pres(p, -8);
+      fav(p, -4);
+      addFlaw(s, p, '강화도에서 달아남', true);
+      return '작은 배를 얻어 홀로 달아났다. 빈궁과 대군이 사로잡혔다는 소식이 뒤따라온다. (명망 −8, 성심 −4, 드러난 흠)';
+    },
+  },
+  horan_stance: {
+    build: () => ({
+      title: '남한산성 — 국서(國書)',
+      kind: 'war',
+      text: '포위된 지 한 달이 넘었다. 성 밖의 근왕병은 번번이 무너지고, 장졸들은 언 손으로 성첩을 지킨다. 최명길이 청에 보낼 항복의 국서를 지었다. 김상헌이 그것을 읽다가 찢어 버리고 통곡한다. 최명길은 찢긴 종이를 주워 모으며 「찢는 이도 있어야 하고 줍는 이도 있어야 한다」고 말한다.\n\n임금이 신하들을 둘러본다.',
+      choices: [
+        { key: 'cheok', label: '국서를 찢는 편에 선다 (척화)', hint: '명망 +6, 성심 −4. 전란 뒤 청이 척화신을 잡아가라 하면(35%) 심양에 끌려갔다가 돌아온다. 사림이 오래 기억한다' },
+        { key: 'ju', label: '국서를 줍는 편에 선다 (주화)', hint: '성심 +6, 명망 −4. 드러난 흠 「주화(主和)」 — 뒷날 사림의 공격을 받는다' },
+        { key: 'quiet', label: '눈을 감고 아무 말도 하지 않는다', hint: '명망 −1' },
+      ],
+    }),
+    resolve(s, _c, key) {
+      const p = P(s);
+      s.flags.namhanStance = key;
+      if (key === 'cheok') {
+        pres(p, 6);
+        fav(p, -4);
+        s.player.deeds.push(`${yearOf(s.t)} 남한산성에서 척화를 주장`);
+        log(s, `남한산성에서 ${josa(p.name, '이/가')} 끝까지 척화를 주장했다.`, 'player');
+        return '「차라리 성을 베개 삼아 죽을지언정 오랑캐에게 무릎 꿇을 수는 없습니다.」 (명망 +6, 성심 −4)';
+      }
+      if (key === 'ju') {
+        fav(p, 6);
+        pres(p, -4);
+        addFlaw(s, p, '주화(主和)', true);
+        s.player.deeds.push(`${yearOf(s.t)} 남한산성에서 주화를 주장`);
+        log(s, `남한산성에서 ${josa(p.name, '이/가')} 최명길과 함께 화친을 주장했다.`, 'player');
+        return '「종사가 있고서야 의리도 있습니다. 성이 무너지면 무엇으로 의리를 지키겠습니까.」 임금이 고개를 끄덕였다. (성심 +6, 명망 −4)';
+      }
+      pres(p, -1);
+      return '아무 말도 하지 않았다. (명망 −1)';
+    },
+  },
+  horan_sokhwan: {
+    build(s) {
+      const cheok = s.flags.namhanStance === 'cheok';
+      return {
+        title: '속환(贖還)',
+        kind: 'court',
+        text: `청군이 물러가면서 수십만의 백성을 끌고 갔다. 심양의 포로 시장에서는 몸값을 치르면 사람을 돌려준다. 값은 사대부 집안일수록 비싸게 부른다. 돌아온 부녀자들을 두고는 「절개를 잃었으니 이혼을 허락해 달라」는 사대부들의 상소가 올라온다.${cheok ? '\n\n청은 남한산성에서 척화를 주장한 신하들을 보내라고 요구하고 있다.' : ''}`,
+        choices: [
+          { key: 'pay', label: '사재를 털어 고을 사람들을 속환해 온다', hint: '재산 −30, 명망 +4, 고향 민심 +5' },
+          { key: 'defend', label: '「돌아온 이를 내치는 것은 두 번 죽이는 일」이라 상소한다', hint: '명망 +2, 성심 +1. 사대부 일부의 원망' },
+          { key: 'none', label: '나랏일이니 조정에 맡긴다', hint: '아무 일도 없다' },
+        ],
+      };
+    },
+    resolve(s, _c, key) {
+      const p = P(s);
+      const out: string[] = [];
+      if (key === 'pay') {
+        p.wealth -= 30;
+        pres(p, 4);
+        const home = p.home as RegionId;
+        s.regions[home].minsim = clamp(s.regions[home].minsim + 5, 0, 100);
+        s.player.deeds.push(`${yearOf(s.t)} 사재로 포로를 속환`);
+        out.push('심양에 사람을 보내 고을 사람 수십을 속환해 왔다. (재산 −30, 명망 +4)');
+      } else if (key === 'defend') {
+        pres(p, 2);
+        fav(p, 1);
+        if (p.faction !== 'none') swayFaction(s, p.faction, p.id, -2, '환향녀를 감쌈', 0.1);
+        out.push('「돌아온 이를 내치는 것은 두 번 죽이는 일입니다.」 임금이 이혼을 허락하지 않았다. (명망 +2, 성심 +1)');
+      } else out.push('조정에 맡겼다.');
+      if (s.flags.namhanStance === 'cheok' && inCourt(p) && chance(s, 0.35)) {
+        s.player.abroadUntil = s.t + 12;
+        pres(p, 4);
+        s.player.deeds.push(`${yearOf(s.t)} 척화신으로 심양에 끌려감`);
+        log(s, `청의 요구로 척화를 주장한 ${josa(p.name, '이/가')} 심양으로 끌려갔다.`, 'player');
+        out.push('청의 요구로 심양에 끌려간다. 한 해 동안 옥에 갇혔다가 돌아올 것이다. 사람들이 당신을 김상헌에 견준다. (명망 +4)');
+      }
+      return out.join(' ');
     },
   },
   later_tongsin: {
