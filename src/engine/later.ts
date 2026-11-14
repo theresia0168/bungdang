@@ -294,7 +294,7 @@ function tickAlt(s: GameState) {
   delete s.flags.altKind;
   const p = P(s);
   if (kind === 'gyeongseon') {
-    crown(s, '효종', { text: `병약하던 ${josa(k.name, '이/가')} 후사 없이 승하하여 숙부 봉림대군이 대통을 이었다(효종, 방계 계승). 청에 볼모로 있던 한을 품고 북벌을 꿈꾼다.` });
+    crown(s, '효종', { text: `병약하던 ${josa(k.name, '이/가')} 후사 없이 승하하여 숙부 봉림대군이 대통을 이었다(효종, 방계 계승). ${s.flags.samjeondo ? '청에 볼모로 있던 한을 품고 북벌을 꿈꾼다.' : '굳센 기상으로 북방의 방비를 다진다.'}` });
     if (s.flags.wonsonSide === 'b' && alive(p)) {
       fav(p, -10);
       notice(s, '숙부의 기억', '효종이 즉위하며 원손을 세우자 했던 당신을 차갑게 본다. (성심 -10)', 'danger');
@@ -434,9 +434,12 @@ function splitSeo(s: GameState) {
 function hwangukTop(s: GameState, top: 'seo' | 'dong' | FactionId) {
   // 서인·동인 같은 뿌리를 부르면 갈라진 당들을 모두, 노론·소론처럼 콕 집으면 그 당만 친다
   const broad = top === 'seo' || top === 'dong';
-  for (const f of activeFactions(s)) {
-    if (broad ? topOf(f) !== topOf(top as FactionId) : f !== top) continue;
-    hwanguk(s, f, true);
+  const hit = activeFactions(s).filter((f) => (broad ? topOf(f) === topOf(top as FactionId) : f === top));
+  // 서인처럼 갈라진 당을 통째로 칠 때는 한 번의 환국으로 적는다
+  const names: string[] = [];
+  for (const f of hit) names.push(...hwanguk(s, f, true, hit.length > 1));
+  if (hit.length > 1) log(s, `[환국] 왕이 ${FACTION_META[top as FactionId].name}(${hit.map((f) => FACTION_META[f].name).join('·')})의 전횡을 꺾었다. ${names.slice(0, 6).join(', ')} 등이 하루아침에 자리에서 물러났다.`, 'history');
+  for (const f of hit) {
     // 쫓겨난 당은 지방의 세력도 꺾인다. 왕의 마음의 바탕도 식는다.
     for (const r of Object.values(s.regions)) if (r.influence[f]) r.influence[f] = Math.round((r.influence[f] ?? 0) * 0.7);
     s.king.base = { ...(s.king.base ?? {}), [f]: (s.king.base?.[f] ?? 0) - 10 };
@@ -561,7 +564,8 @@ const windowed = (
       if (o.omen) {
         const key = `omen_${id}`;
         if (typeof s.flags[key] !== 'number') {
-          if (o.omenAtStart || r >= (o.omen.at ?? 0.06) || s.t >= t1 - 6) {
+          // 형세가 기준을 넘으면 바로, 아니면 형세에 비례한 확률로 조짐이 먼저 비친다
+          if (o.omenAtStart || r >= (o.omen.at ?? 0.06) || s.t >= t1 - 6 || chance(s, Math.min(0.5, r * 1.5))) {
             s.flags[key] = s.t;
             log(s, `[조짐] ${o.omen.text(s)}`, 'history');
             if (o.warn) warnPlayer(s, o.omen.text(s), o.warn);
@@ -569,6 +573,8 @@ const windowed = (
           return s.t >= t1;
         }
         if (s.t - (s.flags[key] as number) < 3 && s.t < t1) return false;
+        // 조짐이 비친 뒤에는 사건이 조금 더 빨리 무르익는다
+        return s.t >= t1 || chance(s, Math.min(0.5, r * 1.5));
       }
       return s.t >= t1 || chance(s, r);
     },
@@ -639,8 +645,8 @@ export const LATER_SCHEDULE: Scheduled[] = [
   },
   { id: 'l_jeongmyo', at: at(1627, 1), run: (s) => horan(s, 'jeongmyo') },
   { id: 'l_byeongja', at: at(1636, 12), run: (s) => horan(s, 'byeongja') },
-  { id: 'l_sohyeon', at: at(1645, 4), run: L('볼모에서 돌아온 소현세자가 갑자기 세상을 떠났다. 독살이라는 소문이 돈다.', (s) => (startGukbon(s, 'wonson'), shakeLegit(s, -3, '세자가 의문의 죽음을 맞았다'))) },
-  { id: 'l_hyojong', at: at(1649, 5), run: (s) => (s.flags.wonsonKept ? crownAlt(s, '경선군', 'gyeongseon', s.t + randInt(s, 24, 72)) : crown(s, '효종')) },
+  { id: 'l_sohyeon', at: at(1645, 4), run: Ldyn((s) => `${s.flags.samjeondo ? '볼모에서 돌아온 ' : ''}소현세자가 갑자기 세상을 떠났다. 독살이라는 소문이 돈다.`, (s) => (startGukbon(s, 'wonson'), shakeLegit(s, -3, '세자가 의문의 죽음을 맞았다'))) },
+  { id: 'l_hyojong', at: at(1649, 5), run: (s) => (s.flags.wonsonKept ? crownAlt(s, '경선군', 'gyeongseon', s.t + randInt(s, 24, 72)) : crown(s, '효종', s.flags.samjeondo ? {} : { text: '봉림대군이 즉위했다(효종). 호란을 막아 낸 나라의 임금답게 굳센 기상으로 북방의 방비를 다진다.' })) },
   windowed('l_bukbeol', [1650, 1], [1656, 12], {
     pre: (s) => kingNameNow(s) === '효종' && !!s.flags.samjeondo,
     // 정통성이 흔들릴수록 명분이 급하다
@@ -674,6 +680,7 @@ export const LATER_SCHEDULE: Scheduled[] = [
       log(s, figure(s, 'heo_jeok') ? `경신환국: ${figure(s, 'heo_jeok')!.name}의 유악(油幄) 사건으로 왕이 남인을 내치고 서인을 불러들였다.` : '경신환국: 남인 대신들의 전횡을 문제 삼아 왕이 남인을 내치고 서인을 불러들였다.', 'history');
       hwangukTop(s, 'nam');
       kingLean(s, 'seo', 10);
+      s.flags.gyeongsinAt = s.t;
     },
   }),
   // 서인의 분당: 남인을 얼마나 엄히 다스릴지를 두고 다투다 갈라선다. 긴장이 높고 서인이 조정을 쥘수록 빠르다
@@ -733,10 +740,8 @@ export const LATER_SCHEDULE: Scheduled[] = [
     id: 'l_sinim',
     at: at(1721, 12),
     run(s) {
-      log(s, `${s.flags.sejeFailed ? '신임옥사: 연잉군을 세제로 세우려다 뜻을 이루지 못한 노론 4대신이 역모로 몰렸다.' : '신임옥사: 연잉군을 세제로 세우고 대리청정까지 밀어붙인 노론 4대신이 역모로 몰렸다.'}${s.flags.dokdae ? ' 정유년 독대 때부터 쌓인 소론의 의심이 터졌다.' : ''} 소론이 조정을 쥔다.`, 'history');
+      log(s, `${s.flags.sejeFailed ? '신축환국: 연잉군을 세제로 세우려다 뜻을 이루지 못한 노론 4대신이 조정에서 쫓겨났다.' : '신축환국: 연잉군을 세제로 세우고 대리청정까지 밀어붙인 노론 4대신이 「임금을 핍박했다」며 조정에서 쫓겨났다.'}${s.flags.dokdae ? ' 정유년 독대 때부터 쌓인 소론의 의심이 터졌다.' : ''} 소론이 조정을 쥔다.`, 'history');
       hwangukTop(s, 'noron');
-      const cj = figure(s, 'kim_changjip');
-      if (cj && !isP(s, cj)) kill(s, cj, '신임옥사로 사사되었다');
       const pool = members(s, 'noron').filter((c) => !isP(s, c) && inCourt(c));
       const acc = pool.length ? pick(s, pool) : undefined;
       if (acc) {
@@ -845,6 +850,16 @@ export const LATER_SCHEDULE: Scheduled[] = [
     run: Ldyn((s) => (figure(s, 'jeong_yakyong') ? `수원 화성이 완공되었다. ${figure(s, 'jeong_yakyong')!.name}의 거중기가 공기를 크게 줄였다.` : '수원 화성이 완공되었다. 거중기 같은 새 기계가 공기를 크게 줄였다.'), (s) => {
       s.regions.gyeonggi.defense.fort = Math.min(5, s.regions.gyeonggi.defense.fort + 2);
       s.realm.treasury -= 100;
+      const p = P(s);
+      if (s.flags.hwaseongBy === p.id && alive(p)) {
+        pres(p, 3);
+        s.player.deeds.push(`${yearOf(s.t)} 화성 축성의 감동을 맡아 완공함`);
+        notice(s, '화성 완공', '감동을 맡았던 화성이 완공되었다. 『화성성역의궤』에 당신의 이름이 오른다. (명망 +3)', 'personal');
+      } else if (alive(p) && s.player.lineage.some((a) => a.id === s.flags.hwaseongBy)) {
+        // 감동을 맡았던 선친이 완공을 보지 못하고 세상을 떠났다
+        pres(p, 2);
+        notice(s, '화성 완공', '선친이 감동을 맡았던 화성이 완공되었다. 『화성성역의궤』에 선친의 이름이 오르고, 사람들이 그 공을 당신에게서 기억한다. (명망 +2)', 'personal');
+      }
     }),
   },
   {
@@ -967,7 +982,7 @@ LATER_SCHEDULE.push(
   { id: 'l_daeri_seson', at: at(1775, 11), cond: (s) => !s.flags.sadoAlive, run: (s) => startGukbon(s, 'daeri_seson', '여든을 넘긴 왕이 기력이 쇠하자') },
   { id: 'l_seungheon', at: at(1784, 3), run: L('이승훈이 북경에서 세례를 받고 돌아왔다. 남인 소장파 사이에 서학이 번진다.') },
   playerAt('later_jinsan', 1791, 11, (s) => inCourt(P(s)) && (P(s).faction === 'nam' || P(s).rank <= 3), '진산 사건: 윤지충이 어머니의 신주를 불사른 일로 처형되었다. 남인이 신서파와 공서파로 갈린다.'),
-  { id: 'l_wonhaeng_legit', at: at(1795, 2), cond: (s) => kingNameNow(s) === '정조', run: (s) => shakeLegit(s, 5, '사도세자의 원소를 화성으로 옮기고 어머니의 회갑을 치러 효의 명분을 세웠다') },
+  { id: 'l_wonhaeng_legit', at: at(1795, 2), cond: (s) => kingNameNow(s) === '정조', run: (s) => shakeLegit(s, 5, s.flags.sadoAlive ? '아버지 장조의 능을 찾고 어머니의 회갑을 치러 효의 명분을 세웠다' : '사도세자의 원소를 화성으로 옮기고 어머니의 회갑을 치러 효의 명분을 세웠다') },
   { id: 'l_wonhaeng', at: at(1795, 2), run: L('정조가 어머니 혜경궁을 모시고 화성으로 행차했다(원행을묘).', (s) => kingMood(s, 6)) },
   {
     id: 'l_sinyu_p',
@@ -1126,7 +1141,7 @@ function sipaTurn(s: GameState, when: 'jeongjo' | 'regency' | 'fall') {
   if (when === 'jeongjo') {
     if (side === 'si') {
       fav(p, 8);
-      notice(s, '시파의 날', '정조가 즉위했다. 사도세자를 동정하던 시파인 당신을 새 임금이 가까이한다. (성심 +8)', 'personal');
+      notice(s, '시파의 날', `정조가 즉위했다. ${s.flags.sadoAlive ? '세자와 세손을 감싸던' : '사도세자를 동정하던'} 시파인 당신을 새 임금이 가까이한다. (성심 +8)`, 'personal');
     } else {
       fav(p, -8);
       notice(s, '벽파의 겨울', '정조가 즉위했다. 영조의 처분을 옳다 하던 벽파인 당신을 새 임금이 멀리한다. (성심 -8)', 'danger');
@@ -1328,12 +1343,43 @@ LATER_SCHEDULE.push(
     s.tension = clamp(s.tension + 5, 0, 100);
     s.flags.dokdae = true;
   }),
+  omenAt('o_ohoe', 1800, 5, '오회연교(五晦筵敎): 정조가 오월 그믐의 경연에서 「지난 일의 의리를 바로 세우고, 따르지 않는 자는 용서하지 않겠다」고 하교했다. 벽파가 크게 긴장한다.', (s) => kingNameNow(s) === '정조', (s) => (s.tension = clamp(s.tension + 4, 0, 100))),
+  { id: 'l_jeongjo_poison', at: at(1800, 9), cond: (s) => kingNameNow(s) === '순조' && !!s.flags.h_o_ohoe, run: L('오회연교 한 달 만에 정조가 종기를 앓다 갑자기 승하하자, 「벽파가 독을 썼다」는 말이 영남과 남인 사이에 퍼진다.', (s) => (s.tension = clamp(s.tension + 3, 0, 100))) },
+  omenAt('o_jajeom', 1650, 3, (s) => `반정공신 김자점이 밀려나자, 그가 효종의 ${s.flags.samjeondo ? '북벌 계획' : '군비 확충'}과 송시열 등 산림의 등용을 청나라에 밀고했다는 말이 돈다. 청의 사신이 와서 조정을 캐묻는다.`, (s) => kingNameNow(s) === '효종', (s) => (s.tension = clamp(s.tension + 3, 0, 100))),
+  { id: 'l_jajeom', at: at(1651, 12), cond: (s) => !!s.flags.h_o_jajeom, run: L('김자점의 옥: 김자점의 아들이 역모를 꾸민 것이 드러나 김자점이 처형되었다. 반정공신의 세력이 무너지고, 산림이 조정의 중심에 선다.', (s) => {
+    s.tension = clamp(s.tension + 3, 0, 100);
+    for (const f of ['seo', 'noron', 'soron'] as FactionId[]) if (s.factions[f].active) kingLean(s, f, 3);
+  }) },
+  { id: 'l_yeongnam_so', at: at(1666, 3), cond: (s) => kingNameNow(s) === '현종' && s.factions.nam.active, run: Ldyn((s) => `기해년 예송의 시비를 두고 영남 유생 천여 명이 연명 상소를 올려 ${figure(s, 'song_siyeol') ? `${figure(s, 'song_siyeol')!.name}의` : '서인의'} 예론을 공박했다. 선비들의 다툼이 조정 밖으로 번진다.`, (s) => (s.tension = clamp(s.tension + 3, 0, 100))) },
+  { id: 'l_yuhyorip', at: at(1628, 1), cond: (s) => kingNameNow(s) === '인조' && !!s.flags.banjeongDone, run: Ldyn((s) => `유효립의 옥: 쫓겨난 ${String(s.flags.deposed ?? '광해군')}을 상왕으로 받들고 인성군을 세우려던 유효립의 역모가 드러나 무리가 처형되었다. ${s.flags.jeongmyoHeld === false ? '정묘년의 난리 끝에 민심이 흉흉하다.' : '정묘년 오랑캐를 막아 낸 뒤라 조정은 서둘러 무리를 다스렸다.'}`, (s) => {
+    s.tension = clamp(s.tension + 3, 0, 100);
+    shakeLegit(s, -2, '폐주를 다시 세우려는 역모가 일었다');
+  }) },
+  { id: 'l_imin', at: at(1722, 3), cond: (s) => kingNameNow(s) === '경종' && !!s.flags.h_l_sinim, run: L('임인옥사: 목호룡이 「노론이 임금을 시해하려 했다」고 고변했다. 노론 4대신이 사사되고 수십 명이 죽거나 귀양을 갔다. 신축년(1721)에 시작된 옥사가 임인년에 이르러 피바람이 되었다(신임옥사).', (s) => {
+    s.tension = clamp(s.tension + 5, 0, 100);
+    if (s.factions.noron.active) kingLean(s, 'noron', -8);
+    const cj = figure(s, 'kim_changjip');
+    if (cj && !isP(s, cj)) kill(s, cj, '임인옥사로 사사되었다');
+  }) },
+  { id: 'l_gapsin', at: at(1764, 2), cond: (s) => kingNameNow(s) === '영조' && !s.flags.sadoAlive, run: L('갑신처분: 영조가 세손을 일찍 죽은 효장세자의 후사로 입적시켰다. 「죄인의 아들」이라는 굴레를 덜어 주려는 뜻이지만, 세손에게는 아버지를 아버지라 부르지 못하는 한이 남는다.', (s) => {
+    s.flags.gapsin = true;
+  }) },
+  { id: 'l_byeongin', at: at(1806, 2), cond: (s) => kingNameNow(s) === '순조' && !!s.flags.h_l_jeongsun, run: Ldyn((s) => `병인경화(丙寅更化): 정순왕후가 세상을 떠나자 ${figure(s, 'kim_josun') ? `${figure(s, 'kim_josun')!.name}을 중심으로 한 ` : ''}안동 김씨가 벽파의 김달순 등을 몰아냈다. 시파의 세도가 굳어지고, 이제 조정의 큰일은 외척의 사랑방에서 정해진다.`, (s) => {
+    s.tension = clamp(s.tension - 3, 0, 100);
+    bibyeonJump(s, 4, '세도가 비변사를 쥐었다.');
+  }) },
+  { id: 'l_hyeonryung', at: at(1789, 10), cond: (s) => kingNameNow(s) === '정조' && !s.flags.sadoAlive, run: L('현륭원 천봉: 정조가 양주 배봉산의 초라한 사도세자 묘를 수원 화산으로 옮기고 현륭원이라 불렀다. 원래 수원 읍치는 팔달산 아래로 옮긴다. 새 고을에 성을 쌓으려는 뜻이 보인다.', (s) => shakeLegit(s, 2, '선친의 묘를 높여 효의 명분을 세웠다')) },
+  { id: 'l_imsul', at: at(1679, 1), window: 120, cond: (s) => kingNameNow(s) === '숙종' && typeof s.flags.gyeongsinAt === 'number' && s.t - (s.flags.gyeongsinAt as number) >= 12 && s.factions.seo.active && chance(s, 0.15), run: Ldyn((s) => `임술삼고변: ${josa(figure(s, 'kim_seokju') ? `외척 ${figure(s, 'kim_seokju')!.name}` : '외척 세력', '과/와')} 김익훈이 사람을 풀어 남인 잔당의 역모를 꾸며 고변했다. 서인의 젊은 관원들은 「공작으로 사람을 죽인다」며 들고일어나고, 원로들은 「역적을 다스린 것」이라 감싼다. 서인 안의 골이 깊어진다.`, (s) => (s.tension = clamp(s.tension + 6, 0, 100))) },
+  { id: 'l_jahyul', at: at(1783, 11), cond: (s) => kingNameNow(s) === '정조', run: L('자휼전칙(字恤典則): 흉년에 길가에 버려진 아이들을 보다 못한 정조가, 고을마다 버려진 아이를 거두어 먹이고 입히게 하는 법을 반포했다.', (s) => {
+    for (const r of Object.values(s.regions)) r.minsim = clamp(r.minsim + 2, 0, 100);
+    s.realm.treasury -= 10;
+  }) },
   omenAt('o_hideyoshi', 1590, 8, '도요토미 히데요시가 일본 전역을 평정했다. 그가 「명을 치겠다」고 큰소리친다는 소문이 대마도를 거쳐 들려온다.'),
   omenAt('o_waegwan', 1592, 1, '부산포 왜관에 머물던 왜인들이 하나둘 배를 타고 돌아가 왜관이 텅 비었다는 장계가 올라왔다.', (s) => !s.war.active),
   omenAt('o_jeongmyo', 1626, 10, (s) => `후금의 누르하치가 죽고 홍타이지가 섰다. ${s.flags.banjeongDone ? '반정으로 선 조정이 명을 받들고 후금을 배척하는 데다, ' : ''}명의 장수 모문룡이 가도에 진을 치고 후금의 뒤를 치니, 후금이 조선을 먼저 치려 한다는 말이 돈다.`),
   omenAt('o_banjeong', 1622, 6, '폐모와 오랑캐와의 화친에 분개한 서인들이 은밀히 모인다. 「이 임금을 받들 수 없다」는 말이 사랑방에서 오가고, 능양군의 집에 무인들이 드나든다.', (s) => slotVerdict(s) === 'coup'),
   omenAt('o_igwal', 1623, 7, '논공행상에서 2등 공신에 그친 이괄이 불만을 품었다. 평안 병사로 나가 있는 그가 군사를 기른다는 말이 돈다.', (s) => !!s.flags.banjeongDone),
-  omenAt('o_cheong', 1636, 4, '후금의 홍타이지가 국호를 청으로 고치고 황제를 칭했다. 형제가 아닌 군신의 예를 요구하는 사신을 조정이 척화를 외치며 돌려보냈다. 북쪽의 군사가 움직인다는 장계가 잇따른다.', undefined, (s) => (s.tension = clamp(s.tension + 4, 0, 100))),
+  omenAt('o_cheong', 1636, 4, (s) => `후금의 홍타이지가 국호를 청으로 고치고 황제를 칭했다. ${s.flags.jeongmyoHeld === false ? '정묘년의 형제 맹약을 넘어 군신의 예를' : '조선에 신하의 예를'} 요구하는 사신을 조정이 척화를 외치며 돌려보냈다. 북쪽의 군사가 움직인다는 장계가 잇따른다.`, undefined, (s) => (s.tension = clamp(s.tension + 4, 0, 100))),
   omenAt('o_daeri_push', 1721, 10, '세제를 세운 노론이 내친김에 세제의 대리청정까지 청하자, 소론이 「병든 임금을 핍박한다」며 들고일어났다.', (s) => kingNameNow(s) === '경종' && !s.flags.sejeFailed, (s) => (s.tension = clamp(s.tension + 5, 0, 100))),
   omenAt('o_injwa', 1727, 10, '「경종은 독살되었고 지금 임금은 숙종의 아들이 아니다」라는 흉서가 삼남에 나돈다. 정권에서 밀려난 소론 강경파와 남인 일부가 은밀히 오간다.', (s) => kingNameNow(s) === '영조' && !s.flags.sejeFailed, (s) => shakeLegit(s, -4, '경종 독살설이 다시 번졌다')),
   omenAt('o_sado1', 1757, 11, '정성왕후와 인원왕후가 잇따라 세상을 떠난 뒤 세자의 화증이 깊어졌다. 내관과 나인을 해쳤다는 말이 돌고, 영조의 꾸지람이 잦아진다.'),
@@ -1365,6 +1411,12 @@ const famineAt = (y: number, m: number, name: string): Scheduled => ({
   run: (s) => pushEvent(s, 'later_famine', { name }),
 });
 LATER_SCHEDULE.push(famineAt(1670, 8, '경신대기근'), famineAt(1695, 9, '을병대기근'), famineAt(1809, 9, '기사년 대기근'));
+
+/* ───────── 화성 축성(1794~1796): 조정에 있으면 어떻게 거들지 고른다 ───────── */
+LATER_SCHEDULE.push({
+  ...playerAt('later_hwaseong', 1794, 1, (s) => kingNameNow(s) === '정조' && inCourt(P(s)) && P(s).rank <= 5, '정조가 수원에 새 성을 쌓기 시작했다. 아버지의 무덤을 지키고 장용영 외영을 둘 성이다.'),
+  cond: (s) => kingNameNow(s) === '정조',
+});
 
 /** 매달: 인물 등장, 전란 종료, 늘그막의 처리 */
 export function tickLater(s: GameState) {
@@ -2138,6 +2190,36 @@ export const LATER_EVENTS: Record<string, EventDef> = {
       fav(p, 6);
       swayFaction(s, f, p.id, -12, '당을 등지고 왕에게 붙음', 0.15);
       return '당의 전횡을 비판하는 차자를 올렸다. 왕이 고개를 끄덕였으나, 동지들은 당신을 배신자라 부른다.';
+    },
+  },
+  later_hwaseong: {
+    build: (s) => ({
+      title: '화성 축성',
+      kind: 'court',
+      text: `정조가 수원 팔달산 아래에 새 성을 쌓겠다고 한다. ${s.flags.sadoAlive ? '선왕인 아버지 장조의 능을' : '아버지 사도세자의 원소(현륭원)를'} 지키고, 장용영 외영을 두어 왕의 군대를 기를 성이다. 「백성을 억지로 부리지 말고 품삯을 주라」는 하교가 내려왔다. 벽파는 국고를 축내는 일이라며 수군거린다.`,
+      choices: [
+        { key: 'supervise', label: '감동(監董)을 자원해 공사를 맡는다', hint: '성심 +6, 명망 +3. 성이 완공되면 공을 인정받는다 (명망 +3)' },
+        { key: 'wage', label: '품삯을 넉넉히 주어 백성의 원망을 사지 말자고 아뢴다', hint: '국고 -20, 경기 민심 +5, 성심 +3' },
+        { key: 'oppose', label: '나라 살림을 축낸다며 반대한다', hint: '성심 -5. 벽파(노론)의 호감 +4' },
+      ],
+    }),
+    resolve(s, _c, key) {
+      const p = P(s);
+      if (key === 'supervise') {
+        fav(p, 6);
+        pres(p, 3);
+        s.flags.hwaseongBy = p.id;
+        return `감동을 맡아 수원으로 내려갔다. ${figure(s, 'jeong_yakyong') ? `${figure(s, 'jeong_yakyong')!.name}이 고안한 ` : '새로 고안한 '}거중기와 녹로가 돌을 들어 올린다. (성심 +6, 명망 +3)`;
+      }
+      if (key === 'wage') {
+        s.realm.treasury -= 20;
+        s.regions.gyeonggi.minsim = clamp(s.regions.gyeonggi.minsim + 5, 0, 100);
+        fav(p, 3);
+        return '품삯을 넉넉히 주자고 아뢰었다. 일꾼들이 스스로 모여들어 공사가 빨라졌다. (국고 -20, 경기 민심 +5, 성심 +3)';
+      }
+      fav(p, -5);
+      if (s.factions.noron.active) swayFaction(s, 'noron', p.id, 4, '화성 축성에 반대함', 0.1);
+      return '국고를 축내는 일이라며 반대했다. 왕의 낯빛이 차가워졌다. (성심 -5)';
     },
   },
   later_imo: {

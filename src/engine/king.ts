@@ -90,13 +90,17 @@ export function tickKing(s: GameState) {
   }
   // 숙종처럼 판을 자주 뒤집는 왕은 환국의 문턱이 낮다
   const volatile = style === 'volatile';
-  if (s.war.active || monthsSince(s, 'lastHwanguk') < (volatile ? 36 : 84)) return;
+  // 탕평하는 왕은 한 당을 통째로 내치기보다 섞어 쓴다. 세도 아래에서는 외척이 판을 쥐어 왕이 판을 뒤집기 어렵다
+  // 숙종 대의 굵직한 환국(경신·기사·갑술)은 시간 창 사건이 맡으므로, 그 사이의 작은 판갈이는 다섯 해에 한 번꼴이면 족하다
+  const gap = volatile ? 60 : style === 'tangpyeong' ? 120 : 84;
+  const odds = volatile ? 0.08 : style === 'tangpyeong' || style === 'sedo' ? 0.015 : style === 'neutral' ? 0.02 : 0.03;
+  if (s.war.active || monthsSince(s, 'lastHwanguk') < gap) return;
   const f = act.find((x) => (k.lean[x] ?? 0) <= (volatile ? WARY_TRIGGER + 10 : WARY_TRIGGER) && (share[x] ?? 0) > (volatile ? 0.4 : 0.45));
-  if (f && chance(s, volatile ? 0.12 : 0.04)) hwanguk(s, f);
+  if (f && chance(s, odds)) hwanguk(s, f);
 }
 
 /** 왕이 판을 뒤집는다 */
-export function hwanguk(s: GameState, f: FactionId, forced = false) {
+export function hwanguk(s: GameState, f: FactionId, forced = false, quiet = false): string[] {
   const p = P(s);
   const holders = people(s)
     .filter((c) => c.faction === f && c.status === 'active' && c.office && OFFICE_MAP[c.office] && !isP(s, c))
@@ -112,15 +116,17 @@ export function hwanguk(s: GameState, f: FactionId, forced = false) {
   s.king.lean[f] = -10;
   for (const o of activeFactions(s)) if (o !== f) kingLean(s, o, 12);
   s.tension = clamp(s.tension + 8, 0, 100);
-  log(s, `[환국] 왕이 ${FACTION_META[f].name}의 전횡을 꺾었다. ${holders.map((c) => c.name).join(', ')} 등이 하루아침에 자리에서 물러났다.`, 'history');
+  if (!quiet) log(s, `[환국] 왕이 ${FACTION_META[f].name}의 전횡을 꺾었다. ${holders.map((c) => c.name).join(', ')} 등이 하루아침에 자리에서 물러났다.`, 'history');
 
   if (p.faction !== f) {
+    // 서인 전체를 치는 환국에서 같은 뿌리의 다른 당이 쫓겨난 것은 당신에게 기회가 아니다 (당신의 당 몫에서 따로 알린다)
+    if (quiet && p.faction !== 'none' && topOf(p.faction) === topOf(f)) return holders.map((c) => c.name);
     if (inCourt(p)) notice(s, '환국(換局)', `왕이 ${FACTION_META[f].name}의 요인들을 한꺼번에 갈아치웠다. 빈자리가 쏟아진다. 당신에게는 기회다.`, 'history');
-    return;
+    return holders.map((c) => c.name);
   }
   if (p.status !== 'active' || !p.office || !OFFICE_MAP[p.office]) {
     notice(s, '환국(換局)', `왕이 ${FACTION_META[f].name}의 요인들을 한꺼번에 갈아치웠다. 관직에 있지 않던 당신은 화를 비껴갔다.`, 'history');
-    return;
+    return holders.map((c) => c.name);
   }
   const leader = s.factions[f].leader === p.id;
   const distanced = typeof s.flags.distanced === 'number' && s.t - s.flags.distanced <= 12;
@@ -136,6 +142,7 @@ export function hwanguk(s: GameState, f: FactionId, forced = false) {
   } else {
     notice(s, '환국(換局)', `왕이 ${FACTION_META[f].name}의 요인들을 한꺼번에 갈아치웠다. 당신은 용케 자리를 지켰다. (화를 입을 확률 ${Math.round(risk * 100)}%${distanced ? ', 당론과 거리를 둔 덕' : ''})`, 'danger');
   }
+  return holders.map((c) => c.name);
 }
 
 /* ───────── 경연(經筵)과 차대(次對) ───────── */
