@@ -224,8 +224,8 @@ export function tickCases(s: GameState) {
     const stale =
       !alive(atk) ||
       !alive(tgt) ||
-      // 환국 같은 다른 일로 자리를 잃으면 논핵은 거두어진다. 스스로 물러났거나 처음부터 관직이 없던 이는 끝까지 간다
-      (cs.kind === 'impeach' ? !['active', 'idle', 'retired'].includes(tgt.status) || ((tgt.status !== 'active' || !tgt.office) && !cs.resigned && !cs.offOffice) : tgt.status !== 'exiled');
+      // 임기가 차서 보직 대기가 되거나 체직되어도 논핵은 끝까지 간다. 환국으로 쫓겨난 이의 논핵은 환국(king.ts)이 거둔다
+      (cs.kind === 'impeach' ? !['active', 'idle', 'retired'].includes(tgt.status) : tgt.status !== 'exiled');
     if (stale) {
       closeCase(s, cs);
       continue;

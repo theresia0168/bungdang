@@ -111,6 +111,9 @@ export function hwanguk(s: GameState, f: FactionId, forced = false, quiet = fals
     vacate(s, c);
     c.favor = clamp(c.favor - 15, -100, 100);
   }
+  // 환국으로 판이 뒤집히면 쫓겨난 이들에 대한 논핵은 거두어진다 (이미 벌을 받은 셈이다)
+  const swept = new Set(holders.map((c) => c.id));
+  s.cases = s.cases.filter((cs) => !(cs.kind === 'impeach' && swept.has(cs.target)));
   delete s.flags[`waryWarn_${f}`];
   s.flags.lastHwanguk = s.t;
   s.flags.hwangukAfter = `${f}:${s.t}`;
@@ -137,6 +140,7 @@ export function hwanguk(s: GameState, f: FactionId, forced = false, quiet = fals
   if (chance(s, risk)) {
     const name = officeTitle(p);
     vacate(s, p);
+    s.cases = s.cases.filter((cs) => !(cs.kind === 'impeach' && cs.target === p.id));
     p.favor = clamp(p.favor - 10, -100, 100);
     s.player.deeds.push(`환국으로 ${name}에서 물러남`);
     notice(s, '환국(換局)', `왕이 ${FACTION_META[f].name}의 요인들을 한꺼번에 갈아치웠다. 당신도 ${name} 자리에서 쫓겨났다. (성심 -10)\n\n화를 입을 확률은 ${Math.round(risk * 100)}%였다.`, 'danger');
